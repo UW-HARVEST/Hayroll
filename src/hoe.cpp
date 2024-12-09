@@ -4,6 +4,7 @@
 #include <string_view>
 #include <sstream>
 #include <vector>
+#include <list>
 #include <tuple>
 #include <filesystem>
 
@@ -78,6 +79,27 @@ std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view
     return {path, line, col};
 }
 
+struct Tag
+{
+    bool hayroll = true;
+    bool begin;
+    bool isArg;
+    std::string astKind;
+    bool isLvalue;
+    std::string name;
+    std::string locDecl;
+    std::string locInv;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, astKind, isLvalue, name, locDecl, locInv)
+
+    std::string stringLiteral() const
+    {
+        json j = *this;
+        return "\"" + escapeString(j.dump()) + "\"";
+        // return "\"\"";
+    }
+};
+
 struct InstrumentationTask
 {
     std::string filename;
@@ -101,7 +123,7 @@ struct InstrumentationTask
 
     std::string awkCommand() const
     {
-        // Example: awk 'NR==144 {print substr($0, 1, 31) "ESCAPED_SPELLING" substr($0, 32)} NR!=144' /home/hurrypeng/libmcs/libm/include/internal_config.h > /tmp/hayroll.tmp && mv /tmp/hayroll.tmp /home/hurrypeng/libmcs/libm/include/internal_config.h
+        // Example: awk 'NR==144 {print substr($0, 1, 31) "ESCAPED_SPELLING" substr($0, 32)} NR!=144' /home/husky/libmcs/libm/include/internal_config.h > /tmp/hayroll.tmp && mv /tmp/hayroll.tmp /home/husky/libmcs/libm/include/internal_config.h
         std::string escaped = escapeString(str);
         return "awk 'NR==" + std::to_string(line) + " {print substr($0, 1, " + std::to_string(col - 1) + ") \"" + escaped + "\" substr($0, " + std::to_string(col) + ")} NR!=" + std::to_string(line) + "' " + filename + " > /tmp/hayroll.tmp && mv /tmp/hayroll.tmp " + filename;
     }
@@ -112,28 +134,7 @@ struct InstrumentationTask
     }
 };
 
-struct Tag
-{
-    bool hayroll = true;
-    bool begin;
-    bool isArg;
-    std::string astKind;
-    bool isLvalue;
-    std::string name;
-    std::string locDecl;
-    std::string locInv;
-
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, astKind, isLvalue, name, locDecl, locInv)
-
-    std::string stringLiteral() const
-    {
-        json j = *this;
-        return "\"" + escapeString(j.dump()) + "\"";
-        // return "\"\"";
-    }
-};
-
-std::vector<InstrumentationTask> collectInstrumentationTasks
+std::list<InstrumentationTask> genInstrumentationTasks
 (
     std::string_view locBegin,
     std::string_view locEnd,
@@ -168,7 +169,7 @@ std::vector<InstrumentationTask> collectInstrumentationTasks
         .locDecl = std::string(locDecl)
     };
 
-    std::vector<InstrumentationTask> tasks;
+    std::list<InstrumentationTask> tasks;
     if (astKind == "Expr")
     {
         if (isLvalue)
@@ -289,9 +290,9 @@ struct ArgInfo
     
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(ArgInfo, Name, ASTKind, Type, IsLValue, ActualArgLocBegin, ActualArgLocEnd)
 
-    std::vector<InstrumentationTask> collectInstrumentationTasks() const
+    std::list<InstrumentationTask> collectInstrumentationTasks() const
     {
-        return ::collectInstrumentationTasks(
+        return genInstrumentationTasks(
             ActualArgLocBegin,
             ActualArgLocEnd,
             true, // isArg
@@ -310,6 +311,7 @@ struct InvocationInfo
     std::string Name;
     std::string ASTKind;
     std::string ReturnType;
+    bool IsLValue;
     std::string InvocationLocation;
     std::string InvocationLocationEnd;
     std::vector<ArgInfo> Args;
@@ -318,29 +320,29 @@ struct InvocationInfo
     // Later collected
     std::string Spelling;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(InvocationInfo, DefinitionLocation, Name, ASTKind, ReturnType, InvocationLocation, InvocationLocationEnd, Args, NumArguments)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(InvocationInfo, DefinitionLocation, Name, ASTKind, ReturnType, IsLValue, InvocationLocation, InvocationLocationEnd, Args, NumArguments)
 
-    std::vector<InstrumentationTask> collectInstrumentationTasks() const
+    std::list<InstrumentationTask> collectInstrumentationTasks() const
     {
-        std::vector<InstrumentationTask> tasks;
+        std::list<InstrumentationTask> tasks;
         for (const ArgInfo & arg : Args)
         {
-            std::vector<InstrumentationTask> argTasks = arg.collectInstrumentationTasks();
-            tasks.insert(tasks.end(), argTasks.begin(), argTasks.end());
+            std::list<InstrumentationTask> argTasks = arg.collectInstrumentationTasks();
+            tasks.splice(tasks.end(), argTasks);
         }
 
-        std::vector<InstrumentationTask> invocationTasks = ::collectInstrumentationTasks(
+        std::list<InstrumentationTask> invocationTasks = genInstrumentationTasks(
             InvocationLocation,
             InvocationLocationEnd,
             false, // isArg
             ASTKind,
-            false, // lvalue
+            IsLValue,
             Name,
             DefinitionLocation,
             Spelling
         );
-        tasks.insert(tasks.end(), invocationTasks.begin(), invocationTasks.end());
-
+        tasks.splice(tasks.end(), invocationTasks);
+        
         return tasks;
     }
 };
@@ -507,15 +509,15 @@ int main(const int argc, const char* argv[])
     }
 
     // Collect instrumentation tasks.
-    std::vector<InstrumentationTask> tasks;
+    std::list<InstrumentationTask> tasks;
     for (const InvocationInfo & invocation : invocations)
     {
-        std::vector<InstrumentationTask> invocationTasks = invocation.collectInstrumentationTasks();
-        tasks.insert(tasks.end(), invocationTasks.begin(), invocationTasks.end());
+        std::list<InstrumentationTask> invocationTasks = invocation.collectInstrumentationTasks();
+        tasks.splice(tasks.end(), invocationTasks);
     }
 
     // Sort the tasks so that we can insert them from the end of the file to the beginning.
-    std::sort(tasks.begin(), tasks.end());
+    tasks.sort();
 
     // Execute the awk commands.
     for (const InstrumentationTask & task : tasks)
@@ -528,28 +530,6 @@ int main(const int argc, const char* argv[])
             return 2;
         }
     }
-
-    // for (const auto& invocation : invocations)
-    // {
-    //     std::cout << "Invocation: " << invocation.Name << std::endl;
-    //     std::cout << "Definition Location: " << invocation.DefinitionLocation << std::endl;
-    //     std::cout << "AST Kind: " << invocation.ASTKind << std::endl;
-    //     std::cout << "Return Type: " << invocation.ReturnType << std::endl;
-    //     std::cout << "Invocation Location: " << invocation.InvocationLocation << std::endl;
-    //     std::cout << "Invocation Location End: " << invocation.InvocationLocationEnd << std::endl;
-    //     std::cout << "Number of Arguments: " << invocation.NumArguments << std::endl;
-    //     std::cout << "Spelling: " << invocation.Spelling << std::endl;  
-    //     for (const auto& arg : invocation.Args)
-    //     {
-    //         std::cout << "Argument Name: " << arg.Name << std::endl;
-    //         std::cout << "Argument Type: " << arg.Type << std::endl;
-    //         std::cout << "Is LValue: " << arg.IsLValue << std::endl;
-    //         std::cout << "Actual Argument Location Begin: " << arg.ActualArgLocBegin << std::endl;
-    //         std::cout << "Actual Argument Location End: " << arg.ActualArgLocEnd << std::endl;
-    //         std::cout << "Spelling: " << arg.Spelling << std::endl;
-    //     }
-    //     std::cout << std::endl;
-    // }
 
     return 0;
 }
