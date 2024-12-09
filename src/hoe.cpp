@@ -116,13 +116,14 @@ struct Tag
 {
     bool hayroll = true;
     bool begin;
+    bool isArg;
     std::string astKind;
-    bool lvalue;
+    bool isLvalue;
     std::string name;
     std::string locDecl;
     std::string locInv;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, astKind, lvalue, name, locDecl, locInv)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, astKind, isLvalue, name, locDecl, locInv)
 
     std::string stringLiteral() const
     {
@@ -136,8 +137,9 @@ std::vector<InstrumentationTask> collectInstrumentationTasks
 (
     std::string_view locBegin,
     std::string_view locEnd,
+    bool isArg,
     std::string_view astKind,
-    bool lvalue,
+    bool isLvalue,
     std::string_view name,
     std::string_view locDecl,
     std::string_view spelling
@@ -149,8 +151,9 @@ std::vector<InstrumentationTask> collectInstrumentationTasks
     Tag tagBegin
     {
         .begin = true,
+        .isArg = isArg,
         .astKind = std::string(astKind),
-        .lvalue = lvalue,
+        .isLvalue = isLvalue,
         .name = std::string(name),
         .locDecl = std::string(locDecl)
     };
@@ -158,8 +161,9 @@ std::vector<InstrumentationTask> collectInstrumentationTasks
     Tag tagEnd
     {
         .begin = false,
+        .isArg = false,
         .astKind = "",
-        .lvalue = false,
+        .isLvalue = false,
         .name = std::string(name),
         .locDecl = std::string(locDecl)
     };
@@ -167,7 +171,7 @@ std::vector<InstrumentationTask> collectInstrumentationTasks
     std::vector<InstrumentationTask> tasks;
     if (astKind == "Expr")
     {
-        if (lvalue)
+        if (isLvalue)
         {
             // Template:
             // (*((*tagBegin)?(&(ORIGINAL_INVOCATION)):((__typeof__(spelling)*)(0))))
@@ -290,6 +294,7 @@ struct ArgInfo
         return ::collectInstrumentationTasks(
             ActualArgLocBegin,
             ActualArgLocEnd,
+            true, // isArg
             ASTKind,
             IsLValue,
             Name,
@@ -327,6 +332,7 @@ struct InvocationInfo
         std::vector<InstrumentationTask> invocationTasks = ::collectInstrumentationTasks(
             InvocationLocation,
             InvocationLocationEnd,
+            false, // isArg
             ASTKind,
             false, // lvalue
             Name,
