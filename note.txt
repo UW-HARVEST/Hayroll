@@ -1,2 +1,9 @@
 HAYROLL: HARVEST Annotator for Yielding Regions of Lexed Logic
 
+awk 'NR==144 {print substr($0, 32, 15)}' /home/husky/libmcs/libm/include/internal_config.h
+
+awk 'NR==144 {print substr($0, 1, 31) "ESCAPED" substr($0, 32)} NR!=144' /home/hurrypeng/libmcs/libm/include/internal_config.h > /tmp/hayroll.tmp && mv /tmp/hayroll.tmp /home/hurrypeng/libmcs/libm/include/internal_config.h
+
+awk 'NR==1 {print substr($0, 1, 10) "ESCAPED" substr($0, 11)} NR!=1' ./trace.txt > /tmp/hayroll.tmp && mv /tmp/hayroll.tmp ./trace.txt
+
+./hoe /home/hurrypeng/libmcs/macro_invocation_analyses/all_results.cpp2c ../libmcs/libm/mathf/ &> trace.txt
