@@ -52,5 +52,6 @@ fi
 
 # Add soft links to hoe, from here (build directory) to the root directory
 ln -sf "${BUILD_DIR}/hoe" ../hoe
+ln -sf "${BUILD_DIR}/debug/analyzer" ../analyzer
 
 echo "Build completed successfully!"

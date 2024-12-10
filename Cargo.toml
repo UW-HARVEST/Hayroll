@@ -1,0 +1,12 @@
+[package]
+name = "hayroll"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+syntax = { git = "https://github.com/rust-lang/rust-analyzer" , tag = "2024-12-09" }
+rowan = "0.14.0"
+
+[[bin]]
+name = "analyzer"
+path = "src/analyzer.rs"

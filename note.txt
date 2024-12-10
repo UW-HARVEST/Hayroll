@@ -7,3 +7,27 @@ awk 'NR==144 {print substr($0, 1, 31) "ESCAPED" substr($0, 32)} NR!=144' /home/h
 awk 'NR==1 {print substr($0, 1, 10) "ESCAPED" substr($0, 11)} NR!=1' ./trace.txt > /tmp/hayroll.tmp && mv /tmp/hayroll.tmp ./trace.txt
 
 ./hoe /home/hurrypeng/libmcs/macro_invocation_analyses/all_results.cpp2c ../libmcs/libm/mathf/ &> trace.txt
+
+    {
+        *"{}";
+        GET_FLOAT_WORD
+        (
+            (
+                (
+                    (*"{}")?
+                    (0):
+                    ((__typeof__(jx)*)(0))
+                )
+            ),
+            (
+                *(
+                    (*"{}")?
+                    (&(x)):
+                    ((__typeof__(x)*)(0))
+                )
+            )
+        );
+        *"{}";
+    };
+
+syntax = { git = "https://github.com/rust-lang/rust-analyzer" , tag = "2024-12-09" }
