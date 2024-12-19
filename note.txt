@@ -31,3 +31,5 @@ awk 'NR==1 {print substr($0, 1, 10) "ESCAPED" substr($0, 11)} NR!=1' ./trace.txt
     };
 
 syntax = { git = "https://github.com/rust-lang/rust-analyzer" , tag = "2024-12-09" }
+
+./ws ./ &> trace.txt
