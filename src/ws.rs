@@ -5,8 +5,9 @@ use ide_db::{base_db::{SourceDatabase, SourceDatabaseFileInputExt, SourceRootDat
 use project_model::CargoConfig;
 use load_cargo;
 use anyhow::Result;
-use syntax::{ast::{self, HasName}, AstNode};
-use vfs::AbsPath;
+use serde_json::{self, value};
+use syntax::{ast, AstNode, AstToken, SyntaxNode};
+use vfs::{AbsPath, FileId};
 use std::fs;
 use hir;
 
@@ -42,68 +43,77 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    let mut source_change = SourceChange::default();
+    let syntax_roots: Vec<(SyntaxNode, FileId)> = file_ids.iter().map(|file_id| (sema.parse_guess_edition(*file_id).syntax().clone(), file_id.clone())).collect();
 
-    for file_id in file_ids.iter() {
-        // Print filename and path
-        let mut builder = SourceChangeBuilder::new(*file_id);
-
-        let file_path = vfs.file_path(*file_id);
-        println!("File: {}", file_path);
-
-        let syntax = sema.parse_guess_edition(*file_id).syntax().clone();
-
-        let functions: Vec<ast::Fn> = syntax
-            .descendants()
-            .filter_map(|node| {
-                if let Some(fn_def) = ast::Fn::cast(node) {
-                    Some(fn_def)
-                } else {
-                    None
+    let hayroll_literals: Vec<(ast::Literal, value::Value, FileId)> = syntax_roots
+        .iter()
+        .flat_map(|(node, file_id)| {
+            node.descendants_with_tokens()
+            // Attatch a file_id to each node
+            .filter_map(move |element| Some((element, file_id)))
+        })
+        .filter_map(|(element, file_id)| {
+            if let Some(token) = element.clone().into_token() {
+                if let Some(byte_str) = ast::ByteString::cast(token) {
+                    // Try to parse into serde_json::Value, if it fails, it's not a JSON string
+                    let content = match byte_str.value() {
+                        Ok(cow) => String::from_utf8_lossy(&cow).to_string(),
+                        Err(_) => return None,
+                    };
+                    // Delete the last \0 byte
+                    let content = content.trim_end_matches(char::from(0));
+                    let tag: serde_json::Result<value::Value> = serde_json::from_str(&content);
+                    println!("Byte String: {}, Tag: {:?}", content, tag);
+                    if let Ok(tag) = tag {
+                        if tag["hayroll"] == true {
+                            return Some((ast::Literal::cast(element.parent()?)?, tag, file_id.clone()));
+                        }
+                    }
                 }
-            }).collect();
-
-        // Collect all name references, we will rename them later
-        let name_refs: Vec<ast::NameRef> = syntax
-            .descendants()
-            .filter_map(|node| {
-                if let Some(name_ref) = ast::NameRef::cast(node) {
-                    Some(name_ref)
-                } else {
-                    None
-                }
-            }).collect();
-
-        let old_fn_names: Vec<String> = functions
-            .iter()
-            .map(|f| f.name().map(|n| n.to_string()).unwrap_or_else(|| "<anonymous>".to_string()))
-            .collect();
-
-        // rename all functions (and calls to them) to "xxx_renamed"
-        for function in functions {
-            let name = function.name().map(|n| n.to_string()).unwrap_or_else(|| "<anonymous>".to_string());
-            println!("Function: {}", name);
-
-            let new_name = format!("{}_renamed", name);
-            let new_name_node = ast::make::name(&new_name).clone_for_update();
-            builder.replace_ast(function.name().unwrap(), new_name_node);
-        }
-
-        for name_ref in name_refs {
-            let name = name_ref.text().to_string();
-            // The name must be in the list of old function names
-            if !old_fn_names.contains(&name) {
-                continue;
             }
-            let new_name = format!("{}_renamed", name);
-            let new_name_node = ast::make::name_ref(&new_name).clone_for_update();
-            builder.replace_ast(name_ref, new_name_node);
+            None
+        }).collect();
+        
+    // Find out all Expr typed nodes, and replace them with their nested value
+    // if (*"str") { A } else { B } -> A
+    // *if (*"str") { &A } else { B } -> *&A
+
+    let peel_expr_tags = |is_arg: bool, mut source_change: SourceChange| -> SourceChange {
+        for (literal, tag, file_id) in hayroll_literals.iter() {
+            let mut builder = SourceChangeBuilder::new(file_id.clone());
+            
+            if tag["astKind"] == "Expr" && tag["isArg"] == is_arg {
+                let mut if_expr: SyntaxNode = literal.syntax().clone();
+                while !ast::IfExpr::can_cast(if_expr.kind()) {
+                    if_expr = if_expr.parent().unwrap();
+                }
+                let if_expr = ast::IfExpr::cast(if_expr).unwrap();
+                let if_expr_as_expr = ast::Expr::cast(if_expr.syntax().clone()).unwrap();
+                let if_true = if_expr.then_branch().unwrap();
+                let if_true_expr = ast::Expr::cast(if_true.syntax().clone()).unwrap();
+                
+                // Deep copy the if_true_expr
+                let if_true_expr_new = if_true_expr.clone_subtree().clone().clone_for_update();
+                
+                println!("IfExpr: {:?}", if_expr);
+                println!("IfTrue: {:?}", if_true_expr);
+
+                builder.replace_ast(if_expr_as_expr, if_true_expr_new);
+            }
+            source_change = source_change.merge(builder.finish());
         }
+        source_change
+    };
 
-        source_change = source_change.merge(builder.finish());
-    }
-
+    // First pass: args
+    let mut source_change = SourceChange::default();
+    source_change = peel_expr_tags(true, source_change);
     apply_source_change(&mut db, &source_change);
+
+    // // Second pass: not args
+    // let mut source_change = SourceChange::default();
+    // source_change = peel_expr_tags(false, source_change);
+    // apply_source_change(&mut db, &source_change);
 
     for file_id in file_ids.iter() {
         let file_path = vfs.file_path(*file_id);

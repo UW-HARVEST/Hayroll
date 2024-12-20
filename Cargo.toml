@@ -15,6 +15,7 @@ rustc-hash = "2.0.0"
 rowan = "0.14.0"
 anyhow = "1.0.75"
 camino = "1.1.9"
+serde_json = "1.0.133"
 
 [[bin]]
 name = "analyzer"
