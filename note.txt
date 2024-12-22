@@ -33,3 +33,13 @@ awk 'NR==1 {print substr($0, 1, 10) "ESCAPED" substr($0, 11)} NR!=1' ./trace.txt
 syntax = { git = "https://github.com/rust-lang/rust-analyzer" , tag = "2024-12-09" }
 
 ./ws ~/libmcs-partial &> trace.txt
+
+The current SourceChangeBuilder-based way of modifying AST has its limitations. 
+It fails when two indels are overlapping (usually seen on nested AST indels). 
+But if we first apply part of the editions, then the other part (represented by AST nodes)
+would be invalidated and thus needs another round of analysis to refresh. 
+This is not feasible, especially for more complex transformations we may do in the future. 
+There is also a TreeMutator-based way for editing. We should explore that. 
+
+TreeMutator always finds the root
+clone_for_update clones the whole ancestor path

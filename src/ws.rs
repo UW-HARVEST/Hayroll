@@ -1,12 +1,12 @@
-use std::{env, path::Path};
+use std::{collections::HashMap, env, path::Path};
 use camino;
 use ide::{RootDatabase, SourceChange};
-use ide_db::{base_db::{SourceDatabase, SourceDatabaseFileInputExt, SourceRootDatabase}, source_change::SourceChangeBuilder};
+use ide_db::{base_db::{SourceDatabase, SourceDatabaseFileInputExt}, source_change::SourceChangeBuilder};
 use project_model::CargoConfig;
 use load_cargo;
 use anyhow::Result;
 use serde_json::{self, value};
-use syntax::{ast, AstNode, AstToken, SyntaxNode};
+use syntax::{ast, ted, AstNode, AstToken, SyntaxNode};
 use vfs::{AbsPath, FileId};
 use std::fs;
 use hir;
@@ -43,14 +43,22 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    let syntax_roots: Vec<(SyntaxNode, FileId)> = file_ids.iter().map(|file_id| (sema.parse_guess_edition(*file_id).syntax().clone(), file_id.clone())).collect();
+    let mut syntax_roots: HashMap<FileId, (SyntaxNode, Option<SourceChangeBuilder>)> = file_ids.iter()
+        .map(|file_id| {
+            let mut builder = SourceChangeBuilder::new(file_id.clone());
+            let root = builder.make_syntax_mut(
+                sema.parse_guess_edition(*file_id).syntax().clone()
+            );
+            (*file_id, (root, Some(builder)))
+        })
+        .collect();
 
     let hayroll_literals: Vec<(ast::Literal, value::Value, FileId)> = syntax_roots
         .iter()
-        .flat_map(|(node, file_id)| {
-            node.descendants_with_tokens()
+        .flat_map(|(file_id, (root, _))| {
+            root.descendants_with_tokens()
             // Attatch a file_id to each node
-            .filter_map(move |element| Some((element, file_id)))
+            .map(move |element| (element, file_id))
         })
         .filter_map(|(element, file_id)| {
             if let Some(token) = element.clone().into_token() {
@@ -72,48 +80,46 @@ fn main() -> Result<()> {
                 }
             }
             None
-        }).collect();
+        })
+        .collect();
         
     // Find out all Expr typed nodes, and replace them with their nested value
     // if (*"str") { A } else { B } -> A
     // *if (*"str") { &A } else { B } -> *&A
 
-    let peel_expr_tags = |is_arg: bool, mut source_change: SourceChange| -> SourceChange {
-        for (literal, tag, file_id) in hayroll_literals.iter() {
-            let mut builder = SourceChangeBuilder::new(file_id.clone());
-            
-            if tag["astKind"] == "Expr" && tag["isArg"] == is_arg {
-                let mut if_expr: SyntaxNode = literal.syntax().clone();
-                while !ast::IfExpr::can_cast(if_expr.kind()) {
-                    if_expr = if_expr.parent().unwrap();
-                }
-                let if_expr = ast::IfExpr::cast(if_expr).unwrap();
-                let if_expr_as_expr = ast::Expr::cast(if_expr.syntax().clone()).unwrap();
-                let if_true = if_expr.then_branch().unwrap();
-                let if_true_expr = ast::Expr::cast(if_true.syntax().clone()).unwrap();
-                
-                // Deep copy the if_true_expr
-                let if_true_expr_new = if_true_expr.clone_subtree().clone().clone_for_update();
-                
-                println!("IfExpr: {:?}", if_expr);
-                println!("IfTrue: {:?}", if_true_expr);
-
-                builder.replace_ast(if_expr_as_expr, if_true_expr_new);
+    for (literal, tag, file_id) in hayroll_literals.iter() {
+        let (_, builder) = syntax_roots.get_mut(file_id).unwrap();
+        let builder = builder.as_mut().unwrap();
+        if tag["astKind"] == "Expr" {
+            let mut if_expr: SyntaxNode = literal.syntax().clone();
+            while !ast::IfExpr::can_cast(if_expr.kind()) {
+                if_expr = if_expr.parent().unwrap();
             }
-            source_change = source_change.merge(builder.finish());
+            let if_expr = ast::IfExpr::cast(if_expr).unwrap();
+            let if_expr_as_expr = ast::Expr::cast(if_expr.syntax().clone()).unwrap();
+            let if_true = if_expr.then_branch().unwrap();
+            let if_true_expr = ast::Expr::cast(if_true.syntax().clone()).unwrap();
+            
+            // Deep copy the if_true_expr
+            let if_true_expr_new = if_true_expr.clone();
+            
+            println!("IfExpr: {:?}", if_expr);
+            println!("IfTrue: {:?}", if_true_expr);
+            
+            // Find the node to replace in the LATEST syntax tree
+            let if_expr_as_expr_mut = builder.make_mut(if_expr_as_expr);
+
+            ted::replace(if_expr_as_expr_mut.syntax(), if_true_expr_new.syntax());
         }
-        source_change
-    };
+    }
 
-    // First pass: args
     let mut source_change = SourceChange::default();
-    source_change = peel_expr_tags(true, source_change);
-    apply_source_change(&mut db, &source_change);
+    for (_, (_, builder)) in syntax_roots.iter_mut() {
+        let builder = builder.take().unwrap();
+        source_change = source_change.merge(builder.finish());
+    }
 
-    // // Second pass: not args
-    // let mut source_change = SourceChange::default();
-    // source_change = peel_expr_tags(false, source_change);
-    // apply_source_change(&mut db, &source_change);
+    apply_source_change(&mut db, &source_change);
 
     for file_id in file_ids.iter() {
         let file_path = vfs.file_path(*file_id);
@@ -127,33 +133,33 @@ fn main() -> Result<()> {
 
 fn apply_source_change(db: &mut RootDatabase, source_change: &ide::SourceChange){
     // Fs edits (NOT TESTED!!!)
-    for file_system_edit in source_change.file_system_edits.iter() {
-        let (dst, contents) = match file_system_edit {
-            ide::FileSystemEdit::CreateFile { dst, initial_contents } => (dst, initial_contents.clone()),
-            ide::FileSystemEdit::MoveFile { src, dst } => {
-                (dst, db.file_text(*src).to_string())
-            }
-            ide::FileSystemEdit::MoveDir { src, src_id, dst } => {
-                // temporary placeholder for MoveDir since we are not using MoveDir in ide assists yet.
-                (dst, format!("{src_id:?}\n{src:?}"))
-            }
-        };
-        let sr = db.file_source_root(dst.anchor);
-        let sr = db.source_root(sr);
-        let mut base = sr.path_for_file(&dst.anchor).unwrap().clone();
-        base.pop();
-        let created_file_path = base.join(&dst.path).unwrap();
-        fs::write(created_file_path.as_path().unwrap(), contents).unwrap();
-    }
+    // for file_system_edit in source_change.file_system_edits.iter() {
+    //     let (dst, contents) = match file_system_edit {
+    //         ide::FileSystemEdit::CreateFile { dst, initial_contents } => (dst, initial_contents.clone()),
+    //         ide::FileSystemEdit::MoveFile { src, dst } => {
+    //             (dst, db.file_text(*src).to_string())
+    //         }
+    //         ide::FileSystemEdit::MoveDir { src, src_id, dst } => {
+    //             // temporary placeholder for MoveDir since we are not using MoveDir in ide assists yet.
+    //             (dst, format!("{src_id:?}\n{src:?}"))
+    //         }
+    //     };
+    //     let sr = db.file_source_root(dst.anchor);
+    //     let sr = db.source_root(sr);
+    //     let mut base = sr.path_for_file(&dst.anchor).unwrap().clone();
+    //     base.pop();
+    //     let created_file_path = base.join(&dst.path).unwrap();
+    //     fs::write(created_file_path.as_path().unwrap(), contents).unwrap();
+    // }
 
     // Source file edits
-    for (file, (text_edit, snippet)) in source_change.source_file_edits.iter() {
-        let mut code = db.file_text(*file).to_string();
+    for (file_id, (text_edit, snippet)) in source_change.source_file_edits.iter() {
+        let mut code = db.file_text(file_id.clone()).to_string();
         text_edit.apply(&mut code);
         // Snippet (NOT TESTED!!!)
         if let Some(snippet) = snippet {
             snippet.apply(&mut code);
         }
-        db.set_file_text(*file, &code);
+        db.set_file_text(*file_id, &code);
     }
 }
