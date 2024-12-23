@@ -46,9 +46,8 @@ fn main() -> Result<()> {
     let mut syntax_roots: HashMap<FileId, (SyntaxNode, Option<SourceChangeBuilder>)> = file_ids.iter()
         .map(|file_id| {
             let mut builder = SourceChangeBuilder::new(file_id.clone());
-            let root = builder.make_syntax_mut(
-                sema.parse_guess_edition(*file_id).syntax().clone()
-            );
+            let root = sema.parse_guess_edition(*file_id).syntax().clone();
+            // let root = builder.make_syntax_mut(root.clone());
             (*file_id, (root, Some(builder)))
         })
         .collect();
@@ -87,30 +86,54 @@ fn main() -> Result<()> {
     // if (*"str") { A } else { B } -> A
     // *if (*"str") { &A } else { B } -> *&A
 
+    let mut replace_tasks: Vec<(SyntaxNode, SyntaxNode)> = Vec::new();
+
     for (literal, tag, file_id) in hayroll_literals.iter() {
         let (_, builder) = syntax_roots.get_mut(file_id).unwrap();
         let builder = builder.as_mut().unwrap();
         if tag["astKind"] == "Expr" {
+        // if tag["astKind"] == "Expr" && tag["isArg"] == true {
             let mut if_expr: SyntaxNode = literal.syntax().clone();
             while !ast::IfExpr::can_cast(if_expr.kind()) {
                 if_expr = if_expr.parent().unwrap();
             }
             let if_expr = ast::IfExpr::cast(if_expr).unwrap();
+            // let if_expr = builder.make_mut(if_expr);
             let if_expr_as_expr = ast::Expr::cast(if_expr.syntax().clone()).unwrap();
             let if_true = if_expr.then_branch().unwrap();
             let if_true_expr = ast::Expr::cast(if_true.syntax().clone()).unwrap();
             
-            // Deep copy the if_true_expr
-            let if_true_expr_new = if_true_expr.clone();
-            
             println!("IfExpr: {:?}", if_expr);
             println!("IfTrue: {:?}", if_true_expr);
             
+            // let if_true_expr_new = if_true_expr.clone();
+            // let if_true_expr_new = if_true_expr.clone_for_update();
             // Find the node to replace in the LATEST syntax tree
-            let if_expr_as_expr_mut = builder.make_mut(if_expr_as_expr);
+            let if_true_expr_new = builder.make_mut(if_true_expr.clone());
 
-            ted::replace(if_expr_as_expr_mut.syntax(), if_true_expr_new.syntax());
+            // Find the node to replace in the LATEST syntax tree
+            let if_expr_as_expr_mut = builder.make_mut(if_expr_as_expr.clone());
+            // let if_expr_as_expr_mut = if_expr_as_expr.clone();
+
+            // ted::replace(if_expr_as_expr_mut.syntax(), if_true_expr_new.syntax());
+            replace_tasks.push((if_expr_as_expr_mut.syntax().clone(), if_true_expr_new.syntax().clone()));
+
+            println!("IfExpr: {:?}", if_expr);
+            println!("IfTrue: {:?}", if_true_expr);
+
+            // Print the type of the if_true_expr
+            let ty = sema.type_of_expr(&if_true_expr);
+            println!("Type: {:?}", ty);
+
+            // break;
         }
+    }
+
+    // Reverse iterate to avoid invalidating the node
+    // replace_tasks.reverse();
+    // Seems unnecessary
+    for (old_node, new_node) in replace_tasks.iter() {
+        ted::replace(old_node, new_node);
     }
 
     let mut source_change = SourceChange::default();
