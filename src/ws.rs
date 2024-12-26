@@ -1,17 +1,19 @@
-use std::{collections::HashMap, env, path::Path};
-use camino;
+use std::{collections::HashMap, env, path::Path, time::Instant};
 use ide::{RootDatabase, SourceChange};
-use ide_db::{base_db::{SourceDatabase, SourceDatabaseFileInputExt}, source_change::SourceChangeBuilder};
+use ide_db::{base_db::{SourceDatabase, SourceDatabaseFileInputExt, SourceRootDatabase}, source_change::SourceChangeBuilder, symbol_index::SymbolsDatabase, EditionedFileId};
 use project_model::CargoConfig;
 use load_cargo;
 use anyhow::Result;
 use serde_json::{self, value};
-use syntax::{ast, ted, AstNode, AstToken, SyntaxNode};
-use vfs::{AbsPath, FileId};
+use syntax::{ast::{self, SourceFile}, ted, AstNode, AstToken, SyntaxNode};
+use vfs::FileId;
 use std::fs;
 use hir;
 
 fn main() -> Result<()> {
+    // start a timer
+    let start = Instant::now();
+
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         eprintln!("Usage: {} <workspace-path>", args[0]);
@@ -19,43 +21,52 @@ fn main() -> Result<()> {
     }
 
     let workspace_path = Path::new(&args[1]);
-    let workspace_path_buf = fs::canonicalize(workspace_path)?;
-    let workspace_utf8_path = camino::Utf8Path::from_path(workspace_path_buf.as_path()).unwrap();
-    let workspace_abs_path = AbsPath::assert(workspace_utf8_path);
     let cargo_config = CargoConfig::default();
     let load_cargo_config = load_cargo::LoadCargoConfig {
         load_out_dirs_from_check: false,
         with_proc_macro_server: load_cargo::ProcMacroServerChoice::None,
         prefill_caches: false,
     };
+
+    // Print consumed time, tag "load_cargo"
+    let duration = start.elapsed();
+    println!("Time elapsed in load_cargo is: {:?}", duration);
+
     let (mut db, vfs, _proc_macro) = load_cargo::load_workspace_at(workspace_path, &cargo_config, &load_cargo_config, &|_| {})?;
+    
+    // Print consumed time, tag "db"
+    let duration = start.elapsed();
+    println!("Time elapsed in db is: {:?}", duration);
+    
     let sema = &hir::Semantics::new(&db);
+    // Print consumed time, tag "sema"
+    let duration = start.elapsed();
+    println!("Time elapsed in sema is: {:?}", duration);
 
-    let file_ids: Vec<vfs::FileId> = vfs
-        .iter()
-        .filter_map(|(file_id, path)| {
-            // Take only files that exist under the workspace
-            if path.as_path().is_some_and(|p| p.starts_with(workspace_abs_path)) {
-                Some(file_id)
-            } else {
-                None
+    let mut syntax_roots: HashMap<FileId, (SourceFile, Option<SourceChangeBuilder>)> = db.local_roots().iter()
+        .flat_map(|&srid| db.source_root(srid).iter().collect::<Vec<_>>())
+        .filter_map(|file_id| {
+            // Include only Rust source files, not toml files
+            if !vfs.file_path(file_id).to_string().ends_with(".rs") {
+                return None;
             }
+            let builder = SourceChangeBuilder::new(file_id.clone());
+            // Using the sema-based parser allows querying semantic info i.e. type of an expression
+            // But it's much slower than the db-based parser
+            // let root = sema.parse_guess_edition(file_id);
+            let root = db.parse(EditionedFileId::current_edition(file_id)).tree();
+            Some((file_id, (root, Some(builder))))
         })
         .collect();
 
-    let mut syntax_roots: HashMap<FileId, (SyntaxNode, Option<SourceChangeBuilder>)> = file_ids.iter()
-        .map(|file_id| {
-            let mut builder = SourceChangeBuilder::new(file_id.clone());
-            let root = sema.parse_guess_edition(*file_id).syntax().clone();
-            // let root = builder.make_syntax_mut(root.clone());
-            (*file_id, (root, Some(builder)))
-        })
-        .collect();
+    // Print consumed time, tag "syntax_roots"
+    let duration = start.elapsed();
+    println!("Time elapsed in syntax_roots is: {:?}", duration);
 
     let hayroll_literals: Vec<(ast::Literal, value::Value, FileId)> = syntax_roots
         .iter()
         .flat_map(|(file_id, (root, _))| {
-            root.descendants_with_tokens()
+            root.syntax().descendants_with_tokens()
             // Attatch a file_id to each node
             .map(move |element| (element, file_id))
         })
@@ -81,6 +92,10 @@ fn main() -> Result<()> {
             None
         })
         .collect();
+
+    // Print consumed time, tag "hayroll_literals"
+    let duration = start.elapsed();
+    println!("Time elapsed in hayroll_literals is: {:?}", duration);
         
     // Find out all Expr typed nodes, and replace them with their nested value
     // if (*"str") { A } else { B } -> A
@@ -129,12 +144,33 @@ fn main() -> Result<()> {
         }
     }
 
+    // Print consumed time, tag "replace"
+    let duration = start.elapsed();
+    println!("Time elapsed in replace is: {:?}", duration);
+
+    // insert an empty function to every syntax_root
+    for (_, (root, builder)) in syntax_roots.iter_mut() {
+        // Modify only rust source files, not toml files
+        let builder = builder.as_mut().unwrap();
+        let root_mut = builder.make_syntax_mut(root.syntax().clone());
+        let func_new_text = r#"
+fn hayroll() {
+    println!("Hello, Hayroll!");
+}"#;
+        let func_new = SourceFile::parse(func_new_text, syntax::Edition::DEFAULT).syntax_node();
+        ted::append_child(&root_mut, func_new.clone_for_update());
+    }
+
     // Reverse iterate to avoid invalidating the node
     // replace_tasks.reverse();
     // Seems unnecessary
     for (old_node, new_node) in replace_tasks.iter() {
         ted::replace(old_node, new_node);
     }
+
+    // Print consumed time, tag "analysis"
+    let duration = start.elapsed();
+    println!("Time elapsed in analysis is: {:?}", duration);
 
     let mut source_change = SourceChange::default();
     for (_, (_, builder)) in syntax_roots.iter_mut() {
@@ -144,12 +180,22 @@ fn main() -> Result<()> {
 
     apply_source_change(&mut db, &source_change);
 
-    for file_id in file_ids.iter() {
+    for file_id in syntax_roots.keys() {
         let file_path = vfs.file_path(*file_id);
         let code = db.file_text(*file_id).to_string();
+        // Attatch a new line at the end of the file, if it doesn't exist
+        let code = if code.ends_with("\n") {
+            code
+        } else {
+            code + "\n"
+        };
         let path = file_path.as_path().unwrap();
         fs::write(path, code)?;
     }
+
+    // Print consumed time, tag "write"
+    let duration = start.elapsed();
+    println!("Time elapsed in write is: {:?}", duration);
 
     Ok(())
 }
