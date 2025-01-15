@@ -156,7 +156,8 @@ std::list<InstrumentationTask> genInstrumentationTasks
         .astKind = std::string(astKind),
         .isLvalue = isLvalue,
         .name = std::string(name),
-        .locDecl = std::string(locDecl)
+        .locDecl = std::string(locDecl),
+        .locInv = std::string(locBegin)
     };
 
     Tag tagEnd
@@ -166,7 +167,8 @@ std::list<InstrumentationTask> genInstrumentationTasks
         .astKind = "",
         .isLvalue = false,
         .name = std::string(name),
-        .locDecl = std::string(locDecl)
+        .locDecl = std::string(locDecl),
+        .locInv = std::string(locBegin)
     };
 
     std::list<InstrumentationTask> tasks;
