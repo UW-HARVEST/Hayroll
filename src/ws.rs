@@ -10,6 +10,18 @@ use vfs::FileId;
 use std::fs;
 use hir;
 
+#[derive(Clone)]
+struct HayrollSeed {
+    literal: ast::Literal,
+    tag: serde_json::Value,
+    file_id: FileId,
+}
+
+enum HayrollRegion {
+    Expr(HayrollSeed),
+    Stmt(HayrollSeed, HayrollSeed),
+}
+
 fn main() -> Result<()> {
     // start a timer
     let start = Instant::now();
@@ -63,7 +75,7 @@ fn main() -> Result<()> {
     let duration = start.elapsed();
     println!("Time elapsed in syntax_roots is: {:?}", duration);
 
-    let hayroll_literals: Vec<(ast::Literal, value::Value, FileId)> = syntax_roots
+    let hayroll_seeds: Vec<HayrollSeed> = syntax_roots
         .iter()
         .flat_map(|(file_id, (root, _))| {
             root.syntax().descendants_with_tokens()
@@ -84,7 +96,11 @@ fn main() -> Result<()> {
                     println!("Byte String: {}, Tag: {:?}", content, tag);
                     if let Ok(tag) = tag {
                         if tag["hayroll"] == true {
-                            return Some((ast::Literal::cast(element.parent()?)?, tag, file_id.clone()));
+                            return Some(HayrollSeed {
+                                literal: ast::Literal::cast(element.parent()?)?,
+                                tag,
+                                file_id: file_id.clone(),
+                            });
                         }
                     }
                 }
@@ -92,6 +108,39 @@ fn main() -> Result<()> {
             None
         })
         .collect();
+
+    // Pair up stmt hayroll_literals that are in the same scope and share the locInv in info
+    let hayroll_regions : Vec<HayrollRegion> = hayroll_seeds.iter()
+        .fold(Vec::new(), |mut acc, seed| {
+            if seed.tag["astKind"] == "Expr" {
+                acc.push(HayrollRegion::Expr(seed.clone()));
+            } else if seed.tag["astKind"] == "Stmt" && seed.tag["begin"] == true {
+                acc.push(HayrollRegion::Stmt(seed.clone(), seed.clone())); // For now seedBegin == seedEnd
+            } else if seed.tag["begin"] == false {
+                // Search through the acc to find the begin stmt with the same locInv
+                let mut found = false;
+                for region in acc.iter_mut().rev() {
+                    match region {
+                        HayrollRegion::Stmt(seed_begin, seed_end) => {
+                            if seed_begin.tag["locInv"] == seed.tag["locInv"] {
+                                *seed_end = seed.clone();
+                                found = true;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                // Assert found
+                if !found {
+                    panic!("No matching begin stmt found for end stmt");
+                }
+            } else {
+                panic!("Unknown tag");
+            }
+            acc
+        }
+    );
 
     // Print consumed time, tag "hayroll_literals"
     let duration = start.elapsed();
@@ -101,46 +150,59 @@ fn main() -> Result<()> {
     // if (*"str") { A } else { B } -> A
     // *if (*"str") { &A } else { B } -> *&A
 
-    let mut replace_tasks: Vec<(SyntaxNode, SyntaxNode)> = Vec::new();
+    let mut replace_tasks: Vec<(SyntaxNode, Option<SyntaxNode>)> = Vec::new();
 
-    for (literal, tag, file_id) in hayroll_literals.iter() {
-        let (_, builder) = syntax_roots.get_mut(file_id).unwrap();
-        let builder = builder.as_mut().unwrap();
-        if tag["astKind"] == "Expr" {
-        // if tag["astKind"] == "Expr" && tag["isArg"] == true {
-            let mut if_expr: SyntaxNode = literal.syntax().clone();
-            while !ast::IfExpr::can_cast(if_expr.kind()) {
-                if_expr = if_expr.parent().unwrap();
+    for region in hayroll_regions.iter() {
+        match region {
+            HayrollRegion::Expr(seed) => {
+                let (literal, tag, file_id) = (&seed.literal, &seed.tag, &seed.file_id);
+                let (_, builder) = syntax_roots.get_mut(&file_id).unwrap();
+                let builder = builder.as_mut().unwrap();
+                let mut node: SyntaxNode = literal.syntax().clone();
+                while !ast::IfExpr::can_cast(node.kind()) {
+                    node = node.parent().unwrap();
+                }
+                let if_expr = ast::IfExpr::cast(node).unwrap();
+                // let if_expr = builder.make_mut(if_expr);
+                let if_expr_as_expr = ast::Expr::cast(if_expr.syntax().clone()).unwrap();
+                let if_true = if_expr.then_branch().unwrap();
+                let if_true_expr = ast::Expr::cast(if_true.syntax().clone()).unwrap();
+                
+                println!("IfExpr: {:?}", if_expr);
+                println!("IfTrue: {:?}", if_true_expr);
+                
+                // let if_true_expr_new = if_true_expr.clone();
+                // let if_true_expr_new = if_true_expr.clone_for_update();
+                // Find the node to replace in the LATEST syntax tree
+                let if_true_expr_new = builder.make_mut(if_true_expr.clone());
+
+                // Find the node to replace in the LATEST syntax tree
+                let if_expr_as_expr_mut = builder.make_mut(if_expr_as_expr.clone());
+                // let if_expr_as_expr_mut = if_expr_as_expr.clone();
+
+                // ted::replace(if_expr_as_expr_mut.syntax(), if_true_expr_new.syntax());
+                replace_tasks.push((if_expr_as_expr_mut.syntax().clone(), Some(if_true_expr_new.syntax().clone())));
+
+                println!("IfExpr: {:?}", if_expr);
+                println!("IfTrue: {:?}", if_true_expr);
+
+                // // Print the type of the if_true_expr
+                // let ty = sema.type_of_expr(&if_true_expr);
+                // println!("Type: {:?}", ty);
             }
-            let if_expr = ast::IfExpr::cast(if_expr).unwrap();
-            // let if_expr = builder.make_mut(if_expr);
-            let if_expr_as_expr = ast::Expr::cast(if_expr.syntax().clone()).unwrap();
-            let if_true = if_expr.then_branch().unwrap();
-            let if_true_expr = ast::Expr::cast(if_true.syntax().clone()).unwrap();
-            
-            println!("IfExpr: {:?}", if_expr);
-            println!("IfTrue: {:?}", if_true_expr);
-            
-            // let if_true_expr_new = if_true_expr.clone();
-            // let if_true_expr_new = if_true_expr.clone_for_update();
-            // Find the node to replace in the LATEST syntax tree
-            let if_true_expr_new = builder.make_mut(if_true_expr.clone());
-
-            // Find the node to replace in the LATEST syntax tree
-            let if_expr_as_expr_mut = builder.make_mut(if_expr_as_expr.clone());
-            // let if_expr_as_expr_mut = if_expr_as_expr.clone();
-
-            // ted::replace(if_expr_as_expr_mut.syntax(), if_true_expr_new.syntax());
-            replace_tasks.push((if_expr_as_expr_mut.syntax().clone(), if_true_expr_new.syntax().clone()));
-
-            println!("IfExpr: {:?}", if_expr);
-            println!("IfTrue: {:?}", if_true_expr);
-
-            // Print the type of the if_true_expr
-            let ty = sema.type_of_expr(&if_true_expr);
-            println!("Type: {:?}", ty);
-
-            // break;
+            HayrollRegion::Stmt(seed_begin, seed_end) => {
+                let (literal_begin, tag, file_id) = (&seed_begin.literal, &seed_begin.tag, &seed_begin.file_id);
+                let (literal_end, _, _) = (&seed_end.literal, &seed_end.tag, &seed_end.file_id);
+                let (_, builder) = syntax_roots.get_mut(&file_id).unwrap();
+                let builder = builder.as_mut().unwrap();
+                // Simply remove the seeds
+                let node_begin: SyntaxNode = literal_begin.syntax().parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap();
+                let node_end: SyntaxNode = literal_end.syntax().parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap();
+                let node_begin = builder.make_syntax_mut(node_begin);
+                let node_end = builder.make_syntax_mut(node_end);
+                replace_tasks.push((node_begin, None));
+                replace_tasks.push((node_end, None));
+            }
         }
     }
 
@@ -165,7 +227,12 @@ fn hayroll() {
     // replace_tasks.reverse();
     // Seems unnecessary
     for (old_node, new_node) in replace_tasks.iter() {
-        ted::replace(old_node, new_node);
+        // Replace or delete
+        if let Some(new_node) = new_node {
+            ted::replace(old_node, new_node);
+        } else {
+            ted::remove(old_node);
+        }
     }
 
     // Print consumed time, tag "analysis"
