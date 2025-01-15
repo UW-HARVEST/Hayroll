@@ -50,8 +50,8 @@ if [[ $? -ne 0 ]]; then
     exit 1
 fi
 
-# Add soft links to hoe, from here (build directory) to the root directory
-ln -sf "${BUILD_DIR}/hoe" ../hoe
+# Add soft links to binaries, from here (build directory) to the root directory
+ln -sf "${BUILD_DIR}/seeder" ../seeder
 ln -sf "${BUILD_DIR}/debug/analyzer" ../analyzer
 ln -sf "${BUILD_DIR}/debug/ws" ../ws
 

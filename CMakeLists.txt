@@ -10,7 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include_directories(include)
 
-add_executable(hoe src/hoe.cpp)
+add_executable(seeder src/seeder.cpp)
 
 # Rust
 

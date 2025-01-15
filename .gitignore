@@ -68,6 +68,6 @@ Cargo.lock
 trace.txt
 
 # Soft links
-/hoe
+/seeder
 /analyzer
 /ws
