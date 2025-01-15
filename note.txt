@@ -6,7 +6,7 @@ awk 'NR==144 {print substr($0, 1, 31) "ESCAPED" substr($0, 32)} NR!=144' /home/h
 
 awk 'NR==1 {print substr($0, 1, 10) "ESCAPED" substr($0, 11)} NR!=1' ./trace.txt > /tmp/hayroll.tmp && mv /tmp/hayroll.tmp ./trace.txt
 
-./hoe /home/hurrypeng/libmcs/macro_invocation_analyses/all_results.cpp2c ../libmcs/libm/mathf/ &> trace.txt
+./seeder /home/hurrypeng/libmcs/macro_invocation_analyses/all_results.cpp2c ../libmcs/libm/mathf/ &> trace.txt
 
     {
         *"{}";
@@ -49,3 +49,55 @@ replace extra var usages (assert unifiable)
 extract fn
 elim extracted var on caller side
 unify fn (?)
+
+pub fn assists(
+pub fn assists_with_fixes(
+pub(crate) fn handle_code_action(
+
+write a wrapper for handler: &fn(&mut Assists, &AssistContext<'_>) -> Option<()>
+
+arch:
+locator: (AST) -> ([Node])
+editor: ([Node], Option<Sema>) -> 
+
+macro_rules! GET_FLOAT_WORD {
+    ($i:expr, $d:expr) => {
+        *(b"{\"astKind\":\"Stmt\",\"begin\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locDecl\":\"/home/hurrypeng/libmcs/libm/common/tools.h:327:9\",\"locInv\":\"\",\"name\":\"GET_FLOAT_WORD\"}\0"
+        as *const u8 as *const libc::c_char);
+        loop {
+            let mut gf_u = ieee_float_shape_type { value: 0. };
+            gf_u
+                .value = $d;
+            $i = gf_u.word as int32_t;
+            if !(0 as libc::c_int == 1 as libc::c_int) {
+                break;
+            }
+        }
+        *(b"{\"astKind\":\"\",\"begin\":false,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locDecl\":\"/home/hurrypeng/libmcs/libm/common/tools.h:327:9\",\"locInv\":\"\",\"name\":\"GET_FLOAT_WORD\"}\0"
+            as *const u8 as *const libc::c_char);
+    }
+}
+
+unsafe fn GET_FLOAT_WORD(mut i: i32, d: f32) {
+    *(b"{\"astKind\":\"Stmt\",\"begin\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locDecl\":\"/home/hurrypeng/libmcs/libm/common/tools.h:327:9\",\"locInv\":\"\",\"name\":\"GET_FLOAT_WORD\"}\0"
+        as *const u8 as *const libc::c_char);
+    loop {
+        let mut gf_u = ieee_float_shape_type { value: 0. };
+        gf_u
+            .value = d;
+        i = gf_u.word as int32_t;
+        if !(0 as libc::c_int == 1 as libc::c_int) {
+            break;
+        }
+    }
+    *(b"{\"astKind\":\"\",\"begin\":false,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locDecl\":\"/home/hurrypeng/libmcs/libm/common/tools.h:327:9\",\"locInv\":\"\",\"name\":\"GET_FLOAT_WORD\"}\0"
+        as *const u8 as *const libc::c_char);
+}
+
+fn add<T>(a: T, b: T) -> T {
+    a + b
+}
+
+fn addAddable<T: std::ops::Add<Output = T>>(a: T, b: T) -> T {
+    a + b
+}
