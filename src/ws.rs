@@ -22,6 +22,27 @@ enum HayrollRegion {
     Stmt(HayrollSeed, HayrollSeed),
 }
 
+// Takes a node and returns the parent node until the parent node satisfies the condition
+fn parent_until(node: SyntaxNode, condition: fn(SyntaxNode) -> bool) -> SyntaxNode {
+    let mut node = node;
+    while !condition(node.clone()) {
+        node = node.parent().unwrap();
+    }
+    node
+}
+
+// Takes a node and returns the parent node until the parent node is of the given type i.e. IfExpr
+fn parent_until_kind<T>(node: &impl ast::AstNode) -> T
+where
+    T: ast::AstNode,
+{
+    let mut node = node.syntax().clone();
+    while !T::can_cast(node.kind()) {
+        node = node.parent().unwrap();
+    }
+    T::cast(node).unwrap()
+}
+
 fn main() -> Result<()> {
     // start a timer
     let start = Instant::now();
@@ -158,12 +179,7 @@ fn main() -> Result<()> {
                 let (literal, tag, file_id) = (&seed.literal, &seed.tag, &seed.file_id);
                 let (_, builder) = syntax_roots.get_mut(&file_id).unwrap();
                 let builder = builder.as_mut().unwrap();
-                let mut node: SyntaxNode = literal.syntax().clone();
-                while !ast::IfExpr::can_cast(node.kind()) {
-                    node = node.parent().unwrap();
-                }
-                let if_expr = ast::IfExpr::cast(node).unwrap();
-                // let if_expr = builder.make_mut(if_expr);
+                let if_expr = parent_until_kind::<ast::IfExpr>(literal);
                 let if_expr_as_expr = ast::Expr::cast(if_expr.syntax().clone()).unwrap();
                 let if_true = if_expr.then_branch().unwrap();
                 let if_true_expr = ast::Expr::cast(if_true.syntax().clone()).unwrap();
@@ -196,12 +212,12 @@ fn main() -> Result<()> {
                 let (_, builder) = syntax_roots.get_mut(&file_id).unwrap();
                 let builder = builder.as_mut().unwrap();
                 // Simply remove the seeds
-                let node_begin: SyntaxNode = literal_begin.syntax().parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap();
-                let node_end: SyntaxNode = literal_end.syntax().parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap();
-                let node_begin = builder.make_syntax_mut(node_begin);
-                let node_end = builder.make_syntax_mut(node_end);
-                replace_tasks.push((node_begin, None));
-                replace_tasks.push((node_end, None));
+                let stmt_begin = parent_until_kind::<ast::Stmt>(literal_begin);
+                let stmt_end = parent_until_kind::<ast::Stmt>(literal_end);
+                let node_begin = builder.make_mut(stmt_begin);
+                let node_end = builder.make_mut(stmt_end);
+                replace_tasks.push((node_begin.syntax().clone(), None));
+                replace_tasks.push((node_end.syntax().clone(), None));
             }
         }
     }
