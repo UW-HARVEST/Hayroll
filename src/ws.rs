@@ -1,6 +1,6 @@
 use std::{collections::HashMap, env, path::Path, time::Instant};
-use ide::{RootDatabase, SourceChange};
-use ide_db::{base_db::{SourceDatabase, SourceDatabaseFileInputExt, SourceRootDatabase}, source_change::SourceChangeBuilder, symbol_index::SymbolsDatabase, EditionedFileId};
+use ide::{Edition, RootDatabase, SourceChange};
+use ide_db::{base_db::{SourceDatabase, SourceDatabaseFileInputExt, SourceRootDatabase}, source_change::{SourceChangeBuilder, TreeMutator}, symbol_index::SymbolsDatabase, EditionedFileId};
 use project_model::CargoConfig;
 use load_cargo;
 use anyhow::Result;
@@ -10,6 +10,20 @@ use vfs::FileId;
 use std::fs;
 use hir;
 
+fn ast_from_text<N: AstNode>(text: &str) -> N {
+    let parse = SourceFile::parse(text, Edition::CURRENT);
+    let node = match parse.tree().syntax().descendants().find_map(N::cast) {
+        Some(it) => it,
+        None => {
+            let node = std::any::type_name::<N>();
+            panic!("Failed to make ast node `{node}` from text {text}")
+        }
+    };
+    let node = node.clone_subtree();
+    assert_eq!(node.syntax().text_range().start(), 0.into());
+    node
+}
+
 #[derive(Clone)]
 struct HayrollSeed {
     literal: ast::Literal,
@@ -17,30 +31,145 @@ struct HayrollSeed {
     file_id: FileId,
 }
 
+#[derive(Clone)]
 enum HayrollRegion {
     Expr(HayrollSeed),
     Stmt(HayrollSeed, HayrollSeed),
 }
 
-// Takes a node and returns the parent node until the parent node satisfies the condition
-fn parent_until(node: SyntaxNode, condition: fn(SyntaxNode) -> bool) -> SyntaxNode {
-    let mut node = node;
-    while !condition(node.clone()) {
-        node = node.parent().unwrap();
+impl HayrollRegion {
+    fn is_arg(&self) -> bool {
+        match self {
+            HayrollRegion::Expr(seed) => seed.tag["isArg"] == true,
+            HayrollRegion::Stmt(seed_begin, _) => seed_begin.tag["isArg"] == true,
+        }
     }
-    node
+
+    fn arg_names(&self) -> Vec<String> {
+        if !self.is_arg() {
+            return Vec::new();
+        }
+        let seed = match self {
+            HayrollRegion::Expr(seed) => seed,
+            HayrollRegion::Stmt(seed_begin, _) => seed_begin,
+        };
+        let arg_names = seed.tag["argNames"].as_array().unwrap();
+        arg_names.iter().map(|arg_name| arg_name.as_str().unwrap().to_string()).collect()
+    }
+    
+    fn loc_inv(&self) -> String {
+        match self {
+            HayrollRegion::Expr(seed) => seed.tag["locInv"].as_str().unwrap().to_string(),
+            HayrollRegion::Stmt(seed_begin, _) => seed_begin.tag["locInv"].as_str().unwrap().to_string(),
+        }
+    }
+
+    fn loc_decl(&self) -> String {
+        match self {
+            HayrollRegion::Expr(seed) => seed.tag["locDecl"].as_str().unwrap().to_string(),
+            HayrollRegion::Stmt(seed_begin, _) => seed_begin.tag["locDecl"].as_str().unwrap().to_string(),
+        }
+    }
+
+    fn peel_tag(&self) -> HayrollBody {
+        match self {
+            HayrollRegion::Expr(seed) => {
+                let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
+                let then_branch = if_expr.then_branch().unwrap();
+                // If this is lvalue, then there should be an address-of operator (RefExpr) in then_branch
+                // and also a star PrefixExpr in the parent of the if expression
+                // In that case, we should build a new Expr with the RefExpr's expr as the body
+                if seed.tag["isLvalue"] == true {
+                    let star_expr = parent_until_kind::<ast::PrefixExpr>(&if_expr).unwrap();
+                    let mutator = TreeMutator::new(&star_expr.syntax().clone());
+                    let star_expr = mutator.make_mut(&star_expr);
+                    // println!("StarExpr1: {:}", star_expr);
+                    let if_expr = mutator.make_mut(&if_expr);
+                    let then_branch = mutator.make_mut(&then_branch);
+                    ted::replace(if_expr.syntax(), then_branch.syntax());
+                    // println!("StarExpr2: {:}", star_expr);
+                    HayrollBody::Expr(star_expr.into())
+                } else {
+                    // println!("ThenBranch: {:}", then_branch);
+                    HayrollBody::Expr(then_branch.into())
+                }
+            }
+            HayrollRegion::Stmt(seed_begin, seed_end) => {
+                HayrollBody::Span() // For now
+            }
+            // HayrollRegion::Stmt(seed_begin, seed_end) => {
+            //     let (literal_begin, _, _) = (&seed_begin.literal, &seed_begin.tag, &seed_begin.file_id);
+            //     let (literal_end, _, _) = (&seed_end.literal, &seed_end.tag, &seed_end.file_id);
+            //     let (_, builder) = syntax_roots.get_mut(&file_id).unwrap();
+            //     let builder = builder.as_mut().unwrap();
+            //     let stmt_begin = parent_until_kind::<ast::Stmt>(literal_begin).unwrap();
+            //     let stmt_end = parent_until_kind::<ast::Stmt>(literal_end).unwrap();
+            //     let stmt_list = parent_until_kind::<ast::StmtList>(stmt_begin).unwrap();
+            //     let stmt_list = stmt_list.clone_for_update();
+            //     let stmt_list = builder.make_mut(stmt_list);
+            //     let elements = stmt_list.syntax().descendants_with_tokens().skip_while(|element| element != stmt_begin.syntax()).take_while(|element| element != stmt_end.syntax()).collect();
+            //     HayrollBody::Span{parent: stmt_list, elements}
+            // }
+        }
+    }
 }
 
-// Takes a node and returns the parent node until the parent node is of the given type i.e. IfExpr
-fn parent_until_kind<T>(node: &impl ast::AstNode) -> T
+enum HayrollBody {
+    Expr(ast::Expr),
+    // Span{parent: ast::StmtList, elements: RangeInclusive<SyntaxElement>},
+    Span(), // For now
+}
+
+#[derive(Clone)]
+struct HayrollMacroInv {
+    region: HayrollRegion,
+    args: Vec<HayrollRegion>,
+}
+
+struct HayrollMacroDB{
+    map: HashMap<String, Vec<HayrollMacroInv>>,
+}
+
+impl HayrollMacroDB {
+    fn new() -> Self {
+        HayrollMacroDB {
+            map: HashMap::new(),
+        }
+    }
+
+    fn from_hayroll_macro_invs(hayroll_macros: &Vec<HayrollMacroInv>) -> Self {
+        // Collect macros by locDecl
+        let mut db = HayrollMacroDB::new();
+        for mac in hayroll_macros.iter() {
+            let loc_decl = mac.region.loc_decl();
+            if !db.map.contains_key(&loc_decl) {
+                db.map.insert(loc_decl.clone(), Vec::new());
+            }
+            db.map.get_mut(&loc_decl).unwrap().push(mac.clone());
+        }
+        db
+    }
+}
+
+// Takes a node and returns the parent node until the parent node satisfies the condition
+fn parent_until(node: SyntaxNode, condition: fn(SyntaxNode) -> bool) -> Option<SyntaxNode> {
+    let mut node = node;
+    while !condition(node.clone()) {
+        node = node.parent()?;
+    }
+    Some(node)
+}
+
+// Takes a node and returns the parent node until the parent node is of the given kind i.e. IfExpr
+fn parent_until_kind<T>(node: &impl ast::AstNode) -> Option<T>
 where
     T: ast::AstNode,
 {
     let mut node = node.syntax().clone();
     while !T::can_cast(node.kind()) {
-        node = node.parent().unwrap();
+        node = node.parent()?;
     }
-    T::cast(node).unwrap()
+    Some(T::cast(node)?)
 }
 
 fn main() -> Result<()> {
@@ -163,6 +292,48 @@ fn main() -> Result<()> {
         }
     );
 
+    // Print out all region's get_body for debugging
+    // Ignore it for now if it's a span
+    for region in hayroll_regions.iter() {
+        match region.peel_tag() {
+            HayrollBody::Expr(expr) => {
+                println!("Body Expr: {:}", expr);
+            }
+            HayrollBody::Span() => {
+                println!("Span");
+            }
+        }
+    }
+
+    // A region whose isArg is false is a macro
+    // Other regions are arguments, we should match them with the macro
+    let hayroll_macro_invs: Vec<HayrollMacroInv> = hayroll_regions.iter()
+        .fold(Vec::new(), |mut acc, region| {
+            if region.is_arg() == false {
+                acc.push(HayrollMacroInv {
+                    region: region.clone(),
+                    args: Vec::new(),
+                });
+            } else {
+                let mut found = false;
+                for mac in acc.iter_mut().rev() {
+                    if mac.region.loc_inv() == region.loc_inv() {
+                        mac.args.push(region.clone());
+                        found = true;
+                        break;
+                    }
+                }
+                // Assert found
+                if !found {
+                    panic!("{}", format!("No matching macro found for arg: {:?}", region.loc_inv()));
+                }
+            }
+            acc
+        }
+    );
+
+    let hayroll_macro_db = HayrollMacroDB::from_hayroll_macro_invs(&hayroll_macro_invs);
+
     // Print consumed time, tag "hayroll_literals"
     let duration = start.elapsed();
     println!("Time elapsed in hayroll_literals is: {:?}", duration);
@@ -179,10 +350,12 @@ fn main() -> Result<()> {
                 let (literal, tag, file_id) = (&seed.literal, &seed.tag, &seed.file_id);
                 let (_, builder) = syntax_roots.get_mut(&file_id).unwrap();
                 let builder = builder.as_mut().unwrap();
-                let if_expr = parent_until_kind::<ast::IfExpr>(literal);
+                let if_expr = parent_until_kind::<ast::IfExpr>(literal).unwrap();
                 let if_expr_as_expr = ast::Expr::cast(if_expr.syntax().clone()).unwrap();
                 let if_true = if_expr.then_branch().unwrap();
                 let if_true_expr = ast::Expr::cast(if_true.syntax().clone()).unwrap();
+
+                // ast::make::expr_macro_call(f, arg_list)
                 
                 println!("IfExpr: {:?}", if_expr);
                 println!("IfTrue: {:?}", if_true_expr);
@@ -212,8 +385,8 @@ fn main() -> Result<()> {
                 let (_, builder) = syntax_roots.get_mut(&file_id).unwrap();
                 let builder = builder.as_mut().unwrap();
                 // Simply remove the seeds
-                let stmt_begin = parent_until_kind::<ast::Stmt>(literal_begin);
-                let stmt_end = parent_until_kind::<ast::Stmt>(literal_end);
+                let stmt_begin = parent_until_kind::<ast::Stmt>(literal_begin).unwrap();
+                let stmt_end = parent_until_kind::<ast::Stmt>(literal_end).unwrap();
                 let node_begin = builder.make_mut(stmt_begin);
                 let node_end = builder.make_mut(stmt_end);
                 replace_tasks.push((node_begin.syntax().clone(), None));
