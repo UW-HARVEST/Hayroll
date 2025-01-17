@@ -90,8 +90,9 @@ struct Tag
     std::string name;
     std::string locDecl;
     std::string locInv;
+    std::string locArg;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locDecl, locInv)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locDecl, locInv, locArg)
 
     std::string stringLiteral() const
     {
@@ -145,6 +146,7 @@ std::list<InstrumentationTask> genInstrumentationTasks
     bool isLvalue,
     std::string_view name,
     std::string_view locDecl,
+    std::string_view locInv, // Only for args, the locInv for the invocation is locBegin
     std::string_view spelling
 )
 {
@@ -160,19 +162,21 @@ std::list<InstrumentationTask> genInstrumentationTasks
         .isLvalue = isLvalue,
         .name = std::string(name),
         .locDecl = std::string(locDecl),
-        .locInv = std::string(locBegin)
+        .locInv = isArg ? std::string(locInv) : std::string(locBegin),
+        .locArg = isArg ? std::string(locBegin) : ""
     };
 
     Tag tagEnd
     {
         .begin = false,
-        .isArg = false,
+        .isArg = isArg,
         .argNames = {}, /////////
         .astKind = "",
-        .isLvalue = false,
+        .isLvalue = isLvalue,
         .name = std::string(name),
         .locDecl = std::string(locDecl),
-        .locInv = std::string(locBegin)
+        .locInv = isArg ? std::string(locInv) : std::string(locBegin),
+        .locArg = isArg ? std::string(locBegin) : ""
     };
 
     std::list<InstrumentationTask> tasks;
@@ -293,6 +297,7 @@ struct ArgInfo
 
     // Later collected
     std::string Spelling;
+    std::string InvocationLocation;
     
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(ArgInfo, Name, ASTKind, Type, IsLValue, ActualArgLocBegin, ActualArgLocEnd)
 
@@ -307,6 +312,7 @@ struct ArgInfo
             IsLValue,
             Name,
             "", // locDecl
+            InvocationLocation,
             Spelling
         );
     }
@@ -353,6 +359,7 @@ struct InvocationInfo
             IsLValue,
             Name,
             DefinitionLocation,
+            "", // locInv, not required for invocations
             Spelling
         );
         tasks.splice(tasks.end(), invocationTasks);
@@ -519,6 +526,7 @@ int main(const int argc, const char* argv[])
                 return 1;
             }
             arg.Spelling = argResult;
+            arg.InvocationLocation = invocation.InvocationLocation;
         }
     }
 
