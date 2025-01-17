@@ -84,13 +84,14 @@ struct Tag
     bool hayroll = true;
     bool begin;
     bool isArg;
+    std::vector<std::string> argNames;
     std::string astKind;
     bool isLvalue;
     std::string name;
     std::string locDecl;
     std::string locInv;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, astKind, isLvalue, name, locDecl, locInv)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locDecl, locInv)
 
     std::string stringLiteral() const
     {
@@ -139,6 +140,7 @@ std::list<InstrumentationTask> genInstrumentationTasks
     std::string_view locBegin,
     std::string_view locEnd,
     bool isArg,
+    const std::vector<std::string> & argNames,
     std::string_view astKind,
     bool isLvalue,
     std::string_view name,
@@ -153,6 +155,7 @@ std::list<InstrumentationTask> genInstrumentationTasks
     {
         .begin = true,
         .isArg = isArg,
+        .argNames = argNames,
         .astKind = std::string(astKind),
         .isLvalue = isLvalue,
         .name = std::string(name),
@@ -164,6 +167,7 @@ std::list<InstrumentationTask> genInstrumentationTasks
     {
         .begin = false,
         .isArg = false,
+        .argNames = {}, /////////
         .astKind = "",
         .isLvalue = false,
         .name = std::string(name),
@@ -298,6 +302,7 @@ struct ArgInfo
             ActualArgLocBegin,
             ActualArgLocEnd,
             true, // isArg
+            {}, // argNames
             ASTKind,
             IsLValue,
             Name,
@@ -333,10 +338,17 @@ struct InvocationInfo
             tasks.splice(tasks.end(), argTasks);
         }
 
+        std::vector<std::string> argNames;
+        for (const ArgInfo & arg : Args)
+        {
+            argNames.push_back(arg.Name);
+        }
+
         std::list<InstrumentationTask> invocationTasks = genInstrumentationTasks(
             InvocationLocation,
             InvocationLocationEnd,
             false, // isArg
+            argNames,
             ASTKind,
             IsLValue,
             Name,
