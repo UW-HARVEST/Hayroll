@@ -45,28 +45,28 @@ struct HayrollSeed {
 #[derive(Clone)]
 enum HayrollRegion {
     Expr(HayrollSeed),
-    Stmt(HayrollSeed, HayrollSeed),
+    Span(HayrollSeed, HayrollSeed),
 }
 
 impl HayrollRegion {
     fn file_id(&self) -> FileId {
         match self {
             HayrollRegion::Expr(seed) => seed.file_id,
-            HayrollRegion::Stmt(seed_begin, _) => seed_begin.file_id,
+            HayrollRegion::Span(seed_begin, _) => seed_begin.file_id,
         }
     }
 
     fn is_arg(&self) -> bool {
         match self {
             HayrollRegion::Expr(seed) => seed.tag["isArg"] == true,
-            HayrollRegion::Stmt(seed_begin, _) => seed_begin.tag["isArg"] == true,
+            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["isArg"] == true,
         }
     }
 
     fn name(&self) -> String {
         match self {
             HayrollRegion::Expr(seed) => seed.tag["name"].as_str().unwrap().to_string(),
-            HayrollRegion::Stmt(seed_begin, _) => seed_begin.tag["name"].as_str().unwrap().to_string(),
+            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["name"].as_str().unwrap().to_string(),
         }
     }
 
@@ -76,7 +76,7 @@ impl HayrollRegion {
         }
         let seed = match self {
             HayrollRegion::Expr(seed) => seed,
-            HayrollRegion::Stmt(seed_begin, _) => seed_begin,
+            HayrollRegion::Span(seed_begin, _) => seed_begin,
         };
         let arg_names = seed.tag["argNames"].as_array().unwrap();
         arg_names.iter().map(|arg_name| arg_name.as_str().unwrap().to_string()).collect()
@@ -85,49 +85,48 @@ impl HayrollRegion {
     fn loc_inv(&self) -> String {
         match self {
             HayrollRegion::Expr(seed) => seed.tag["locInv"].as_str().unwrap().to_string(),
-            HayrollRegion::Stmt(seed_begin, _) => seed_begin.tag["locInv"].as_str().unwrap().to_string(),
+            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["locInv"].as_str().unwrap().to_string(),
         }
     }
 
     fn loc_decl(&self) -> String {
         match self {
             HayrollRegion::Expr(seed) => seed.tag["locDecl"].as_str().unwrap().to_string(),
-            HayrollRegion::Stmt(seed_begin, _) => seed_begin.tag["locDecl"].as_str().unwrap().to_string(),
+            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["locDecl"].as_str().unwrap().to_string(),
         }
     }
 
     fn is_lvalue(&self) -> bool {
         match self {
             HayrollRegion::Expr(seed) => seed.tag["isLvalue"] == true,
-            HayrollRegion::Stmt(_, _) => false,
+            HayrollRegion::Span(_, _) => false,
         }
     }
 
     fn is_expr(&self) -> bool {
         match self {
             HayrollRegion::Expr(_) => true,
-            HayrollRegion::Stmt(_, _) => false,
+            HayrollRegion::Span(_, _) => false,
         }
     }
 
-    // Find the code region, which is the node(s) that contains the whole region
-    // For lvalues, the code region includes the star PrefixExpr
+    fn can_fn(&self) -> bool {
+        match self {
+            HayrollRegion::Expr(seed) => seed.tag["canFn"] == true,
+            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["canFn"] == true,
+        }
+    }
+
+    // Find the code region, which is the node(s) that contains the tagged region
+    // For lvalue expr, the code region does not include the star PrefixExpr
     // Returns immutable node(s)
-    fn get_code_region(&self) -> CodeRegion {
+    fn get_code_region_no_deref(&self) -> CodeRegion {
         match self {
             HayrollRegion::Expr(seed) => {
                 let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
-                if self.is_lvalue() {
-                    let star_expr = parent_until_kind_and_cond::<ast::PrefixExpr>(
-                        &if_expr, 
-                        |prefix_expr| prefix_expr.op_kind().unwrap() == ast::UnaryOp::Deref
-                    ).unwrap();
-                    CodeRegion::Expr(star_expr.into())
-                } else {
-                    CodeRegion::Expr(if_expr.into())
-                }
+                CodeRegion::Expr(if_expr.into())
             }
-            HayrollRegion::Stmt(seed_begin, seed_end) => {
+            HayrollRegion::Span(seed_begin, seed_end) => {
                 let stmt_begin = parent_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
                 let stmt_end = parent_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
                 let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
@@ -137,10 +136,30 @@ impl HayrollRegion {
         }
     }
 
+    // Find the code region, which is the node(s) that contains the whole region
+    // For lvalue expr, the code region includes the star PrefixExpr
+    // Returns immutable node(s)
+    fn get_code_region_with_deref(&self) -> CodeRegion {
+        let region = self.get_code_region_no_deref();
+        if self.is_lvalue() {
+            if let CodeRegion::Expr(if_expr) = region {
+                let star_expr = parent_until_kind_and_cond::<ast::PrefixExpr>(
+                    &if_expr, 
+                    |prefix_expr| prefix_expr.op_kind().unwrap() == ast::UnaryOp::Deref
+                ).unwrap();
+                CodeRegion::Expr(star_expr.into())
+            } else {
+                panic!("Expected an Expr region");
+            }
+        } else {
+            region
+        }
+    }
+
     // Peel the tag from the region, and return the body of the region
-    // For lvalues, the body includes the star PrefixExpr
-    // Returns imutable node(s) for rvalus, mutable node(s) for lvalues
-    fn peel_tag(&self) -> CodeRegion {
+    // For lvalue expr, the body includes the star PrefixExpr
+    // Returns mutable node(s)
+    fn peel_tag_keep_deref(&self) -> CodeRegion {
         match self {
             HayrollRegion::Expr(seed) => {
                 let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
@@ -160,28 +179,67 @@ impl HayrollRegion {
                     CodeRegion::Expr(star_expr.into())
                 } else {
                     // println!("ThenBranch: {:}", then_branch);
-                    CodeRegion::Expr(then_branch.into())
+                    CodeRegion::Expr(then_branch.clone_for_update().into())
                 }
             }
-            HayrollRegion::Stmt(seed_begin, seed_end) => {
+            HayrollRegion::Span(seed_begin, seed_end) => {
                 let stmt_begin = parent_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
                 let stmt_begin_next: ast::Stmt = ast::Stmt::cast(stmt_begin.syntax().next_sibling().unwrap()).unwrap();
                 let stmt_end = parent_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
                 let stmt_end_prev = ast::Stmt::cast(stmt_end.syntax().prev_sibling().unwrap()).unwrap();
                 let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
+                let mutator = TreeMutator::new(&stmt_list.syntax().clone());
+                let stmt_list = mutator.make_mut(&stmt_list);
+                let stmt_begin_next = mutator.make_mut(&stmt_begin_next);
+                let stmt_end_prev = mutator.make_mut(&stmt_end_prev);
                 CodeRegion::Span{parent: stmt_list, elements: stmt_begin_next..=stmt_end_prev}
             }
         }
     }
+
+    // Peel the tag from the region, and return the body of the region
+    // For lvalue expr, the body does not include the star PrefixExpr
+    // Returns mutable node(s)
+    fn peel_tag_no_deref(&self) -> CodeRegion {
+        let region = self.peel_tag_keep_deref();
+        if self.is_lvalue() {
+            if let CodeRegion::Expr(expr) = region {
+                // Assert that the expr is a PrefixExpr with Deref operator
+                let star_expr = ast::PrefixExpr::cast(expr.syntax().clone()).unwrap();
+                CodeRegion::Expr(star_expr.expr().unwrap().into())
+            } else {
+                panic!("Expected an Expr region");
+            }
+        } else {
+            region
+        }
+    }
 }
 
+#[derive(Clone)]
 enum CodeRegion {
     Expr(ast::Expr),
-    // Span{parent: ast::StmtList, elements: RangeInclusive<SyntaxElement>},
     Span { parent: ast::StmtList, elements: RangeInclusive<ast::Stmt> },
 }
 
 impl CodeRegion {
+    fn make_immutable(&self) -> CodeRegion {
+        match self {
+            CodeRegion::Expr(expr) => CodeRegion::Expr(expr.clone_subtree()),
+            CodeRegion::Span { parent, elements } => {
+                let begin = elements.start();
+                let end = elements.end();
+                // Find out the pos of the begin and end stmts
+                let pos_begin = parent.statements().position(|stmt| stmt == *begin).unwrap();
+                let pos_end = parent.statements().position(|stmt| stmt == *end).unwrap();
+                let parent = parent.clone_subtree();
+                let begin = parent.statements().nth(pos_begin).unwrap();
+                let end = parent.statements().nth(pos_end).unwrap();
+                CodeRegion::Span { parent, elements: begin..=end }
+            }
+        }
+    }
+
     // LUB: Least Upper Bound
     fn lub(&self) -> SyntaxNode {
         match self {
@@ -225,6 +283,31 @@ impl CodeRegion {
             }
         }
     }
+
+    fn syntax_element_vec(&self) -> Vec<SyntaxElement> {
+        match self {
+            CodeRegion::Expr(expr) => vec![expr.syntax().syntax_element().clone()],
+            CodeRegion::Span { parent, elements } => {
+                let start = elements.start();
+                let end = elements.end();
+                let mut seen_begin = false;
+                let mut seen_end = false;
+                parent.statements().filter_map(|stmt| {
+                    if &stmt == start {
+                        seen_begin = true;
+                        Some(stmt)
+                    } else if &stmt == end {
+                        seen_end = true;
+                        Some(stmt)
+                    } else if seen_begin && !seen_end {
+                        Some(stmt)
+                    } else {
+                        None
+                    }
+                }).map(|stmt| stmt.syntax().clone().into()).collect::<Vec<SyntaxElement>>()
+            }
+        }
+    }
 }
 
 impl std::fmt::Display for CodeRegion {
@@ -264,36 +347,94 @@ struct HayrollMacroInv {
 
 impl HayrollMacroInv {
     // Replace the args tagged code regions into $argName, for generating macro definition
-    fn replace_arg_regions_into_names(&self) -> CodeRegion {
-        let original_region = self.region.get_code_region();
-        let mutator = TreeMutator::new(&original_region.lub());
-        let mutated_region = original_region.make_mut_with_mutator(&mutator);
+    // Takes a lambda that inputs a &HayrollRegion (arg) then generates a vec::SyntaxElement to replace the code region
+    fn replace_arg_regions_into(
+        &self,
+        peel_tag: bool, // Currently not functional
+        return_inv_region_with_deref: bool,
+        replace_arg_region_with_deref: bool,
+        substitute: fn(&HayrollRegion) -> Vec<SyntaxElement>
+    ) -> CodeRegion {
         let mut delayed_tasks: Vec<Box<dyn FnOnce()>> = Vec::new();
-        for arg in self.args.iter() {
-            let name = arg.name();
-            let name_token = ast::make::tokens::ident(&name);
-            let name_node = name_token.parent().unwrap().clone_for_update();
-            let dollar_token_mut = get_dollar_token_mut();
-            let new_tokens = vec![syntax::NodeOrToken::Token(dollar_token_mut), syntax::NodeOrToken::Node(name_node)];
-            // ted::replace_all(arg.get_code_region().make_mut_with_mutator(&mutator).syntax_element_range(), new_tokens);
-            let arg_region = arg.get_code_region().make_mut_with_mutator(&mutator);
-            let arg_region = arg_region.syntax_element_range();
+        let region = match return_inv_region_with_deref {
+            // (true, true) => self.region.peel_tag_keep_deref(),
+            // (true, false) => self.region.peel_tag_no_deref(),
+            true => self.region.get_code_region_with_deref(),
+            false => self.region.get_code_region_no_deref(),
+        };
+        let mutator = TreeMutator::new(&region.lub());
+        let region = region.make_mut_with_mutator(&mutator);
+        // if peel_tag {
+        //     print!("Peeling tag from region: {}\n", self.region.name());
+        //     let region_peeled = match return_inv_region_with_deref {
+        //         true => self.region.peel_tag_keep_deref(),
+        //         false => self.region.peel_tag_no_deref(),
+        //     };
+        //     print!(" -> {}\n", region_peeled.to_string());
+        //     let region_captured = region.clone();
+        //     delayed_tasks.push(Box::new(move || {
+        //         ted::replace_all(region_captured.clone().syntax_element_range(), region_peeled.syntax_element_vec());
+        //     }));
+        // }
+        for arg_region in self.args.iter() {
+            let arg_code_region = if replace_arg_region_with_deref {
+                arg_region.get_code_region_with_deref()
+            } else {
+                arg_region.get_code_region_no_deref()
+            };
+            let arg_code_region = arg_code_region.make_mut_with_mutator(&mutator);
+            let arg_code_region_range = arg_code_region.syntax_element_range();
+            let new_tokens = substitute(arg_region);
             delayed_tasks.push(Box::new(move || {
-                ted::replace_all(arg_region, new_tokens);
+                ted::replace_all(arg_code_region_range, new_tokens);
             }));
         }
         for task in delayed_tasks {
             task();
         }
-        mutated_region
+        region
     }
 
-    // Returns immutable node
+    // Returns mutable node
+    fn macro_rules(&self) -> ast::MacroRules {
+        let macro_name = self.region.name();
+        // arg format: ($x:expr) or ($x:stmt)
+        let macro_args = self.args.iter()
+            .map(|arg| {
+                let arg_name = arg.name();
+                let arg_type = match arg {
+                    HayrollRegion::Expr(_) => "expr",
+                    HayrollRegion::Span(_, _) => "stmt",
+                };
+                format!("${}:{}", arg_name, arg_type)
+            })
+            .collect::<Vec<String>>()
+            .join(", ");
+        let macro_body = self.replace_arg_regions_into(
+            false,
+            true,
+            true, 
+            |arg_region| {
+                let name = arg_region.name();
+                let name_token = ast::make::tokens::ident(&name);
+                let name_node = name_token.parent().unwrap().clone_for_update();
+                let dollar_token_mut = get_dollar_token_mut();
+                vec![syntax::NodeOrToken::Token(dollar_token_mut), syntax::NodeOrToken::Node(name_node)]
+            }
+        );
+        let macro_def = format!("macro_rules! {}\n{{\n    ({}) => {{\n    {}\n    }}\n}}", macro_name, macro_args, macro_body);
+        // Convert the macro definition into a syntax node
+        let macro_rules_node = ast_from_text::<ast::MacroRules>(&macro_def);
+        let macro_rules_node = macro_rules_node.clone_for_update();
+        macro_rules_node
+    }
+
+    // Returns mutable node
     fn macro_call(&self) -> ast::MacroCall {
         let macro_name = self.region.name();
         let args_spelling: String = self.args.iter()
             .map(|arg| {
-                arg.peel_tag().to_string()
+                arg.peel_tag_keep_deref().to_string()
             })
             .collect::<Vec<String>>()
             .join(", ");        
@@ -302,7 +443,22 @@ impl HayrollMacroInv {
         } else {
             format!("{}!({});", macro_name, args_spelling)
         };
-        ast_from_text::<ast::MacroCall>(&macro_call)
+        ast_from_text::<ast::MacroCall>(&macro_call).clone_for_update()
+    }
+
+    fn fn_(&self) -> String {
+        let fn_body = self.replace_arg_regions_into(
+            false,
+            false, 
+            false,
+            |arg_region| {
+                let name = arg_region.name();
+                let name_token = ast::make::tokens::ident(&name);
+                let name_node = name_token.parent().unwrap().clone_for_update();
+                vec![syntax::NodeOrToken::Node(name_node)]
+            }
+        );
+        self.region.name() + "\n" + &fn_body.to_string()
     }
 }
 
@@ -437,6 +593,16 @@ fn main() -> Result<()> {
                     println!("Byte String: {}, Tag: {:?}", content, tag);
                     if let Ok(tag) = tag {
                         if tag["hayroll"] == true {
+                            let mut hrs: HayrollSeed = HayrollSeed {
+                                literal: ast::Literal::cast(element.parent()?)?,
+                                tag: tag.clone(),
+                                file_id: file_id.clone(),
+                            };
+                            hrs = (&mut HayrollSeed {
+                                literal: ast::Literal::cast(element.parent()?)?,
+                                tag: tag.clone(),
+                                file_id: file_id.clone(),
+                            }).clone();
                             return Some(HayrollSeed {
                                 literal: ast::Literal::cast(element.parent()?)?,
                                 tag,
@@ -456,13 +622,13 @@ fn main() -> Result<()> {
             if seed.tag["astKind"] == "Expr" {
                 acc.push(HayrollRegion::Expr(seed.clone()));
             } else if seed.tag["astKind"] == "Stmt" && seed.tag["begin"] == true {
-                acc.push(HayrollRegion::Stmt(seed.clone(), seed.clone())); // For now seedBegin == seedEnd
+                acc.push(HayrollRegion::Span(seed.clone(), seed.clone())); // For now seedBegin == seedEnd
             } else if seed.tag["begin"] == false {
                 // Search through the acc to find the begin stmt with the same locInv
                 let mut found = false;
                 for region in acc.iter_mut().rev() {
                     match region {
-                        HayrollRegion::Stmt(seed_begin, seed_end) => {
+                        HayrollRegion::Span(seed_begin, seed_end) => {
                             if seed_begin.tag["locInv"] == seed.tag["locInv"] {
                                 *seed_end = seed.clone();
                                 found = true;
@@ -482,11 +648,6 @@ fn main() -> Result<()> {
             acc
         }
     );
-
-    // Print out all region's get_body for debugging
-    for region in hayroll_regions.iter() {
-        println!("Peeled: {}", region.peel_tag());
-    }
 
     // A region whose isArg is false is a macro
     // Other regions are arguments, we should match them with the macro
@@ -517,8 +678,8 @@ fn main() -> Result<()> {
 
     // Print all token trees from the macro invs
     for mac in hayroll_macro_invs.iter() {
-        let macro_body = mac.replace_arg_regions_into_names();
-        println!("Macro Body: {}", macro_body);
+        let fn_body = mac.fn_();
+        println!("Macro Body: {}", fn_body);
     }
 
     let hayroll_macro_db = HayrollMacroDB::from_hayroll_macro_invs(&hayroll_macro_invs);
@@ -534,28 +695,11 @@ fn main() -> Result<()> {
     let mut delayed_tasks: Vec<Box<dyn FnOnce()>> = Vec::new();
 
     // For each macro db entry, generate a new macro definition and add that to the top of the file
-    // Ffor each macro invocation, replace the invocation with a macro call
+    // For each macro invocation, replace the invocation with a macro call
     for (loc_decl, hayroll_macros) in hayroll_macro_db.map.iter() {
         // There is at least one macro invocation for each locDecl
         let hayroll_macro_inv = &hayroll_macros[0];
-        let macro_name = hayroll_macro_inv.region.name();
-        // arg format: ($x:expr) or ($x:stmt)
-        let macro_args = hayroll_macro_inv.args.iter()
-            .map(|arg| {
-                let arg_name = arg.name();
-                let arg_type = match arg {
-                    HayrollRegion::Expr(_) => "expr",
-                    HayrollRegion::Stmt(_, _) => "stmt",
-                };
-                format!("${}:{}", arg_name, arg_type)
-            })
-            .collect::<Vec<String>>()
-            .join(", ");
-        let macro_body = hayroll_macros[0].replace_arg_regions_into_names();
-        let macro_def = format!("macro_rules! {}\n{{\n    ({}) => {{\n    {}\n    }}\n}}", macro_name, macro_args, macro_body);
-        // Convert the macro definition into a syntax node
-        let macro_rules_node = ast_from_text::<ast::MacroRules>(&macro_def);
-        let macro_rules_node = macro_rules_node.clone_for_update();
+        let macro_rules = hayroll_macro_inv.macro_rules();
         // Add the macro definition to the top of the file
         let (syntax_root, builder) = syntax_roots.get_mut(&hayroll_macro_inv.region.file_id()).unwrap();
         let builder = builder.as_mut().unwrap();
@@ -566,16 +710,16 @@ fn main() -> Result<()> {
                 .find(|element| !ast::Attr::can_cast(element.kind())).unwrap().clone();
             let pos = Position::before(&pos);
             let empty_line = ast::make::tokens::whitespace("\n");
-            ted::insert_all(pos, vec![macro_rules_node.syntax().syntax_element(), syntax::NodeOrToken::Token(empty_line)])
+            ted::insert_all(pos, vec![macro_rules.syntax().syntax_element(), syntax::NodeOrToken::Token(empty_line)])
         }));
 
         // Replace the macro invocations with the macro calls
         for hayroll_macro_inv in hayroll_macros.iter() {
-            let code_region = hayroll_macro_inv.region.get_code_region();
+            let code_region = hayroll_macro_inv.region.get_code_region_with_deref();
             let (_, builder) = syntax_roots.get_mut(&hayroll_macro_inv.region.file_id()).unwrap();
             let builder = builder.as_mut().unwrap();
             let region_mut = code_region.make_mut_with_builder(builder);
-            let macro_call_node = hayroll_macro_inv.macro_call().clone_for_update().syntax().syntax_element();
+            let macro_call_node = hayroll_macro_inv.macro_call().syntax().syntax_element();
             delayed_tasks.push(Box::new(move || {
                 ted::replace_all(region_mut.syntax_element_range(), vec![macro_call_node]);
             }));
