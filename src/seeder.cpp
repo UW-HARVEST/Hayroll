@@ -92,13 +92,14 @@ struct Tag
     std::string locInv;
     std::string locArg;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locDecl, locInv, locArg)
+    bool canFn;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locDecl, locInv, locArg, canFn)
 
     std::string stringLiteral() const
     {
         json j = *this;
         return "\"" + escapeString(j.dump()) + "\"";
-        // return "\"\"";
     }
 };
 
@@ -147,7 +148,8 @@ std::list<InstrumentationTask> genInstrumentationTasks
     std::string_view name,
     std::string_view locDecl,
     std::string_view locInv, // Only for args, the locInv for the invocation is locBegin
-    std::string_view spelling
+    std::string_view spelling,
+    bool canFn
 )
 {
     auto [path, line, col] = parseLocation(locBegin);
@@ -163,20 +165,24 @@ std::list<InstrumentationTask> genInstrumentationTasks
         .name = std::string(name),
         .locDecl = std::string(locDecl),
         .locInv = isArg ? std::string(locInv) : std::string(locBegin),
-        .locArg = isArg ? std::string(locBegin) : ""
+        .locArg = isArg ? std::string(locBegin) : "",
+
+        .canFn = canFn
     };
 
     Tag tagEnd
     {
         .begin = false,
         .isArg = isArg,
-        .argNames = {}, /////////
+        .argNames = {},
         .astKind = "",
         .isLvalue = isLvalue,
         .name = std::string(name),
         .locDecl = std::string(locDecl),
         .locInv = isArg ? std::string(locInv) : std::string(locBegin),
-        .locArg = isArg ? std::string(locBegin) : ""
+        .locArg = isArg ? std::string(locBegin) : "",
+
+        .canFn = canFn
     };
 
     std::list<InstrumentationTask> tasks;
@@ -313,27 +319,360 @@ struct ArgInfo
             Name,
             "", // locDecl
             InvocationLocation,
-            Spelling
+            Spelling,
+            false // canFn
         );
     }
 };
 
-struct InvocationInfo
+struct MakiInvocationInfo
 {
-    std::string DefinitionLocation;
+    // In accordance with the Maki macros.py
     std::string Name;
-    std::string ASTKind;
+    std::string DefinitionLocation;
+    std::string InvocationLocation;
+    std::string ASTKind; // ['Decl', 'Stmt', 'TypeLoc', 'Expr']
+    std::string TypeSignature;
+    int InvocationDepth;
+    int NumASTRoots;
+    int NumArguments;
+    bool HasStringification;
+    bool HasTokenPasting;
+    bool HasAlignedArguments;
+    bool HasSameNameAsOtherDeclaration;
+    bool IsExpansionControlFlowStmt;
+    bool DoesBodyReferenceMacroDefinedAfterMacro;
+    bool DoesBodyReferenceDeclDeclaredAfterMacro;
+    bool DoesBodyContainDeclRefExpr;
+    bool DoesSubexpressionExpandedFromBodyHaveLocalType;
+    bool DoesSubexpressionExpandedFromBodyHaveTypeDefinedAfterMacro;
+    bool DoesAnyArgumentHaveSideEffects;
+    bool DoesAnyArgumentContainDeclRefExpr;
+    bool IsHygienic;
+    bool IsDefinitionLocationValid;
+    bool IsInvocationLocationValid;
+    bool IsObjectLike;
+    bool IsInvokedInMacroArgument;
+    bool IsNamePresentInCPPConditional;
+    bool IsExpansionICE;
+    bool IsExpansionTypeNull;
+    bool IsExpansionTypeAnonymous;
+    bool IsExpansionTypeLocalType;
+    bool IsExpansionTypeDefinedAfterMacro;
+    bool IsExpansionTypeVoid;
+    bool IsAnyArgumentTypeNull;
+    bool IsAnyArgumentTypeAnonymous;
+    bool IsAnyArgumentTypeLocalType;
+    bool IsAnyArgumentTypeDefinedAfterMacro;
+    bool IsAnyArgumentTypeVoid;
+    bool IsInvokedWhereModifiableValueRequired;
+    bool IsInvokedWhereAddressableValueRequired;
+    bool IsInvokedWhereICERequired;
+    bool IsAnyArgumentExpandedWhereModifiableValueRequired;
+    bool IsAnyArgumentExpandedWhereAddressableValueRequired;
+    bool IsAnyArgumentConditionallyEvaluated;
+    bool IsAnyArgumentNeverExpanded;
+    bool IsAnyArgumentNotAnExpression;
+
+    // HAYROLL Extras
     std::string ReturnType;
     bool IsLValue;
-    std::string InvocationLocation;
     std::string InvocationLocationEnd;
     std::vector<ArgInfo> Args;
-    int NumArguments;
 
     // Later collected
     std::string Spelling;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(InvocationInfo, DefinitionLocation, Name, ASTKind, ReturnType, IsLValue, InvocationLocation, InvocationLocationEnd, Args, NumArguments)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE
+    (
+        MakiInvocationInfo,
+        Name,
+        DefinitionLocation,
+        InvocationLocation,
+        ASTKind,
+        TypeSignature,
+        InvocationDepth,
+        NumASTRoots,
+        NumArguments,
+        HasStringification,
+        HasTokenPasting,
+        HasAlignedArguments,
+        HasSameNameAsOtherDeclaration,
+        IsExpansionControlFlowStmt,
+        DoesBodyReferenceMacroDefinedAfterMacro,
+        DoesBodyReferenceDeclDeclaredAfterMacro,
+        DoesBodyContainDeclRefExpr,
+        DoesSubexpressionExpandedFromBodyHaveLocalType,
+        DoesSubexpressionExpandedFromBodyHaveTypeDefinedAfterMacro,
+        DoesAnyArgumentHaveSideEffects,
+        DoesAnyArgumentContainDeclRefExpr,
+        IsHygienic,
+        IsDefinitionLocationValid,
+        IsInvocationLocationValid,
+        IsObjectLike,
+        IsInvokedInMacroArgument,
+        IsNamePresentInCPPConditional,
+        IsExpansionICE,
+        IsExpansionTypeNull,
+        IsExpansionTypeAnonymous,
+        IsExpansionTypeLocalType,
+        IsExpansionTypeDefinedAfterMacro,
+        IsExpansionTypeVoid,
+        IsAnyArgumentTypeNull,
+        IsAnyArgumentTypeAnonymous,
+        IsAnyArgumentTypeLocalType,
+        IsAnyArgumentTypeDefinedAfterMacro,
+        IsAnyArgumentTypeVoid,
+        IsInvokedWhereModifiableValueRequired,
+        IsInvokedWhereAddressableValueRequired,
+        IsInvokedWhereICERequired,
+        IsAnyArgumentExpandedWhereModifiableValueRequired,
+        IsAnyArgumentExpandedWhereAddressableValueRequired,
+        IsAnyArgumentConditionallyEvaluated,
+        IsAnyArgumentNeverExpanded,
+        IsAnyArgumentNotAnExpression,
+        ReturnType,
+        IsLValue,
+        InvocationLocationEnd,
+        Args
+    )
+
+    std::string definitionLocationFilename() const
+    {
+        if (!IsDefinitionLocationValid)
+        {
+            return DefinitionLocation;
+        }
+        else
+        {
+            size_t colonPos = DefinitionLocation.find(':');
+            if (colonPos == std::string::npos)
+            {
+                return DefinitionLocation;
+            }
+            return DefinitionLocation.substr(0, colonPos);
+        }
+    }
+
+    bool isFunctionLike() const
+    {
+        return !IsObjectLike;
+    }
+
+    bool isTopLevelNonArgument() const
+    {
+        return InvocationDepth == 0
+            && !IsInvokedInMacroArgument
+            && IsInvocationLocationValid
+            && IsDefinitionLocationValid;
+    }
+
+    bool isAligned() const
+    {
+        assert(isTopLevelNonArgument());
+        return isTopLevelNonArgument()
+            && NumASTRoots == 1
+            && HasAlignedArguments;
+        }
+
+    bool hasSemanticData() const
+    {
+        return isTopLevelNonArgument()
+            && !IsAnyArgumentNeverExpanded
+            && isAligned()
+            && !(ASTKind == "Expr" && IsExpansionTypeNull);
+    }
+
+    bool canBeTurnedIntoEnum() const
+    {
+        assert(hasSemanticData());
+        // Enums have to be ICEs
+        return IsExpansionICE;
+    }
+
+    bool canBeTurnedIntoVariable() const
+    {
+        assert(hasSemanticData());
+        return
+            // Variables must be exprs
+            ASTKind == "Expr"
+            // Variables cannot contain DeclRefExprs
+            && !DoesBodyContainDeclRefExpr
+            && !DoesAnyArgumentContainDeclRefExpr
+            // Variables cannot be invoked where ICEs are required
+            && !IsInvokedWhereICERequired
+            // Variables cannot have the void type
+            && !IsExpansionTypeVoid;
+    }
+
+    bool canBeTurnedIntoEnumOrVariable() const
+    {
+        assert(hasSemanticData());
+        return canBeTurnedIntoEnum() || canBeTurnedIntoVariable();
+    }
+
+    bool canBeTurnedIntoFunction() const
+    {
+        assert(hasSemanticData());
+        return 
+            // Functions must be stmts or expressions
+            (ASTKind == "Stmt" || ASTKind == "Expr")
+            // Functions cannot be invoked where ICEs are required
+            && !IsInvokedWhereICERequired;
+    }
+
+    bool canBeTurnedIntoAFunctionOrVariable() const
+    {
+        assert(hasSemanticData());
+        return canBeTurnedIntoFunction() || canBeTurnedIntoVariable();
+    }
+
+    bool canBeTurnedIntoTypeDef() const
+    {
+        assert(hasSemanticData());
+        return ASTKind == "TypeLoc";
+    }
+
+    bool mustAlterArgumentsOrReturnTypeToTransform() const
+    {
+        assert(hasSemanticData());
+        return !IsHygienic
+            || IsInvokedWhereModifiableValueRequired
+            || IsInvokedWhereAddressableValueRequired
+            || IsAnyArgumentExpandedWhereModifiableValueRequired
+            || IsAnyArgumentExpandedWhereAddressableValueRequired;
+    }
+
+    bool mustAlterDeclarationsToTransform() const
+    {
+        assert(hasSemanticData());
+        return HasSameNameAsOtherDeclaration
+            || DoesBodyReferenceMacroDefinedAfterMacro
+            || DoesBodyReferenceDeclDeclaredAfterMacro
+            || DoesSubexpressionExpandedFromBodyHaveLocalType
+            || DoesSubexpressionExpandedFromBodyHaveTypeDefinedAfterMacro
+            || IsExpansionTypeAnonymous
+            || IsExpansionTypeLocalType
+            || IsExpansionTypeDefinedAfterMacro
+            || IsAnyArgumentTypeAnonymous
+            || IsAnyArgumentTypeLocalType
+            || IsAnyArgumentTypeDefinedAfterMacro
+            || ASTKind == "TypeLoc";
+    }
+
+    bool mustAlterCallSiteToTransform() const
+    {
+        if (!isAligned())
+        {
+            return true;
+        }
+
+        assert(hasSemanticData());
+        return IsExpansionControlFlowStmt || IsAnyArgumentConditionallyEvaluated;
+    }
+
+    bool mustCreateThunksToTransform() const
+    {
+        return DoesAnyArgumentHaveSideEffects || IsAnyArgumentTypeVoid;
+    }
+
+    bool mustUseMetaprogrammingToTransform() const
+    {
+        return (HasStringification || HasTokenPasting) 
+            ||
+            (
+                hasSemanticData()
+                && isFunctionLike()
+                && canBeTurnedIntoFunction()
+                && IsAnyArgumentNotAnExpression
+            );
+    }
+
+    bool satisfiesASyntacticProperty() const
+    {
+        return !isAligned();
+    }
+
+    bool satisfiesAScopingRuleProperty() const
+    {
+        assert(hasSemanticData());
+        return !IsHygienic
+            || IsInvokedWhereModifiableValueRequired
+            || IsInvokedWhereAddressableValueRequired
+            || IsAnyArgumentExpandedWhereModifiableValueRequired
+            || IsAnyArgumentExpandedWhereAddressableValueRequired
+            || DoesBodyReferenceMacroDefinedAfterMacro
+            || DoesBodyReferenceDeclDeclaredAfterMacro
+            || DoesSubexpressionExpandedFromBodyHaveLocalType
+            || DoesSubexpressionExpandedFromBodyHaveTypeDefinedAfterMacro
+            || IsAnyArgumentTypeDefinedAfterMacro
+            || IsAnyArgumentTypeLocalType;
+    }
+
+    bool satisfiesATypingProperty() const
+    {
+        assert(hasSemanticData());
+        return IsExpansionTypeAnonymous
+            || IsAnyArgumentTypeAnonymous
+            || DoesSubexpressionExpandedFromBodyHaveLocalType
+            || IsAnyArgumentTypeDefinedAfterMacro
+            || DoesSubexpressionExpandedFromBodyHaveTypeDefinedAfterMacro
+            || IsAnyArgumentTypeVoid
+            || (IsObjectLike && IsExpansionTypeVoid)
+            || IsAnyArgumentTypeLocalType;
+    }
+
+    bool satisfiesACallingConventionProperty() const
+    {
+        assert(hasSemanticData());
+        return DoesAnyArgumentHaveSideEffects
+            || IsAnyArgumentConditionallyEvaluated;
+    }
+
+    bool satisfiesALanguageSpecificProperty() const
+    {
+        return mustUseMetaprogrammingToTransform();
+    }
+
+    // HAYROLL original
+    bool canRustFn() const
+    {
+        return 
+            !(
+                // Syntactic
+                !isAligned()
+
+                // Scoping
+                || !IsHygienic
+                // || IsInvokedWhereModifiableValueRequired // HAYROLL can handle lvalues
+                // || IsInvokedWhereAddressableValueRequired // HAYROLL can handle lvalues
+                // || IsAnyArgumentExpandedWhereModifiableValueRequired // HAYROLL can handle lvalues
+                // || IsAnyArgumentExpandedWhereAddressableValueRequired // HAYROLL can handle lvalues
+                // || DoesBodyReferenceMacroDefinedAfterMacro // Don't worry about nested macros for now
+                // || DoesBodyReferenceDeclDeclaredAfterMacro // Any local decls would trigger this. It's fine as long as it's hygienic.
+                || DoesSubexpressionExpandedFromBodyHaveLocalType
+                // || DoesSubexpressionExpandedFromBodyHaveTypeDefinedAfterMacro // Don't worry about declaration sequences in Rust. We can put the function at the end. 
+                // || IsAnyArgumentTypeDefinedAfterMacro // Don't worry about declaration sequences in Rust. We can put the function at the end. 
+                || IsAnyArgumentTypeLocalType
+
+                // Typing
+                || IsExpansionTypeAnonymous
+                || IsAnyArgumentTypeAnonymous
+                // || DoesSubexpressionExpandedFromBodyHaveLocalType // Repetition
+                // || IsAnyArgumentTypeDefinedAfterMacro // Repetition
+                // || DoesSubexpressionExpandedFromBodyHaveTypeDefinedAfterMacro  // Repetition
+                || IsAnyArgumentTypeVoid
+                || (IsObjectLike && IsExpansionTypeVoid)
+                // || IsAnyArgumentTypeLocalType // Repetition
+
+                // Calling convention
+                || DoesAnyArgumentHaveSideEffects
+                || IsAnyArgumentConditionallyEvaluated
+
+                // Language specific
+                || mustUseMetaprogrammingToTransform()
+            );
+    }
 
     std::list<InstrumentationTask> collectInstrumentationTasks() const
     {
@@ -360,7 +699,8 @@ struct InvocationInfo
             Name,
             DefinitionLocation,
             "", // locInv, not required for invocations
-            Spelling
+            Spelling,
+            canRustFn()
         );
         tasks.splice(tasks.end(), invocationTasks);
         
@@ -368,9 +708,10 @@ struct InvocationInfo
     }
 };
 
-bool keepInvocationInfo(const InvocationInfo& invocation, const std::filesystem::path & projectRootDir)
+bool keepInvocationInfo(const MakiInvocationInfo & invocation, const std::filesystem::path & projectRootDir)
 {
-    if (
+    if
+    (
         invocation.DefinitionLocation.empty()
         || invocation.Name.empty()
         || invocation.ASTKind.empty()
@@ -417,7 +758,7 @@ int main(const int argc, const char* argv[])
     // Open the file. For each line, check the first word before the first whitespace (can be space or tab).
     // If it is Invocation, then treat the rest of the line as a JSON string and parse it.
     // If it is not, then ignore the line.
-    std::vector<InvocationInfo> invocations;
+    std::vector<MakiInvocationInfo> invocations;
     {
         std::ifstream cpp2cFile(cpp2cFilePathStr);
         if (!cpp2cFile.is_open())
@@ -439,7 +780,7 @@ int main(const int argc, const char* argv[])
                 try
                 {
                     json j = json::parse(jsonString);
-                    InvocationInfo invocation = j.get<InvocationInfo>();
+                    MakiInvocationInfo invocation = j.get<MakiInvocationInfo>();
                     if (keepInvocationInfo(invocation, projectRootDir))
                     {
                         invocations.push_back(invocation);
@@ -461,7 +802,7 @@ int main(const int argc, const char* argv[])
     // They are the strings between xxxLocBegin and xxxLocEnd.
     // We can use awk to extract them.
     // Example awk 'NR==144 {print substr($0, 32, 15)}' /home/husky/libmcs/libm/include/internal_config.h
-    for (InvocationInfo & invocation : invocations)
+    for (MakiInvocationInfo & invocation : invocations)
     {
         auto [path, line, col] = parseLocation(invocation.InvocationLocation);
         auto [pathEnd, lineEnd, colEnd] = parseLocation(invocation.InvocationLocationEnd);
@@ -532,7 +873,7 @@ int main(const int argc, const char* argv[])
 
     // Collect instrumentation tasks.
     std::list<InstrumentationTask> tasks;
-    for (const InvocationInfo & invocation : invocations)
+    for (const MakiInvocationInfo & invocation : invocations)
     {
         std::list<InstrumentationTask> invocationTasks = invocation.collectInstrumentationTasks();
         tasks.splice(tasks.end(), invocationTasks);
