@@ -109,8 +109,8 @@ func:
     return mut: lvalue->&mut(/* cannot return reference to temporary value */)/own, rvalue->own(val)
     ban: unbounded new var decl, !IsHygienic, DoesBodyReferenceDeclDeclaredAfterMacro (?)
     call site:
-        lvalue: *if{}else{} -> *(NAME(&mut (lvalue_spelling), rvalue_spelling))
-        rvalue: if{}else{} -> NAME(&mut (lvalue_spelling), rvalue_spelling)
+        lvalue: *if{}else{} -> *(NAME(*mut (lvalue_spelling), rvalue_spelling))
+        rvalue: if{}else{} -> NAME(*mut (lvalue_spelling), rvalue_spelling)
 arg:
     type:
         lvalue: *if{}else{0 as *mut T} -> *mut T
