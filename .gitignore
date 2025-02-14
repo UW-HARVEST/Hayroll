@@ -71,3 +71,6 @@ trace.txt
 /seeder
 /analyzer
 /ws
+/remove-comments
+/remove-non-preprocessor
+/macro-skeleton

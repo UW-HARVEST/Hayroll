@@ -1,6 +1,55 @@
 cmake_minimum_required(VERSION 3.10)
+project(Hayroll LANGUAGES C CXX)
 
-project(Hayroll LANGUAGES CXX)
+#===============================================================================
+# 1. VERIFY CLANG INSTALLATION DIR
+#===============================================================================
+# Set this to a valid Clang installation dir
+#set(CT_LLVM_INSTALL_DIR "" CACHE PATH "LLVM installation directory")
+set(CT_LLVM_INSTALL_DIR "/usr")
+
+# A bit of a sanity checking
+set(CT_LLVM_INCLUDE_DIR "${CT_LLVM_INSTALL_DIR}/include/llvm-14")
+if(NOT EXISTS "${CT_LLVM_INCLUDE_DIR}")
+message(FATAL_ERROR
+  " CT_LLVM_INSTALL_DIR (${CT_LLVM_INCLUDE_DIR}) is invalid.")
+endif()
+
+set(CT_LLVM_CMAKE_FILE "${CT_LLVM_INSTALL_DIR}/lib/cmake/clang-14/ClangConfig.cmake")
+if(NOT EXISTS "${CT_LLVM_CMAKE_FILE}")
+message(FATAL_ERROR
+  " CT_LLVM_CMAKE_FILE (${CT_LLVM_CMAKE_FILE}) is invalid.")
+endif()
+
+#===============================================================================
+# 2. LOAD CLANG CONFIGURATION
+#    For more: http://llvm.org/docs/CMake.html#embedding-llvm-in-your-project
+#===============================================================================
+set(CLANG_VERSION 14)
+list(APPEND CMAKE_PREFIX_PATH "${CT_LLVM_INSTALL_DIR}/lib/cmake/llvm-${CLANG_VERSION}/")
+list(APPEND CMAKE_PREFIX_PATH "${CT_LLVM_INSTALL_DIR}/lib/cmake/clang-${CLANG_VERSION}/")
+
+find_package(Clang REQUIRED CONFIG)
+
+# Sanity check. As Clang does not expose e.g. `CLANG_VERSION_MAJOR` through
+# AddClang.cmake, we have to use LLVM_VERSION_MAJOR instead.
+# TODO: Revisit when next version is released.
+if(NOT "${CLANG_VERSION}" VERSION_EQUAL "${LLVM_VERSION_MAJOR}")
+  message(FATAL_ERROR "Found LLVM ${LLVM_VERSION_MAJOR}, but need LLVM ${CLANG_VERSION}")
+endif()
+
+set(CLANG_C_COMPILER "clang-${CLANG_VERSION}")
+message(STATUS "Found Clang ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using ClangConfig.cmake in: ${CT_LLVM_INSTALL_DIR}")
+
+
+message("CLANG STATUS:
+  Includes (clang)    ${CLANG_INCLUDE_DIRS}
+  Includes (llvm)     ${LLVM_INCLUDE_DIRS}"
+)
+
+# Set the LLVM and Clang header and library paths
+include_directories(SYSTEM "${LLVM_INCLUDE_DIRS};${CLANG_INCLUDE_DIRS}")
 
 find_program(AWK_EXECUTABLE awk REQUIRED)
 
@@ -11,6 +60,42 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include_directories(include)
 
 add_executable(seeder src/seeder.cpp)
+
+add_executable(remove-comments src/RemoveComments.cpp)
+target_link_libraries(remove-comments
+    clangTooling
+    clangBasic
+    clangAST
+    clangLex
+    clangRewrite
+    clangFrontend
+    clangDriver
+    LLVMSupport
+)
+
+add_executable(remove-non-preprocessor src/RemoveNonPreprocessor.cpp)
+target_link_libraries(remove-non-preprocessor
+    clangTooling
+    clangBasic
+    clangAST
+    clangLex
+    clangRewrite
+    clangFrontend
+    clangDriver
+    LLVMSupport
+)
+
+add_executable(macro-skeleton src/MacroSkeleton.cpp)
+target_link_libraries(macro-skeleton
+    clangTooling
+    clangBasic
+    clangAST
+    clangLex
+    clangRewrite
+    clangFrontend
+    clangDriver
+    LLVMSupport
+)
 
 # Rust
 
