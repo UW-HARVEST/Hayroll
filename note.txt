@@ -101,3 +101,38 @@ fn add<T>(a: T, b: T) -> T {
 fn addAddable<T: std::ops::Add<Output = T>>(a: T, b: T) -> T {
     a + b
 }
+
+func:
+    return type:
+        lvalue: *if{}else{0 as *mut T} -> *mut T
+        rvalue: if{}else{*(0 as *mut T)} -> T
+    return mut: lvalue->&mut(/* cannot return reference to temporary value */)/own, rvalue->own(val)
+    ban: unbounded new var decl, !IsHygienic, DoesBodyReferenceDeclDeclaredAfterMacro (?)
+    call site:
+        lvalue: *if{}else{} -> *(NAME(*mut (lvalue_spelling), rvalue_spelling))
+        rvalue: if{}else{} -> NAME(*mut (lvalue_spelling), rvalue_spelling)
+arg:
+    type:
+        lvalue: *if{}else{0 as *mut T} -> *mut T
+        rvalue: if{}else{*(0 as *mut T)} -> T
+    mut: lvalue->(&mut x, *x = ..., ... = *x), rvalue->own(val)
+    ban: side effect, !expr
+    use:
+        lvalue: *if{}else{} -> *name
+        rvalue: if{}else{} -> name
+
+own -> own
+&mut -> &mut
+
+t = *&mut s
+    requires typeof(s) to implement Copy trait
+    is actually copying the value of t and storing into s
+
+let mut hrs: HayrollSeed = HayrollSeed {
+    ...
+};
+hrs = (*&mut HayrollSeed { // The star here can be omitted due to coercion, but the parentheses must be written out
+    literal: ast::Literal::cast(element.parent()?)?,
+    tag: tag.clone(),
+    file_id: file_id.clone(),
+}).clone();
