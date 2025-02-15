@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(Hayroll LANGUAGES C CXX)
 
+# Clang and LLVM
+
 #===============================================================================
 # 1. VERIFY CLANG INSTALLATION DIR
 #===============================================================================
@@ -51,6 +53,17 @@ message("CLANG STATUS:
 # Set the LLVM and Clang header and library paths
 include_directories(SYSTEM "${LLVM_INCLUDE_DIRS};${CLANG_INCLUDE_DIRS}")
 
+# Z3
+find_package(Z3
+  REQUIRED
+  CONFIG
+)
+
+message(STATUS "Z3_FOUND: ${Z3_FOUND}")
+message(STATUS "Found Z3 ${Z3_VERSION_STRING}")
+message(STATUS "Z3_DIR: ${Z3_DIR}")
+
+# awk
 find_program(AWK_EXECUTABLE awk REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -60,6 +73,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include_directories(include)
 
 add_executable(seeder src/seeder.cpp)
+
+add_executable(pioneer src/pioneer.cpp)
+target_include_directories(pioneer PRIVATE ${Z3_CXX_INCLUDE_DIRS})
+target_link_libraries(pioneer PRIVATE ${Z3_LIBRARIES})
+target_compile_options(pioneer PRIVATE ${Z3_COMPONENT_CXX_FLAGS})
 
 add_executable(remove-comments src/RemoveComments.cpp)
 target_link_libraries(remove-comments

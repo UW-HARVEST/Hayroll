@@ -69,6 +69,7 @@ trace.txt
 
 # Soft links
 /seeder
+/pioneer
 /analyzer
 /ws
 /remove-comments
