@@ -14,13 +14,13 @@ set(CT_LLVM_INSTALL_DIR "/usr")
 set(CT_LLVM_INCLUDE_DIR "${CT_LLVM_INSTALL_DIR}/include/llvm-14")
 if(NOT EXISTS "${CT_LLVM_INCLUDE_DIR}")
 message(FATAL_ERROR
-  " CT_LLVM_INSTALL_DIR (${CT_LLVM_INCLUDE_DIR}) is invalid.")
+    " CT_LLVM_INSTALL_DIR (${CT_LLVM_INCLUDE_DIR}) is invalid.")
 endif()
 
 set(CT_LLVM_CMAKE_FILE "${CT_LLVM_INSTALL_DIR}/lib/cmake/clang-14/ClangConfig.cmake")
 if(NOT EXISTS "${CT_LLVM_CMAKE_FILE}")
 message(FATAL_ERROR
-  " CT_LLVM_CMAKE_FILE (${CT_LLVM_CMAKE_FILE}) is invalid.")
+    " CT_LLVM_CMAKE_FILE (${CT_LLVM_CMAKE_FILE}) is invalid.")
 endif()
 
 #===============================================================================
@@ -37,7 +37,7 @@ find_package(Clang REQUIRED CONFIG)
 # AddClang.cmake, we have to use LLVM_VERSION_MAJOR instead.
 # TODO: Revisit when next version is released.
 if(NOT "${CLANG_VERSION}" VERSION_EQUAL "${LLVM_VERSION_MAJOR}")
-  message(FATAL_ERROR "Found LLVM ${LLVM_VERSION_MAJOR}, but need LLVM ${CLANG_VERSION}")
+    message(FATAL_ERROR "Found LLVM ${LLVM_VERSION_MAJOR}, but need LLVM ${CLANG_VERSION}")
 endif()
 
 set(CLANG_C_COMPILER "clang-${CLANG_VERSION}")
@@ -46,8 +46,8 @@ message(STATUS "Using ClangConfig.cmake in: ${CT_LLVM_INSTALL_DIR}")
 
 
 message("CLANG STATUS:
-  Includes (clang)    ${CLANG_INCLUDE_DIRS}
-  Includes (llvm)     ${LLVM_INCLUDE_DIRS}"
+    Includes (clang)    ${CLANG_INCLUDE_DIRS}
+    Includes (llvm)     ${LLVM_INCLUDE_DIRS}"
 )
 
 # Set the LLVM and Clang header and library paths
@@ -55,8 +55,8 @@ include_directories(SYSTEM "${LLVM_INCLUDE_DIRS};${CLANG_INCLUDE_DIRS}")
 
 # Z3
 find_package(Z3
-  REQUIRED
-  CONFIG
+    REQUIRED
+    CONFIG
 )
 
 message(STATUS "Z3_FOUND: ${Z3_FOUND}")
@@ -66,6 +66,18 @@ message(STATUS "Z3_DIR: ${Z3_DIR}")
 # awk
 find_program(AWK_EXECUTABLE awk REQUIRED)
 
+message(STATUS "AWK_EXECUTABLE: ${AWK_EXECUTABLE}")
+
+# tree-sitter
+set(TREE_SITTER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tree-sitter")
+set(TREE_SITTER_C_PREPROC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tree-sitter-c_preproc")
+set(TREE_SITTER_INCLUDE_DIR "${TREE_SITTER_DIR}/lib/include")
+set(TREE_SITTER_C_PREPROC_INCLUDE_DIR "${TREE_SITTER_C_PREPROC_DIR}/bindings/c")
+
+message(STATUS "TREE_SITTER_DIR: ${TREE_SITTER_DIR}")
+message(STATUS "TREE_SITTER_C_PREPROC_DIR: ${TREE_SITTER_C_PREPROC_DIR}")
+
+# C++
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -75,8 +87,16 @@ include_directories(include)
 add_executable(seeder src/seeder.cpp)
 
 add_executable(pioneer src/pioneer.cpp)
-target_include_directories(pioneer PRIVATE ${Z3_CXX_INCLUDE_DIRS})
-target_link_libraries(pioneer PRIVATE ${Z3_LIBRARIES})
+target_include_directories(pioneer PRIVATE
+    ${Z3_CXX_INCLUDE_DIRS}
+    ${TREE_SITTER_INCLUDE_DIR}
+    ${TREE_SITTER_C_PREPROC_INCLUDE_DIR}
+)
+target_link_libraries(pioneer PRIVATE
+    ${Z3_LIBRARIES}
+    ${TREE_SITTER_DIR}/libtree-sitter.a
+    ${TREE_SITTER_C_PREPROC_DIR}/src/parser.o
+)
 target_compile_options(pioneer PRIVATE ${Z3_COMPONENT_CXX_FLAGS})
 
 add_executable(remove-comments src/RemoveComments.cpp)
@@ -114,6 +134,7 @@ target_link_libraries(macro-skeleton
     clangDriver
     LLVMSupport
 )
+
 
 # Rust
 
