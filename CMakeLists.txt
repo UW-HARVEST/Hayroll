@@ -176,7 +176,7 @@ target_link_libraries(IncludeTree_test PRIVATE
     clang_tooling_config
 )
 
-# add_test(
-#     NAME IncludeTree_test
-#     COMMAND IncludeTree_test
-# )
+add_test(
+    NAME IncludeTree_test
+    COMMAND IncludeTree_test
+)

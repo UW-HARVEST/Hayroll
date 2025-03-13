@@ -111,6 +111,33 @@ struct IncludeTree
         return std::nullopt;
     }
 
+    // Merge the other tree into this tree
+    // Takes ownership of the other tree
+    // Force using move semantics in function signature to indicate that the other tree will be moved
+    void merge(std::shared_ptr<IncludeTree>&& other)
+    {
+        for (auto& child : other->children)
+        {
+            // Do not use findChildren here
+            // The include path must be identical to merge
+            bool merged = false;
+            for (auto& thisChild : children)
+            {
+                if (thisChild->path == child->path)
+                {
+                    thisChild->merge(std::move(child));
+                    merged = true;
+                    break;
+                }
+            }
+            if (!merged)
+            {
+                children.push_back(std::move(child));
+            }
+        }
+        other->children.clear();
+    }
+
     std::string toString(size_t depth = 0) const
     {
         std::stringstream ss;
