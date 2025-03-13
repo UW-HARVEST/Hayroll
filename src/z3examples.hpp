@@ -1,3 +1,6 @@
+#ifndef HAYROLL_Z3EXAMPLES_HPP
+#define HAYROLL_Z3EXAMPLES_HPP
+
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -1345,3 +1348,5 @@ void iterate_args() {
         std::cout << "arg " << arg << "\n";
 
 }
+
+#endif // Z3EXAMPLES_HPP

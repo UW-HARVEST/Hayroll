@@ -9,6 +9,12 @@ using namespace z3;
 
 #include "z3examples.hpp"
 
+#ifdef CLANG_EXE
+const char * default_clang_exe = CLANG_EXE;
+#else
+const char * default_clang_exe = "clang";
+#endif
+
 int main() {
 
     try {
