@@ -65,6 +65,19 @@ int main(int argc, char **argv)
     root1->merge(std::move(root2));
     std::cout << "Merged Include Tree: \n" << root1->toString() << std::endl;
 
+    // Find includes: nonsense/../test.h, stdio.h, bits/types.h, bits/timesize.h, bits/wordsize.h
+
+    auto node1 = root1->findInclude("nonsense/../test.h").value();
+    std::cout << "Found include for nonsense/../test.h: " << node1->path.string() << std::endl;
+    auto node2 = node1->findInclude("stdio.h").value();
+    std::cout << "Found include for stdio.h: " << node2->path.string() << std::endl;
+    auto node3 = node2->findInclude("bits/types.h").value();
+    std::cout << "Found include for bits/types.h: " << node3->path.string() << std::endl;
+    auto node4 = node3->findInclude("bits/timesize.h").value();
+    std::cout << "Found include for bits/timesize.h: " << node4->path.string() << std::endl;
+    auto node5 = node4->findInclude("bits/wordsize.h").value();
+    std::cout << "Found include for bits/wordsize.h: " << node5->path.string() << std::endl;
+
     std::filesystem::remove_all(tmpPath);
 
     return 0;
