@@ -79,6 +79,9 @@ message(STATUS "Z3_DIR: ${Z3_DIR}")
 # awk
 find_program(AWK_EXE awk REQUIRED)
 
+# spdlog
+find_package(spdlog REQUIRED)
+
 message(STATUS "AWK_EXE: ${AWK_EXE}")
 
 # tree-sitter
@@ -91,6 +94,10 @@ message(STATUS "TREE_SITTER_DIR: ${TREE_SITTER_DIR}")
 message(STATUS "TREE_SITTER_C_PREPROC_DIR: ${TREE_SITTER_C_PREPROC_DIR}")
 
 # Common config
+link_libraries(
+    spdlog::spdlog
+)
+
 add_library(clang_tooling_config INTERFACE)
 target_link_libraries(clang_tooling_config INTERFACE
     clangTooling
@@ -171,7 +178,15 @@ add_custom_target(
 
 enable_testing()
 
+add_library(testing_config INTERFACE)
+target_compile_definitions(testing_config INTERFACE
+    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG
+)
+
 add_executable(TempDir_test tests/TempDir_test.cpp)
+target_link_libraries(TempDir_test PRIVATE
+    testing_config
+)
 
 add_test(
     NAME TempDir_test
@@ -180,6 +195,7 @@ add_test(
 
 add_executable(IncludeTree_test tests/IncludeTree_test.cpp)
 target_link_libraries(IncludeTree_test PRIVATE
+    testing_config
     clang_tooling_config
 )
 

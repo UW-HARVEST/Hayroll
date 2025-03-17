@@ -2,10 +2,12 @@
 #include <filesystem>
 #include <fstream>
 
+#include <spdlog/spdlog.h>
 #include "subprocess.hpp"
 
 #include "IncludeTree.hpp"
 #include "TempDir.hpp"
+#include "IncludeResolver.hpp"
 
 #ifdef CLANG_EXE
 const char * clang_exe_path = CLANG_EXE;
@@ -16,6 +18,10 @@ const char * clang_exe_path = "clang";
 int main(int argc, char **argv)
 {
     using namespace Hayroll;
+
+    spdlog::set_level(spdlog::level::debug);
+
+    IncludeResolver resolver(clang_exe_path, {});
 
     auto tmpDir = TempDir();
     auto tmpPath = tmpDir.getPath();
@@ -35,48 +41,33 @@ int main(int argc, char **argv)
             "#endif\n";
     srcFile.close();
 
-    // clang -H -fsyntax-only {srcPath}
-    subprocess::Popen proc1
-    (
-        {clang_exe_path, "-H", "-fsyntax-only", srcPath},
-        subprocess::output{subprocess::PIPE},
-        subprocess::error{subprocess::PIPE}
-    );
-    auto [out1, err1] = proc1.communicate();
+    auto root = IncludeTree::make(0, srcPath);
+    auto node = root;
 
-    std::cout << "Input Include Tree 1: \n" << err1.buf.data() << std::endl;
-    std::string_view hierarchy1(err1.buf.data(), err1.length);
-    auto root1 = IncludeTree::parseTreeFromString(hierarchy1);
-    std::cout << "Parsed Include Tree 1: \n" << root1->toString() << std::endl;
+    // (isSystemInclude, includeName)
+    std::vector<std::pair<bool, std::string>> includes = {
+        { false, "nonsense/../test.h" },
+        { true, "stdio.h" },
+        { true, "bits/types.h" },
+        { true, "bits/timesize.h" },
+        { false, "bits/wordsize.h" }, // This is wrong, but just testing parent paths
+    };
 
-    subprocess::Popen proc2
-    (
-        {clang_exe_path, "-H", "-fsyntax-only", srcPath, "-DA"},
-        subprocess::output{subprocess::PIPE},
-        subprocess::error{subprocess::PIPE}
-    );
-    auto [out2, err2] = proc2.communicate();
+    for (const auto& [isSystemInclude, includeName] : includes)
+    {
+        auto ancestorDirs = node->getAncestorDirs();
+        std::cout << "Ancestor dirs: \n";
+        for (const auto& dir : ancestorDirs)
+        {
+            std::cout << dir << "\n";
+        }
+        auto includePath = resolver.resolveInclude(isSystemInclude, includeName, ancestorDirs);
+        std::cout << "Resolved include path: " << includePath << std::endl;
+        node->addChild(0, includePath);
+        node = node->children[0];
+    }
 
-    std::cout << "Input Include Tree 2: \n" << err2.buf.data() << std::endl;
-    std::string_view hierarchy2(err2.buf.data(), err2.length);
-    auto root2 = IncludeTree::parseTreeFromString(hierarchy2);
-    std::cout << "Parsed Include Tree 2: \n" << root2->toString() << std::endl;
-
-    root1->merge(std::move(root2));
-    std::cout << "Merged Include Tree: \n" << root1->toString() << std::endl;
-
-    // Find includes: nonsense/../test.h, stdio.h, bits/types.h, bits/timesize.h, bits/wordsize.h
-
-    auto node1 = root1->findInclude("nonsense/../test.h").value();
-    std::cout << "Found include for nonsense/../test.h: " << node1->path.string() << std::endl;
-    auto node2 = node1->findInclude("stdio.h").value();
-    std::cout << "Found include for stdio.h: " << node2->path.string() << std::endl;
-    auto node3 = node2->findInclude("bits/types.h").value();
-    std::cout << "Found include for bits/types.h: " << node3->path.string() << std::endl;
-    auto node4 = node3->findInclude("bits/timesize.h").value();
-    std::cout << "Found include for bits/timesize.h: " << node4->path.string() << std::endl;
-    auto node5 = node4->findInclude("bits/wordsize.h").value();
-    std::cout << "Found include for bits/wordsize.h: " << node5->path.string() << std::endl;
+    std::cout << root->toString() << std::endl;
 
     return 0;
 }
