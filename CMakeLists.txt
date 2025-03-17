@@ -171,6 +171,13 @@ add_custom_target(
 
 enable_testing()
 
+add_executable(TempDir_test tests/TempDir_test.cpp)
+
+add_test(
+    NAME TempDir_test
+    COMMAND TempDir_test
+)
+
 add_executable(IncludeTree_test tests/IncludeTree_test.cpp)
 target_link_libraries(IncludeTree_test PRIVATE
     clang_tooling_config

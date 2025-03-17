@@ -8,10 +8,8 @@
 #include <optional>
 #include <sstream>
 
-namespace Hayroll::IncludeTree
+namespace Hayroll
 {
-
-namespace fs = std::filesystem;
 
 struct IncludeTree;
 using IncludeTreePtr = std::shared_ptr<IncludeTree>;
@@ -21,7 +19,7 @@ struct IncludeTree
     : public std::enable_shared_from_this<IncludeTree>
 {
 public:
-    fs::path path;
+    std::filesystem::path path;
     std::vector<IncludeTreePtr> children;
     std::weak_ptr<IncludeTree> parent;
 
@@ -30,7 +28,7 @@ public:
         return std::make_shared<IncludeTree>();
     }
 
-    static IncludeTreePtr make(const fs::path& path)
+    static IncludeTreePtr make(const std::filesystem::path& path)
     {
         IncludeTreePtr node = std::make_shared<IncludeTree>();
         node->path = path;

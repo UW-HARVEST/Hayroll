@@ -5,6 +5,7 @@
 #include "subprocess.hpp"
 
 #include "IncludeTree.hpp"
+#include "TempDir.hpp"
 
 #ifdef CLANG_EXE
 const char * clang_exe_path = CLANG_EXE;
@@ -14,11 +15,10 @@ const char * clang_exe_path = "clang";
 
 int main(int argc, char **argv)
 {
-    using namespace Hayroll::IncludeTree;
+    using namespace Hayroll;
 
-    auto tmpPath = std::filesystem::temp_directory_path() / "hayroll_IncTree_test";
-    std::filesystem::remove_all(tmpPath);
-    std::filesystem::create_directories(tmpPath);
+    auto tmpDir = TempDir();
+    auto tmpPath = tmpDir.getPath();
     std::filesystem::create_directories(tmpPath / "nonsense");
 
     auto headerPath = tmpPath / "test.h";
@@ -77,8 +77,6 @@ int main(int argc, char **argv)
     std::cout << "Found include for bits/timesize.h: " << node4->path.string() << std::endl;
     auto node5 = node4->findInclude("bits/wordsize.h").value();
     std::cout << "Found include for bits/wordsize.h: " << node5->path.string() << std::endl;
-
-    std::filesystem::remove_all(tmpPath);
 
     return 0;
 }
