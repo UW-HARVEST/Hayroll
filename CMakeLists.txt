@@ -180,7 +180,7 @@ enable_testing()
 
 add_library(testing_config INTERFACE)
 target_compile_definitions(testing_config INTERFACE
-    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG
+    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_INFO
 )
 
 add_executable(TempDir_test tests/TempDir_test.cpp)

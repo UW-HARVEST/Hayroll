@@ -18,7 +18,7 @@ namespace Hayroll
 class IncludeResolver
 {
 public:
-    IncludeResolver(const std::string& ccExePath, const std::vector<std::filesystem::path>& includePaths)
+    IncludeResolver(const std::string & ccExePath, const std::vector<std::filesystem::path> & includePaths)
         : ccExePath(ccExePath), includePaths(includePaths)
     {
     }
@@ -26,8 +26,8 @@ public:
     std::filesystem::path resolveInclude
     (
         bool isSystemInclude,
-        const std::string& includeName,
-        const std::vector<std::filesystem::path>& parentPaths // Accepted in leave-first order
+        const std::string & includeName,
+        const std::vector<std::filesystem::path> & parentPaths // Accepted in leave-first order
     ) const
     {
         // Create a stub file with the include directive
@@ -54,21 +54,21 @@ public:
         std::vector<std::string> ccArgs = {ccExePath, "-H", "-fsyntax-only", stubPath};
         if (!isSystemInclude)
         {
-            for (const auto& parentPath : parentPaths)
+            for (const auto & parentPath : parentPaths)
             {
                 ccArgs.push_back("-I" + parentPath.string());
             }
         }
-        for (const auto& includePath : includePaths)
+        for (const auto & includePath : includePaths)
         {
             ccArgs.push_back("-I" + includePath.string());
         }
 
         // Log ccArgs, each in a new line
-        SPDLOG_DEBUG("ccArgs:");
-        for (const auto& arg : ccArgs)
+        SPDLOG_INFO("ccArgs:");
+        for (const auto & arg : ccArgs)
         {
-            SPDLOG_DEBUG("{}", arg);
+            SPDLOG_INFO("{}", arg);
         }
 
         subprocess::Popen proc
@@ -80,18 +80,19 @@ public:
         auto [out, err] = proc.communicate();
 
         std::string_view hierarchy(err.buf.data(), err.length);
+        SPDLOG_INFO("Include hierarchy:\n{}", hierarchy);
         return parseStubIncludePath(hierarchy);
     }
 
-    std::filesystem::path resolveSystemInclude(const std::string& includeName) const
+    std::filesystem::path resolveSystemInclude(const std::string & includeName) const
     {
         return resolveInclude(true, includeName, {});
     }
 
     std::filesystem::path resolveUserInclude
     (
-        const std::string& includeName, 
-        const std::vector<std::filesystem::path>& parentPaths
+        const std::string & includeName, 
+        const std::vector<std::filesystem::path> & parentPaths
     ) const
     {
         return resolveInclude(false, includeName, parentPaths);
@@ -140,7 +141,7 @@ private:
     // It is a tree structure, but we only care about the first line of each include
     static std::string parseStubIncludePath(const std::string_view src)
     {
-        SPDLOG_DEBUG("Parsing include hierarchy:\n{}", src.data());
+        SPDLOG_INFO("Parsing include hierarchy:\n{}", src.data());
         std::istringstream iss(src.data());
         std::string line;
         while (std::getline(iss, line))
@@ -149,7 +150,7 @@ private:
             {
                 continue;
             }
-            SPDLOG_DEBUG("Parsed include: {}", line.substr(2).data());
+            SPDLOG_INFO("Parsed include: {}", line.substr(2).data());
             return line.substr(2);
         }
         return "";

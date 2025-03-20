@@ -24,7 +24,12 @@ public:
     std::map<int, IncludeTreePtr> children; // Line number to IncludeTreePtr
     std::weak_ptr<IncludeTree> parent;
 
-    static IncludeTreePtr make(int line, const std::filesystem::path& path, IncludeTreePtr parent = nullptr)
+    static IncludeTreePtr make
+    (
+        int line,
+        const std::filesystem::path & path,
+        IncludeTreePtr parent = nullptr
+    )
     {
         auto tree = std::make_shared<IncludeTree>();
         tree->line = line;
@@ -33,7 +38,7 @@ public:
         return tree;
     }
 
-    void addChild(int line, const std::filesystem::path& path)
+    void addChild(int line, const std::filesystem::path & path)
     {
         children[line] = make(line, path, shared_from_this());
     }

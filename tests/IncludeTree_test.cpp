@@ -52,14 +52,20 @@ int main(int argc, char **argv)
         { true, "stdio.h" },
         { true, "bits/types.h" },
         { true, "bits/timesize.h" },
-        { false, "bits/wordsize.h" }, // This is wrong, but just testing parent paths
+        // This is actually a systems include, but just to test parent paths
+        { false, "bits/wordsize.h" },
+        // Should produce an error internally, but it's ignored as expected
+        // /usr/include/x86_64-linux-gnu/bits/typesizes.h:20:3: error: "Never include <bits/typesizes.h> directly; use <sys/types.h> instead."
+        // # error "Never include <bits/typesizes.h> directly; use <sys/types.h> instead."
+        //   ^
+        { true, "bits/typesizes.h" },
     };
 
-    for (const auto& [isSystemInclude, includeName] : includes)
+    for (const auto & [isSystemInclude, includeName] : includes)
     {
         auto ancestorDirs = node->getAncestorDirs();
         std::cout << "Ancestor dirs: \n";
-        for (const auto& dir : ancestorDirs)
+        for (const auto & dir : ancestorDirs)
         {
             std::cout << dir << "\n";
         }
