@@ -23,6 +23,8 @@ int main(int argc, char **argv)
 
     IncludeResolver resolver(clang_exe_path, {});
 
+    std::cout << "Predefined macros:\n" << resolver.getPredefinedMacros() << std::endl;
+
     auto tmpDir = TempDir();
     auto tmpPath = tmpDir.getPath();
     std::filesystem::create_directories(tmpPath / "nonsense");

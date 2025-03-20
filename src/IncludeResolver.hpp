@@ -28,7 +28,7 @@ public:
         bool isSystemInclude,
         const std::string& includeName,
         const std::vector<std::filesystem::path>& parentPaths // Accepted in leave-first order
-    )
+    ) const
     {
         // Create a stub file with the include directive
         // Containing only #include <includeName> or #include "includeName"
@@ -83,14 +83,35 @@ public:
         return parseStubIncludePath(hierarchy);
     }
 
-    std::filesystem::path resolveSystemInclude(const std::string& includeName)
+    std::filesystem::path resolveSystemInclude(const std::string& includeName) const
     {
         return resolveInclude(true, includeName, {});
     }
 
-    std::filesystem::path resolveUserInclude(const std::string& includeName, const std::vector<std::filesystem::path>& parentPaths)
+    std::filesystem::path resolveUserInclude
+    (
+        const std::string& includeName, 
+        const std::vector<std::filesystem::path>& parentPaths
+    ) const
     {
         return resolveInclude(false, includeName, parentPaths);
+    }
+
+    std::string getPredefinedMacros() const
+    {
+        // cc -dM -E - < /dev/null
+        std::vector<std::string> ccArgs = {ccExePath, "-dM", "-E", "-"};
+        subprocess::Popen proc
+        (
+            ccArgs,
+            subprocess::input{"/dev/null"},
+            subprocess::output{subprocess::PIPE},
+            subprocess::error{subprocess::PIPE}
+        );
+        // char eof = EOF;
+        // proc.kill();
+        auto [out, err] = proc.communicate();
+        return out.buf.data();
     }
 
 private:
