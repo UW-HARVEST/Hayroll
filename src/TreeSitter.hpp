@@ -17,6 +17,8 @@ namespace Hayroll
 
 using TSPoint = ts::TSPoint;
 using TSRange = ts::TSRange;
+using TSStateId = ts::TSStateId;
+using TSFieldId = ts::TSFieldId;
 
 namespace TSUtils
 {
@@ -24,12 +26,14 @@ namespace TSUtils
     TSRange freeTSRangePtrToTSRange(const ts::TSRange *range);
 } // namespace TSUtils
 
+class TSTreeCursor;
+
 class TSNode
 {
 public:
     TSNode(ts::TSNode node);
 
-    operator ts::TSNode();
+    operator ts::TSNode() const;
     TSNode get();
 
     std::string type() const;
@@ -72,18 +76,19 @@ public:
     bool hasChanges() const;
     bool hasError() const;
     bool isError() const;
-    ts::TSStateId parseState() const;
-    ts::TSStateId nextParseState() const;
+    TSStateId parseState() const;
+    TSStateId nextParseState() const;
     TSNode parent() const;
     TSNode childWithDescendant(TSNode descendant) const;
 
     std::string fieldNameForChild(uint32_t child_index) const;
     std::string fieldNameForNamedChild(uint32_t named_child_index) const;
     TSNode childByFieldName(const std::string & name) const;
-    TSNode childByFieldId(ts::TSFieldId field_id) const;
+    TSNode childByFieldId(TSFieldId field_id) const;
 
     // Helper functions
     std::string text(std::string_view source) const;
+    TSTreeCursor cursor() const;
 private:
     ts::TSNode node;
 };
@@ -95,6 +100,7 @@ public:
     ~TSTree();
 
     operator ts::TSTree *();
+    operator const ts::TSTree *() const;
     ts::TSTree * get();
 
     TSNode rootNode() const;
@@ -103,7 +109,7 @@ public:
 
     std::tuple<ts::TSRange, uint32_t> includedRanges() const;
     void edit(const ts::TSInputEdit *edit);
-    std::tuple<ts::TSRange, uint32_t> changedRanges(const ts::TSTree * oldTree) const;
+    std::tuple<ts::TSRange, uint32_t> changedRanges(const TSTree & oldTree) const;
     void printDotGraph(int fileDescriptor) const;
 private:
     ts::TSTree * tree;
@@ -117,12 +123,13 @@ public:
     ~TSParser();
 
     operator ts::TSParser *();
+    operator const ts::TSParser *() const;
     ts::TSParser * get();
 
     const ts::TSLanguage * language() const;
     bool setLanguage(const ts::TSLanguage * language);
 
-    TSTree parseString(const std::string & str);
+    TSTree parseString(std::string_view source);
     void reset();
 private:
     ts::TSParser * parser;
@@ -135,6 +142,7 @@ public:
     ~TSQuery();
 
     operator ts::TSQuery *();
+    operator const ts::TSQuery *() const;
     ts::TSQuery * get();
 
     uint32_t patternCount() const;
@@ -150,9 +158,11 @@ class TSTreeCursor
 {
 public:
     TSTreeCursor(ts::TSTreeCursor cursor);
-    TSTreeCursor(TSNode node);
+    TSTreeCursor(ts::TSNode node);
 
-    operator ts::TSTreeCursor();
+    operator ts::TSTreeCursor() const;
+    operator ts::TSTreeCursor *();
+    operator const ts::TSTreeCursor *() const;
     void reset(TSNode node);
     void resetTo(const TSTreeCursor &src);
     TSNode currentNode() const;
@@ -163,11 +173,11 @@ public:
     bool gotoPreviousSibling();
     bool gotoFirstChild();
     bool gotoLastChild();
-    void gotoDescendant(uint32_t goal_descendant_index);
+    void gotoDescendant(uint32_t goalDescendantIndex);
     uint32_t currentDescendantIndex() const;
     uint32_t currentDepth() const;
-    int64_t gotoFirstChildForByte(uint32_t goal_byte);
-    int64_t gotoFirstChildForPoint(TSPoint goal_point);
+    int64_t gotoFirstChildForByte(uint32_t goalByte);
+    int64_t gotoFirstChildForPoint(TSPoint goalPoint);
     TSTreeCursor copy() const;
 private:
     ts::TSTreeCursor cursor;
@@ -200,7 +210,7 @@ TSNode::TSNode(ts::TSNode node)
 {
 }
 
-TSNode::operator ts::TSNode()
+TSNode::operator ts::TSNode() const
 {
     return node;
 }
@@ -375,12 +385,12 @@ bool TSNode::isError() const
     return ts::ts_node_is_error(node);
 }
 
-ts::TSStateId TSNode::parseState() const
+TSStateId TSNode::parseState() const
 {
     return ts::ts_node_parse_state(node);
 }
 
-ts::TSStateId TSNode::nextParseState() const
+TSStateId TSNode::nextParseState() const
 {
     return ts::ts_node_next_parse_state(node);
 }
@@ -420,6 +430,11 @@ std::string TSNode::text(std::string_view source) const
     return std::string(source.substr(startByte(), endByte() - startByte()));
 }
 
+TSTreeCursor TSNode::cursor() const
+{
+    return TSTreeCursor(node);
+}
+
 // TSTree
 
 TSTree::TSTree(ts::TSTree * tree)
@@ -433,6 +448,11 @@ TSTree::~TSTree()
 }
 
 TSTree::operator ts::TSTree *()
+{
+    return tree;
+}
+
+TSTree::operator const ts::TSTree *() const
 {
     return tree;
 }
@@ -469,7 +489,7 @@ void TSTree::edit(const ts::TSInputEdit *edit)
     ts::ts_tree_edit(tree, edit);
 }
 
-std::tuple<ts::TSRange, uint32_t> TSTree::changedRanges(const ts::TSTree * oldTree) const
+std::tuple<ts::TSRange, uint32_t> TSTree::changedRanges(const TSTree & oldTree) const
 {
     uint32_t * length;
     TSRange range = TSUtils::freeTSRangePtrToTSRange(ts::ts_tree_get_changed_ranges(oldTree, tree, length));
@@ -505,6 +525,11 @@ TSParser::operator ts::TSParser *()
     return parser;
 }
 
+inline TSParser::operator const ts::TSParser *() const
+{
+    return parser;
+}
+
 ts::TSParser * TSParser::get()
 {
     return parser;
@@ -520,9 +545,9 @@ bool TSParser::setLanguage(const ts::TSLanguage * language)
     return ts::ts_parser_set_language(parser, language);
 }
 
-TSTree TSParser::parseString(const std::string & str)
+TSTree TSParser::parseString(std::string_view str)
 {
-    return ts::ts_parser_parse_string(parser, nullptr, str.c_str(), str.size());
+    return ts::ts_parser_parse_string(parser, nullptr, str.data(), str.size());
 }
 
 void TSParser::reset()
@@ -549,6 +574,11 @@ TSQuery::~TSQuery()
 }
 
 TSQuery::operator ts::TSQuery *()
+{
+    return query;
+}
+
+TSQuery::operator const ts::TSQuery *() const
 {
     return query;
 }
@@ -590,14 +620,24 @@ TSTreeCursor::TSTreeCursor(ts::TSTreeCursor cursor)
 {
 }
 
-TSTreeCursor::TSTreeCursor(TSNode node)
+TSTreeCursor::TSTreeCursor(ts::TSNode node)
     : cursor(ts::ts_tree_cursor_new(node))
 {
 }
 
-TSTreeCursor::operator ts::TSTreeCursor()
+TSTreeCursor::operator ts::TSTreeCursor() const
 {
     return cursor;
+}
+
+TSTreeCursor::operator ts::TSTreeCursor *()
+{
+    return &cursor;
+}
+
+TSTreeCursor::operator const ts::TSTreeCursor *() const
+{
+    return &cursor;
 }
 
 void TSTreeCursor::reset(TSNode node)
@@ -605,9 +645,9 @@ void TSTreeCursor::reset(TSNode node)
     ts::ts_tree_cursor_reset(&cursor, node);
 }
 
-void TSTreeCursor::resetTo(const TSTreeCursor &src)
+void TSTreeCursor::resetTo(const TSTreeCursor & src)
 {
-    ts::ts_tree_cursor_reset_to(&cursor, &src.cursor);
+    ts::ts_tree_cursor_reset_to(&cursor, src);
 }
 
 TSNode TSTreeCursor::currentNode() const
@@ -651,9 +691,9 @@ bool TSTreeCursor::gotoLastChild()
     return ts::ts_tree_cursor_goto_last_child(&cursor);
 }
 
-void TSTreeCursor::gotoDescendant(uint32_t goal_descendant_index)
+void TSTreeCursor::gotoDescendant(uint32_t goalDescendantIndex)
 {
-    ts::ts_tree_cursor_goto_descendant(&cursor, goal_descendant_index);
+    ts::ts_tree_cursor_goto_descendant(&cursor, goalDescendantIndex);
 }
 
 uint32_t TSTreeCursor::currentDescendantIndex() const
@@ -666,14 +706,14 @@ uint32_t TSTreeCursor::currentDepth() const
     return ts::ts_tree_cursor_current_depth(&cursor);
 }
 
-int64_t TSTreeCursor::gotoFirstChildForByte(uint32_t goal_byte)
+int64_t TSTreeCursor::gotoFirstChildForByte(uint32_t goalByte)
 {
-    return ts::ts_tree_cursor_goto_first_child_for_byte(&cursor, goal_byte);
+    return ts::ts_tree_cursor_goto_first_child_for_byte(&cursor, goalByte);
 }
 
-int64_t TSTreeCursor::gotoFirstChildForPoint(TSPoint goal_point)
+int64_t TSTreeCursor::gotoFirstChildForPoint(TSPoint goalPoint)
 {
-    return ts::ts_tree_cursor_goto_first_child_for_point(&cursor, goal_point);
+    return ts::ts_tree_cursor_goto_first_child_for_point(&cursor, goalPoint);
 }
 
 TSTreeCursor TSTreeCursor::copy() const
