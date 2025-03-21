@@ -4,9 +4,9 @@
 #include <variant>
 #include <memory>
 
-#include "tree_sitter/api.h"
 #include "tree_sitter/tree-sitter-c-preproc.h"
 
+#include "TreeSitter.hpp"
 #include "SymbolTable.hpp"
 #include "IncludeResolver.hpp"
 
@@ -98,14 +98,13 @@ int main()
 
     IncludeResolver resolver(clang_exe_path, {});
 
-    TSParser *parser = ts_parser_new();
-    ts_parser_set_language(parser, tree_sitter_c_preproc());
+    TSParser parser(tree_sitter_c_preproc());
 
     std::string predefinedMacros = resolver.getPredefinedMacros();
 
     std::cout << "Predefined macros:\n" << predefinedMacros << std::endl;
     
-    TSTree *tree = ts_parser_parse_string(parser, nullptr, predefinedMacros.c_str(), predefinedMacros.size());
+    TSTree tree = parser.parseString(predefinedMacros);
 
     // Walk the tree and add the macros to the symbol table
     // The tree will be like:
@@ -119,40 +118,37 @@ int main()
     //         name: identifier [1, 8] - [1, 29]
     //         value: preproc_arg [1, 30] - [1, 47]
 
-    TSTreeCursor cursor = ts_tree_cursor_new(ts_tree_root_node(tree));
-    ts_tree_cursor_goto_first_child(&cursor);
+    TSTreeCursor cursor(tree.rootNode());
+    cursor.gotoFirstChild();
     while (true)
     {
-        TSNode node = ts_tree_cursor_current_node(&cursor);
+        TSNode node = cursor.currentNode();
 
-        assert(ts_node_is_named(node));
+        assert(node.isNamed());
 
-        TSNode nameNode = ts_node_child_by_field_name(node, "name", strlen("name"));
-        TSNode valueNode = ts_node_child_by_field_name(node, "value", strlen("value"));
+        TSNode nameNode = node.childByFieldName("name");
+        TSNode valueNode = node.childByFieldName("value");
 
-        assert(ts_node_is_null(nameNode) == false);
-        uint32_t nameStart = ts_node_start_byte(nameNode);
-        uint32_t nameEnd = ts_node_end_byte(nameNode);
+        assert(!nameNode.isNull());
+        uint32_t nameStart = nameNode.startByte();
+        uint32_t nameEnd = nameNode.endByte();
         std::string name = predefinedMacros.substr(nameStart, nameEnd - nameStart);
 
         std::string value;
-        if (ts_node_is_null(valueNode) == false)
+        if (!valueNode.isNull())
         {
-            uint32_t valueStart = ts_node_start_byte(valueNode);
-            uint32_t valueEnd = ts_node_end_byte(valueNode);
+            uint32_t valueStart = valueNode.startByte();
+            uint32_t valueEnd = valueNode.endByte();
             value = predefinedMacros.substr(valueStart, valueEnd - valueStart);
         }
 
         symbolTable->define(ObjectSymbol{std::move(name), std::move(value)});
 
-        if (!ts_tree_cursor_goto_next_sibling(&cursor))
+        if (!cursor.gotoNextSibling())
         {
             break;
         }
     }
-
-    ts_tree_delete(tree); // Fuck this C API!!!!!
-    ts_parser_delete(parser); // Hayroll is all about ending it
 
     std::cout << symbolTable->toString() << std::endl;
 

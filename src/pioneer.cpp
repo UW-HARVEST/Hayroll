@@ -3,8 +3,6 @@
 #include <vector>
 
 #include "z3++.h"
-#include "tree_sitter/api.h"
-#include "tree_sitter/tree-sitter-c-preproc.h"
 
 using namespace z3;
 

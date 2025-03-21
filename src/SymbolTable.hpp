@@ -9,7 +9,7 @@
 #include <optional>
 #include <sstream>
 
-#include "tree_sitter/api.h"
+#include "TreeSitter.hpp"
 #include "tree_sitter/tree-sitter-c-preproc.h"
 
 namespace Hayroll
