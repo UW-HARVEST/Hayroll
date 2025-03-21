@@ -67,12 +67,12 @@ int main()
         TSNode valueNode = node.childByFieldName("value");
 
         assert(!nameNode.isNull());
-        std::string name = node.text(predefinedMacros);
+        std::string name = nameNode.text(predefinedMacros);
 
         std::string value;
         if (!valueNode.isNull())
         {
-            value = node.text(predefinedMacros);
+            value = valueNode.text(predefinedMacros);
         }
 
         symbolTable->define(ObjectSymbol{name, value});
