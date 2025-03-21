@@ -187,7 +187,6 @@ add_executable(TempDir_test tests/TempDir_test.cpp)
 target_link_libraries(TempDir_test PRIVATE
     testing_config
 )
-
 add_test(
     NAME TempDir_test
     COMMAND TempDir_test
@@ -198,8 +197,17 @@ target_link_libraries(IncludeTree_test PRIVATE
     testing_config
     clang_tooling_config
 )
-
 add_test(
     NAME IncludeTree_test
     COMMAND IncludeTree_test
+)
+
+add_executable(SymbolTable_test tests/SymbolTable_test.cpp)
+target_link_libraries(SymbolTable_test PRIVATE
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME SymbolTable_test
+    COMMAND SymbolTable_test
 )
