@@ -203,280 +203,337 @@ TSRange freeTSRangePtrToTSRange(const ts::TSRange *range)
 
 } // namespace TSUtils
 
-// TsNode
 
+// TSNode
+
+// Constructor for TSNode
 TSNode::TSNode(ts::TSNode node)
     : node(node)
 {
 }
 
+// Conversion operator: Get the underlying ts::TSNode.
 TSNode::operator ts::TSNode() const
 {
     return node;
 }
 
+// Returns the stored TSNode.
 TSNode TSNode::get()
 {
     return node;
 }
 
+// Get the node's type as a null-terminated string.
 std::string TSNode::type() const
 {
     return TSUtils::freeCstrToString(ts::ts_node_type(node));
 }
 
+// Get the node's type as a numerical id.
 ts::TSSymbol TSNode::symbol() const
 {
     return ts::ts_node_symbol(node);
 }
 
+// Get the node's language.
 const ts::TSLanguage * TSNode::language() const
 {
     return ts::ts_node_language(node);
 }
 
+// Get the node's type as it appears in the grammar ignoring aliases as a null-terminated string.
 std::string TSNode::grammarType() const
 {
     return TSUtils::freeCstrToString(ts::ts_node_grammar_type(node));
 }
 
+// Get the node's type as a numerical id as it appears in the grammar ignoring aliases.
 ts::TSSymbol TSNode::grammarSymbol() const
 {
     return ts::ts_node_grammar_symbol(node);
 }
 
+// Get the node's start byte.
 uint32_t TSNode::startByte() const
 {
     return ts::ts_node_start_byte(node);
 }
 
+// Get the node's start position in terms of rows and columns.
 TSPoint TSNode::startPoint() const
 {
     return ts::ts_node_start_point(node);
 }
 
+// Get the node's end byte.
 uint32_t TSNode::endByte() const
 {
     return ts::ts_node_end_byte(node);
 }
 
+// Get the node's end position in terms of rows and columns.
 TSPoint TSNode::endPoint() const
 {
     return ts::ts_node_end_point(node);
 }
 
+// Get the node's number of children.
 uint32_t TSNode::childCount() const
 {
     return ts::ts_node_child_count(node);
 }
 
+// Get the node's number of named children.
 uint32_t TSNode::namedChildCount() const
 {
     return ts::ts_node_named_child_count(node);
 }
 
+// Get the node's child at the given index, where zero represents the first child.
 TSNode TSNode::child(uint32_t index) const
 {
     return ts::ts_node_child(node, index);
 }
 
+// Get the node's named child at the given index.
 TSNode TSNode::namedChild(uint32_t index) const
 {
     return ts::ts_node_named_child(node, index);
 }
 
+// Get the node's next sibling.
 TSNode TSNode::nextSibling() const
 {
     return ts::ts_node_next_sibling(node);
 }
 
+// Get the node's previous sibling.
 TSNode TSNode::prevSibling() const
 {
     return ts::ts_node_prev_sibling(node);
 }
 
+// Get the node's next named sibling.
 TSNode TSNode::nextNamedSibling() const
 {
     return ts::ts_node_next_named_sibling(node);
 }
 
+// Get the node's previous named sibling.
 TSNode TSNode::prevNamedSibling() const
 {
     return ts::ts_node_prev_named_sibling(node);
 }
 
+// Get the node's first child that contains or starts after the given byte offset.
 TSNode TSNode::firstChildForByte(uint32_t byte) const
 {
     return ts::ts_node_first_child_for_byte(node, byte);
 }
 
+// Get the node's first named child that contains or starts after the given byte offset.
 TSNode TSNode::firstNamedChildForByte(uint32_t byte) const
 {
     return ts::ts_node_first_named_child_for_byte(node, byte);
 }
 
+// Get the node's number of descendants, including one for the node itself.
 uint32_t TSNode::descendantCount() const
 {
     return ts::ts_node_descendant_count(node);
 }
 
+// Get the smallest node within this node that spans the given range of bytes.
 TSNode TSNode::descendantForByteRange(uint32_t start, uint32_t end) const
 {
     return ts::ts_node_descendant_for_byte_range(node, start, end);
 }
 
+// Get the smallest node within this node that spans the given range of (row, column) positions.
 TSNode TSNode::descendantForPointRange(TSPoint start, TSPoint end) const
 {
     return ts::ts_node_descendant_for_point_range(node, start, end);
 }
 
+// Get the smallest named node within this node that spans the given range of bytes.
 TSNode TSNode::namedDescendantForByteRange(uint32_t start, uint32_t end) const
 {
     return ts::ts_node_named_descendant_for_byte_range(node, start, end);
 }
 
+// Get the smallest named node within this node that spans the given range of (row, column) positions.
 TSNode TSNode::namedDescendantForPointRange(TSPoint start, TSPoint end) const
 {
     return ts::ts_node_named_descendant_for_point_range(node, start, end);
 }
 
+// Edit the node to keep it in sync with source code that has been edited.
 void TSNode::edit(const ts::TSInputEdit *edit)
 {
     ts::ts_node_edit(&node, edit);
 }
 
+// Check if two nodes are identical.
 bool TSNode::operator==(const TSNode &other) const
 {
     return ts::ts_node_eq(node, other.node);
 }
 
+// Check if the node is null.
 bool TSNode::isNull() const
 {
     return ts::ts_node_is_null(node);
 }
 
+// Check if the node is named.
 bool TSNode::isNamed() const
 {
     return ts::ts_node_is_named(node);
 }
 
+// Check if the node is missing.
 bool TSNode::isMissing() const
 {
     return ts::ts_node_is_missing(node);
 }
 
+// Check if the node is extra.
 bool TSNode::isExtra() const
 {
     return ts::ts_node_is_extra(node);
 }
 
+// Check if the syntax node has been edited.
 bool TSNode::hasChanges() const
 {
     return ts::ts_node_has_changes(node);
 }
 
+// Check if the node has any syntax errors.
 bool TSNode::hasError() const
 {
     return ts::ts_node_has_error(node);
 }
 
+// Check if the node is a syntax error.
 bool TSNode::isError() const
 {
     return ts::ts_node_is_error(node);
 }
 
+// Get this node's parse state.
 TSStateId TSNode::parseState() const
 {
     return ts::ts_node_parse_state(node);
 }
 
+// Get the parse state after this node.
 TSStateId TSNode::nextParseState() const
 {
     return ts::ts_node_next_parse_state(node);
 }
 
+// Get the node's immediate parent.
 TSNode TSNode::parent() const
 {
     return ts::ts_node_parent(node);
 }
 
+// Get the node that contains the given descendant.
 TSNode TSNode::childWithDescendant(TSNode descendant) const
 {
     return ts::ts_node_child_with_descendant(node, descendant);
 }
 
+// Get the field name for the node's child at the given index.
 std::string TSNode::fieldNameForChild(uint32_t child_index) const
 {
     return TSUtils::freeCstrToString(ts::ts_node_field_name_for_child(node, child_index));
 }
 
+// Get the field name for the node's named child at the given index.
 std::string TSNode::fieldNameForNamedChild(uint32_t named_child_index) const
 {
     return TSUtils::freeCstrToString(ts::ts_node_field_name_for_named_child(node, named_child_index));
 }
 
+// Get the node's child with the given field name.
 TSNode TSNode::childByFieldName(const std::string & name) const
 {
     return ts::ts_node_child_by_field_name(node, name.c_str(), name.size());
 }
 
+// Get the node's child with the given numerical field id.
 TSNode TSNode::childByFieldId(ts::TSFieldId field_id) const
 {
     return ts::ts_node_child_by_field_id(node, field_id);
 }
 
+// Helper function: Get the text of the node from the source.
 std::string TSNode::text(std::string_view source) const
 {
     return std::string(source.substr(startByte(), endByte() - startByte()));
 }
 
+// Create a tree cursor for this node.
 TSTreeCursor TSNode::cursor() const
 {
     return TSTreeCursor(node);
 }
 
+
 // TSTree
 
+// Construct a TSTree with the given ts::TSTree pointer.
 TSTree::TSTree(ts::TSTree * tree)
     : tree(tree)
 {
 }
 
+// Delete the syntax tree, freeing all of the memory that it used.
 TSTree::~TSTree()
 {
     ts::ts_tree_delete(tree);
 }
 
+// Conversion operator: Get the underlying ts::TSTree pointer.
 TSTree::operator ts::TSTree *()
 {
     return tree;
 }
 
+// Conversion operator: Get the underlying const ts::TSTree pointer.
 TSTree::operator const ts::TSTree *() const
 {
     return tree;
 }
 
+// Returns the stored ts::TSTree pointer.
 ts::TSTree * TSTree::get()
 {
     return tree;
 }
 
+// Get the root node of the syntax tree.
 TSNode TSTree::rootNode() const
 {
     return ts::ts_tree_root_node(tree);
 }
 
+// Get the root node of the syntax tree, with its position shifted by the given offset.
 TSNode TSTree::rootNodeWithOffset(uint32_t offsetBytes, TSPoint offsetExtent) const
 {
     return ts::ts_tree_root_node_with_offset(tree, offsetBytes, offsetExtent);
 }
 
+// Get the language that was used to parse the syntax tree.
 const ts::TSLanguage * TSTree::language() const
 {
     return ts::ts_tree_language(tree);
 }
 
+// Get the array of included ranges that was used to parse the syntax tree.
 std::tuple<ts::TSRange, uint32_t> TSTree::includedRanges() const
 {
     uint32_t * length;
@@ -484,11 +541,13 @@ std::tuple<ts::TSRange, uint32_t> TSTree::includedRanges() const
     return {range, *length};
 }
 
+// Edit the syntax tree to keep it in sync with the edited source code.
 void TSTree::edit(const ts::TSInputEdit *edit)
 {
     ts::ts_tree_edit(tree, edit);
 }
 
+// Compare an old edited syntax tree to a new syntax tree, returning an array of changed ranges.
 std::tuple<ts::TSRange, uint32_t> TSTree::changedRanges(const TSTree & oldTree) const
 {
     uint32_t * length;
@@ -496,67 +555,80 @@ std::tuple<ts::TSRange, uint32_t> TSTree::changedRanges(const TSTree & oldTree) 
     return {range, *length};
 }
 
+// Write a DOT graph describing the syntax tree to the given file descriptor.
 void TSTree::printDotGraph(int fileDescriptor) const
 {
     ts::ts_tree_print_dot_graph(tree, fileDescriptor);
 }
 
-//
-// TSParser 实现
-//
+
+// TSParser
+
+// Create a new parser and set its language.
 TSParser::TSParser(const ts::TSLanguage * language)
     : parser(ts::ts_parser_new())
 {
     ts::ts_parser_set_language(parser, language);
 }
 
+// Construct a TSParser from an existing ts::TSParser pointer.
 TSParser::TSParser(ts::TSParser * parser)
     : parser(parser)
 {
 }
 
+// Delete the parser, freeing all associated memory.
 TSParser::~TSParser()
 {
     ts::ts_parser_delete(parser);
 }
 
+// Conversion operator: Get the underlying ts::TSParser pointer.
 TSParser::operator ts::TSParser *()
 {
     return parser;
 }
 
+// Conversion operator: Get the underlying const ts::TSParser pointer.
 inline TSParser::operator const ts::TSParser *() const
 {
     return parser;
 }
 
+// Returns the stored ts::TSParser pointer.
 ts::TSParser * TSParser::get()
 {
     return parser;
 }
 
+// Get the parser's current language.
 const ts::TSLanguage * TSParser::language() const
 {
     return ts::ts_parser_language(parser);
 }
 
+// Set the language for the parser.
 bool TSParser::setLanguage(const ts::TSLanguage * language)
 {
     return ts::ts_parser_set_language(parser, language);
 }
 
+// Use the parser to parse a string and create a syntax tree.
 TSTree TSParser::parseString(std::string_view str)
 {
     return ts::ts_parser_parse_string(parser, nullptr, str.data(), str.size());
 }
 
+// Reset the parser to start the next parse from the beginning.
 void TSParser::reset()
 {
     ts::ts_parser_reset(parser);
 }
 
+
 // TSQuery
 
+// Create a new query from a source string and associate it with a language.
 TSQuery::TSQuery(const ts::TSLanguage * language, std::string_view source)
 {
     uint32_t error_offset;
@@ -568,154 +640,185 @@ TSQuery::TSQuery(const ts::TSLanguage * language, std::string_view source)
     }
 }
 
+// Delete the query, freeing all of its memory.
 TSQuery::~TSQuery()
 {
     ts::ts_query_delete(query);
 }
 
+// Conversion operator: Get the underlying ts::TSQuery pointer.
 TSQuery::operator ts::TSQuery *()
 {
     return query;
 }
 
+// Conversion operator: Get the underlying const ts::TSQuery pointer.
 TSQuery::operator const ts::TSQuery *() const
 {
     return query;
 }
 
+// Returns the stored ts::TSQuery pointer.
 ts::TSQuery * TSQuery::get()
 {
     return query;
 }
 
+// Get the number of patterns in the query.
 uint32_t TSQuery::patternCount() const
 {
     return ts::ts_query_pattern_count(query);
 }
 
+// Get the number of captures in the query.
 uint32_t TSQuery::captureCount() const
 {
     return ts::ts_query_capture_count(query);
 }
 
+// Get the number of string literals in the query.
 uint32_t TSQuery::stringCount() const
 {
     return ts::ts_query_string_count(query);
 }
 
+// Get the byte offset where the given pattern starts in the query's source.
 uint32_t TSQuery::startByteForPattern(uint32_t patternIndex) const
 {
     return ts::ts_query_start_byte_for_pattern(query, patternIndex);
 }
 
+// Get the byte offset where the given pattern ends in the query's source.
 uint32_t TSQuery::endByteForPattern(uint32_t patternIndex) const
 {
     return ts::ts_query_end_byte_for_pattern(query, patternIndex);
 }
 
+
 // TSTreeCursor
 
+// Construct a tree cursor from an existing ts::TSTreeCursor.
 TSTreeCursor::TSTreeCursor(ts::TSTreeCursor cursor)
     : cursor(cursor)
 {
 }
 
+// Create a new tree cursor starting from the given node.
 TSTreeCursor::TSTreeCursor(ts::TSNode node)
     : cursor(ts::ts_tree_cursor_new(node))
 {
 }
 
+// Conversion operator: Get the underlying ts::TSTreeCursor.
 TSTreeCursor::operator ts::TSTreeCursor() const
 {
     return cursor;
 }
 
+// Conversion operator: Get a pointer to the underlying ts::TSTreeCursor.
 TSTreeCursor::operator ts::TSTreeCursor *()
 {
     return &cursor;
 }
 
+// Conversion operator: Get a const pointer to the underlying ts::TSTreeCursor.
 TSTreeCursor::operator const ts::TSTreeCursor *() const
 {
     return &cursor;
 }
 
+// Re-initialize the tree cursor to start at the given node.
 void TSTreeCursor::reset(TSNode node)
 {
     ts::ts_tree_cursor_reset(&cursor, node);
 }
 
+// Re-initialize the tree cursor to the same position as another cursor.
 void TSTreeCursor::resetTo(const TSTreeCursor & src)
 {
     ts::ts_tree_cursor_reset_to(&cursor, src);
 }
 
+// Get the tree cursor's current node.
 TSNode TSTreeCursor::currentNode() const
 {
     return ts::ts_tree_cursor_current_node(&cursor);
 }
 
+// Get the field name of the tree cursor's current node.
 std::string TSTreeCursor::currentFieldName() const
 {
     const char *field_name = ts::ts_tree_cursor_current_field_name(&cursor);
     return field_name ? std::string(field_name) : std::string();
 }
 
+// Get the field id of the tree cursor's current node.
 ts::TSFieldId TSTreeCursor::currentFieldId() const
 {
     return ts::ts_tree_cursor_current_field_id(&cursor);
 }
 
+// Move the cursor to the parent of its current node.
 bool TSTreeCursor::gotoParent()
 {
     return ts::ts_tree_cursor_goto_parent(&cursor);
 }
 
+// Move the cursor to the next sibling of its current node.
 bool TSTreeCursor::gotoNextSibling()
 {
     return ts::ts_tree_cursor_goto_next_sibling(&cursor);
 }
 
+// Move the cursor to the previous sibling of its current node.
 bool TSTreeCursor::gotoPreviousSibling()
 {
     return ts::ts_tree_cursor_goto_previous_sibling(&cursor);
 }
 
+// Move the cursor to the first child of its current node.
 bool TSTreeCursor::gotoFirstChild()
 {
     return ts::ts_tree_cursor_goto_first_child(&cursor);
 }
 
+// Move the cursor to the last child of its current node.
 bool TSTreeCursor::gotoLastChild()
 {
     return ts::ts_tree_cursor_goto_last_child(&cursor);
 }
 
+// Move the cursor to the nth descendant of the original node, where zero represents the original node itself.
 void TSTreeCursor::gotoDescendant(uint32_t goalDescendantIndex)
 {
     ts::ts_tree_cursor_goto_descendant(&cursor, goalDescendantIndex);
 }
 
+// Get the index of the cursor's current node among all descendants of the original node.
 uint32_t TSTreeCursor::currentDescendantIndex() const
 {
     return ts::ts_tree_cursor_current_descendant_index(&cursor);
 }
 
+// Get the depth of the cursor's current node relative to the original node.
 uint32_t TSTreeCursor::currentDepth() const
 {
     return ts::ts_tree_cursor_current_depth(&cursor);
 }
 
+// Move the cursor to the first child for the given byte offset.
 int64_t TSTreeCursor::gotoFirstChildForByte(uint32_t goalByte)
 {
     return ts::ts_tree_cursor_goto_first_child_for_byte(&cursor, goalByte);
 }
 
+// Move the cursor to the first child for the given (row, column) point.
 int64_t TSTreeCursor::gotoFirstChildForPoint(TSPoint goalPoint)
 {
     return ts::ts_tree_cursor_goto_first_child_for_point(&cursor, goalPoint);
 }
 
+// Create a copy of the tree cursor.
 TSTreeCursor TSTreeCursor::copy() const
 {
     return ts::ts_tree_cursor_copy(&cursor);
