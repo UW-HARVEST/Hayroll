@@ -7,6 +7,7 @@
 #include <vector>
 #include <variant>
 #include <optional>
+#include <sstream>
 
 #include "tree_sitter/api.h"
 #include "tree_sitter/tree-sitter-c-preproc.h"
@@ -35,7 +36,7 @@ class FunctionSymbol
 public:
     std::string name;
     std::vector<std::string> params;
-    std::string spelling;
+    std::string body;
 
     std::string expand(const std::vector<std::string> & args) const
     {
@@ -84,6 +85,44 @@ public:
         }
         // Missing: unknown symbol, should create a symbolic value
         return std::nullopt;
+    }
+
+    template<class... Ts>
+    struct overloaded : Ts... { using Ts::operator()...; };
+
+    std::string toString() const
+    {
+        std::stringstream ss;
+        for (const auto & [name, symbol] : symbols)
+        {
+            std::visit
+            (
+                overloaded
+                {
+                    [&ss](const ObjectSymbol & s) { ss << s.name << " -> " << s.spelling; },
+                    [&ss](const FunctionSymbol & s) { ss << s.name << "(";
+                        for (size_t i = 0; i < s.params.size(); i++)
+                        {
+                            ss << s.params[i];
+                            if (i < s.params.size() - 1)
+                            {
+                                ss << ", ";
+                            }
+                        }
+                        ss << ") -> " << s.body;
+                    },
+                    [&ss](const UndefinedSymbol & s) { ss << "undefined"; }
+                },
+                symbol
+            );
+            ss << "\n";
+        }
+        ss << "----------------" << "\n";
+        if (parent)
+        {
+            ss << parent->toString();
+        }
+        return ss.str();
     }
 
 private:
