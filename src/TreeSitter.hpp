@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace ts
 {
@@ -253,6 +254,13 @@ public:
     TSNode childByFieldId(ts::TSFieldId field_id) const
     {
         return ts::ts_node_child_by_field_id(node, field_id);
+    }
+
+    // Helper functions
+
+    std::string text(std::string_view source) const
+    {
+        return std::string(source.substr(startByte(), endByte() - startByte()));
     }
 
 private:
