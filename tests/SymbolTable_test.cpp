@@ -55,12 +55,8 @@ int main()
     //         name: identifier [1, 8] - [1, 29]
     //         value: preproc_arg [1, 30] - [1, 47]
 
-    TSTreeCursor cursor(tree.rootNode());
-    cursor.gotoFirstChild();
-    while (true)
+    for (TSNode node : tree.rootNode().iterateChildren())
     {
-        TSNode node = cursor.currentNode();
-
         assert(node.isNamed());
 
         TSNode nameNode = node.childByFieldName("name");
@@ -76,11 +72,6 @@ int main()
         }
 
         symbolTable->define(ObjectSymbol{name, value});
-
-        if (!cursor.gotoNextSibling())
-        {
-            break;
-        }
     }
 
     std::cout << symbolTable->toString() << std::endl;

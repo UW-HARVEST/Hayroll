@@ -6,6 +6,8 @@
 #include <string_view>
 #include <tuple>
 #include <stdexcept>
+#include <optional>
+#include <cassert>
 
 namespace ts
 {
@@ -27,6 +29,7 @@ namespace TSUtils
 } // namespace TSUtils
 
 class TSTreeCursor;
+class TSTreeCursorIterateChildren;
 
 class TSNode
 {
@@ -89,6 +92,7 @@ public:
     // Helper functions
     std::string text(std::string_view source) const;
     TSTreeCursor cursor() const;
+    TSTreeCursorIterateChildren iterateChildren() const;
 private:
     ts::TSNode node;
 };
@@ -179,8 +183,102 @@ public:
     int64_t gotoFirstChildForByte(uint32_t goalByte);
     int64_t gotoFirstChildForPoint(TSPoint goalPoint);
     TSTreeCursor copy() const;
+
+    // Helper functions
+    TSTreeCursorIterateChildren iterateChildren() const;
 private:
     ts::TSTreeCursor cursor;
+};
+
+// Class to iterate over children of a TSTreeCursor's current node.
+class TSTreeCursorIterateChildren
+{
+public:
+    // Nested iterator class
+    class Iterator
+    {
+    public:
+        using value_type = TSNode;
+        using difference_type = std::ptrdiff_t;
+        using pointer = TSNode *;
+        using reference = TSNode;
+        using iterator_category = std::input_iterator_tag;
+
+        // Default constructor (end iterator)
+        Iterator() : cursor(std::nullopt) {}
+
+        // Constructor with a given TSTreeCursor state and valid flag
+        explicit Iterator(const TSTreeCursor & cursor)
+            : cursor(cursor) {}
+
+        // Dereference operator returns the current node.
+        TSNode operator *() const
+        {
+            assert(cursor.has_value());
+            return cursor.value().currentNode();
+        }
+
+        // Pre-increment: move to the next sibling child.
+        Iterator & operator++()
+        {
+            assert(cursor.has_value());
+            if (!cursor.value().gotoNextSibling())
+            {
+                cursor = std::nullopt;
+            }
+            return *this;
+        }
+
+        // Post-increment.
+        Iterator operator++(int)
+        {
+            Iterator copy = *this;
+            ++(*this);
+            return copy;
+        }
+
+        // Equality: iterators are equal if both are invalid (i.e. at the end) or 
+        // if both are valid and their current nodes compare equal.
+        bool operator==(const Iterator &other) const
+        {
+            if (!cursor.has_value() && !other.cursor.has_value())
+                return true;
+            if (cursor.has_value() && other.cursor.has_value())
+                return cursor.value().currentNode() == other.cursor.value().currentNode();
+            return false;
+        }
+
+        // Inequality operator.
+        bool operator!=(const Iterator &other) const
+        {
+            return !(*this == other);
+        }
+
+    private:
+        std::optional<TSTreeCursor> cursor;
+    };
+
+    // Constructor: store a copy of the parent's cursor.
+    explicit TSTreeCursorIterateChildren(const TSTreeCursor &parent_cursor)
+        : parentCursor(parent_cursor) {}
+
+    // begin() returns an iterator positioned at the first child.
+    Iterator begin() const
+    {
+        TSTreeCursor childCursor = parentCursor.copy();
+        if (!childCursor.gotoFirstChild())
+            return end();
+        return Iterator(childCursor);
+    }
+
+    // end() returns a default-constructed iterator (i.e. invalid).
+    Iterator end() const
+    {
+        return Iterator();
+    }
+
+private:
+    TSTreeCursor parentCursor;
 };
 
 // ==== Implementations ====
@@ -482,6 +580,10 @@ TSTreeCursor TSNode::cursor() const
     return TSTreeCursor(node);
 }
 
+TSTreeCursorIterateChildren TSNode::iterateChildren() const
+{
+    return cursor().iterateChildren();
+}
 
 // TSTree
 
@@ -822,6 +924,11 @@ int64_t TSTreeCursor::gotoFirstChildForPoint(TSPoint goalPoint)
 TSTreeCursor TSTreeCursor::copy() const
 {
     return ts::ts_tree_cursor_copy(&cursor);
+}
+
+TSTreeCursorIterateChildren TSTreeCursor::iterateChildren() const
+{
+    return TSTreeCursorIterateChildren(*this);
 }
 
 } // namespace Hayroll
