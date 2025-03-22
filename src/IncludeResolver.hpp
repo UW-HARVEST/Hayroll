@@ -109,8 +109,6 @@ public:
             subprocess::output{subprocess::PIPE},
             subprocess::error{subprocess::PIPE}
         );
-        // char eof = EOF;
-        // proc.kill();
         auto [out, err] = proc.communicate();
         return out.buf.data();
     }

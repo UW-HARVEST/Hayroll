@@ -163,6 +163,7 @@ class TSTreeCursor
 public:
     TSTreeCursor(ts::TSTreeCursor cursor);
     TSTreeCursor(ts::TSNode node);
+    ~TSTreeCursor();
 
     operator ts::TSTreeCursor() const;
     operator ts::TSTreeCursor *();
@@ -809,6 +810,11 @@ TSTreeCursor::TSTreeCursor(ts::TSTreeCursor cursor)
 TSTreeCursor::TSTreeCursor(ts::TSNode node)
     : cursor(ts::ts_tree_cursor_new(node))
 {
+}
+
+TSTreeCursor::~TSTreeCursor()
+{
+    ts::ts_tree_cursor_delete(&cursor);
 }
 
 // Conversion operator: Get the underlying ts::TSTreeCursor.

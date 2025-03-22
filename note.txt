@@ -150,3 +150,5 @@ then (2) cannot be a reason of the missing, which means it must be (1). If !(con
 then we must run clang -H again with condState, generate a new tree (whose cond is same as condState)
 merge the tree to the existing one (whose condition is now (condTree || condNewTree)), then retry searching. 
 Only if the tree still does not contain the file can we make sure it's skipped due to header guards
+
+valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all ./SymbolTable_test
