@@ -14,6 +14,35 @@ namespace Hayroll
 class TempDir
 {
 public:
+    TempDir()
+        : path(generateUniquePath()), pathPtr(&path, &deleteDir)
+    {
+        createDir();
+    }
+
+    TempDir(const TempDir &) = delete;
+
+    TempDir(TempDir && src)
+        : path(src.path), pathPtr(&path, &deleteDir)
+    {
+        src.pathPtr.release();
+    }
+
+    TempDir & operator=(const TempDir &) = delete;
+
+    TempDir & operator=(TempDir && src)
+    {
+        if (this != &src)
+        {
+            path = src.path;
+            pathPtr.reset(&path);
+            src.pathPtr.release();
+        }
+        return *this;
+    }
+
+    ~TempDir() = default;
+
     operator const std::filesystem::path &() const noexcept
     {
         return path;
@@ -22,18 +51,6 @@ public:
     const std::filesystem::path & getPath() const noexcept
     {
         return path;
-    }
-
-    TempDir(const TempDir &) = delete;
-    TempDir(TempDir &&) = default;
-    TempDir & operator=(const TempDir &) = delete;
-    TempDir & operator=(TempDir &&) = default;
-    ~TempDir() = default;
-
-    TempDir()
-        : path(generateUniquePath()), pathPtr(&path, &deleteDir)
-    {
-        createDir();
     }
 
     explicit TempDir(const std::filesystem::path & parent) 
