@@ -70,7 +70,7 @@ public:
     TSNode namedDescendantForPointRange(TSPoint start, TSPoint end) const;
 
     void edit(const ts::TSInputEdit *edit);
-    bool operator==(const TSNode &other) const;
+    bool operator==(const TSNode & other) const;
 
     bool isNull() const;
     bool isNamed() const;
@@ -101,7 +101,6 @@ class TSTree
 {
 public:
     TSTree(ts::TSTree * tree);
-    ~TSTree();
 
     operator ts::TSTree *();
     operator const ts::TSTree *() const;
@@ -116,7 +115,7 @@ public:
     std::tuple<ts::TSRange, uint32_t> changedRanges(const TSTree & oldTree) const;
     void printDotGraph(int fileDescriptor) const;
 private:
-    ts::TSTree * tree;
+    std::unique_ptr<ts::TSTree, decltype(&ts::ts_tree_delete)> tree;
 };
 
 class TSParser
@@ -124,7 +123,6 @@ class TSParser
 public:
     TSParser(const ts::TSLanguage * language);
     TSParser(ts::TSParser * parser);
-    ~TSParser();
 
     operator ts::TSParser *();
     operator const ts::TSParser *() const;
@@ -136,14 +134,13 @@ public:
     TSTree parseString(std::string_view source);
     void reset();
 private:
-    ts::TSParser * parser;
+    std::unique_ptr<ts::TSParser, decltype(&ts::ts_parser_delete)> parser;
 };
 
 class TSQuery
 {
 public:
     TSQuery(const ts::TSLanguage * language, std::string_view source);
-    ~TSQuery();
 
     operator ts::TSQuery *();
     operator const ts::TSQuery *() const;
@@ -155,21 +152,20 @@ public:
     uint32_t startByteForPattern(uint32_t patternIndex) const;
     uint32_t endByteForPattern(uint32_t patternIndex) const;
 private:
-    ts::TSQuery * query;
+    std::unique_ptr<ts::TSQuery, decltype(&ts::ts_query_delete)> query;
 };
 
 class TSTreeCursor
 {
 public:
-    TSTreeCursor(ts::TSTreeCursor cursor);
-    TSTreeCursor(ts::TSNode node);
-    ~TSTreeCursor();
+    TSTreeCursor(const TSTreeCursor & src);
+    TSTreeCursor(const ts::TSNode & node);
 
     operator ts::TSTreeCursor() const;
     operator ts::TSTreeCursor *();
     operator const ts::TSTreeCursor *() const;
     void reset(TSNode node);
-    void resetTo(const TSTreeCursor &src);
+    void resetTo(const TSTreeCursor & src);
     TSNode currentNode() const;
     std::string currentFieldName() const;
     ts::TSFieldId currentFieldId() const;
@@ -183,12 +179,12 @@ public:
     uint32_t currentDepth() const;
     int64_t gotoFirstChildForByte(uint32_t goalByte);
     int64_t gotoFirstChildForPoint(TSPoint goalPoint);
-    TSTreeCursor copy() const;
 
     // Helper functions
     TSTreeCursorIterateChildren iterateChildren() const;
 private:
     ts::TSTreeCursor cursor;
+    std::unique_ptr<ts::TSTreeCursor, decltype(&ts::ts_tree_cursor_delete)> cursorPtr;
 };
 
 // Class to iterate over children of a TSTreeCursor's current node.
@@ -209,8 +205,8 @@ public:
         Iterator() : cursor(std::nullopt) {}
 
         // Constructor with a given TSTreeCursor state and valid flag
-        explicit Iterator(const TSTreeCursor & cursor)
-            : cursor(cursor) {}
+        explicit Iterator(TSTreeCursor && cursor)
+            : cursor(std::move(cursor)) {}
 
         // Dereference operator returns the current node.
         TSNode operator *() const
@@ -240,7 +236,7 @@ public:
 
         // Equality: iterators are equal if both are invalid (i.e. at the end) or 
         // if both are valid and their current nodes compare equal.
-        bool operator==(const Iterator &other) const
+        bool operator==(const Iterator & other) const
         {
             if (!cursor.has_value() && !other.cursor.has_value())
                 return true;
@@ -250,7 +246,7 @@ public:
         }
 
         // Inequality operator.
-        bool operator!=(const Iterator &other) const
+        bool operator!=(const Iterator & other) const
         {
             return !(*this == other);
         }
@@ -260,16 +256,16 @@ public:
     };
 
     // Constructor: store a copy of the parent's cursor.
-    explicit TSTreeCursorIterateChildren(const TSTreeCursor &parent_cursor)
-        : parentCursor(parent_cursor) {}
+    explicit TSTreeCursorIterateChildren(const TSTreeCursor & parentCursor)
+        : parentCursor(parentCursor) {}
 
     // begin() returns an iterator positioned at the first child.
     Iterator begin() const
     {
-        TSTreeCursor childCursor = parentCursor.copy();
+        TSTreeCursor childCursor = parentCursor;
         if (!childCursor.gotoFirstChild())
             return end();
-        return Iterator(childCursor);
+        return Iterator(std::move(childCursor));
     }
 
     // end() returns a default-constructed iterator (i.e. invalid).
@@ -474,7 +470,7 @@ void TSNode::edit(const ts::TSInputEdit *edit)
 }
 
 // Check if two nodes are identical.
-bool TSNode::operator==(const TSNode &other) const
+bool TSNode::operator==(const TSNode & other) const
 {
     return ts::ts_node_eq(node, other.node);
 }
@@ -590,78 +586,72 @@ TSTreeCursorIterateChildren TSNode::iterateChildren() const
 
 // Construct a TSTree with the given ts::TSTree pointer.
 TSTree::TSTree(ts::TSTree * tree)
-    : tree(tree)
+    : tree(tree, ts::ts_tree_delete)
 {
-}
-
-// Delete the syntax tree, freeing all of the memory that it used.
-TSTree::~TSTree()
-{
-    ts::ts_tree_delete(tree);
 }
 
 // Conversion operator: Get the underlying ts::TSTree pointer.
 TSTree::operator ts::TSTree *()
 {
-    return tree;
+    return tree.get();
 }
 
 // Conversion operator: Get the underlying const ts::TSTree pointer.
 TSTree::operator const ts::TSTree *() const
 {
-    return tree;
+    return tree.get();
 }
 
 // Returns the stored ts::TSTree pointer.
 ts::TSTree * TSTree::get()
 {
-    return tree;
+    return *this;
 }
 
 // Get the root node of the syntax tree.
 TSNode TSTree::rootNode() const
 {
-    return ts::ts_tree_root_node(tree);
+    return ts::ts_tree_root_node(*this);
 }
 
 // Get the root node of the syntax tree, with its position shifted by the given offset.
 TSNode TSTree::rootNodeWithOffset(uint32_t offsetBytes, TSPoint offsetExtent) const
 {
-    return ts::ts_tree_root_node_with_offset(tree, offsetBytes, offsetExtent);
+    return ts::ts_tree_root_node_with_offset(*this, offsetBytes, offsetExtent);
 }
 
 // Get the language that was used to parse the syntax tree.
 const ts::TSLanguage * TSTree::language() const
 {
-    return ts::ts_tree_language(tree);
+    return ts::ts_tree_language(*this);
 }
 
 // Get the array of included ranges that was used to parse the syntax tree.
 std::tuple<ts::TSRange, uint32_t> TSTree::includedRanges() const
 {
     uint32_t * length;
-    TSRange range = TSUtils::freeTSRangePtrToTSRange(ts::ts_tree_included_ranges(tree, length));
+    TSRange range = TSUtils::freeTSRangePtrToTSRange(ts::ts_tree_included_ranges(*this, length));
     return {range, *length};
 }
 
 // Edit the syntax tree to keep it in sync with the edited source code.
 void TSTree::edit(const ts::TSInputEdit *edit)
 {
-    ts::ts_tree_edit(tree, edit);
+    ts::ts_tree_edit(*this, edit);
 }
 
 // Compare an old edited syntax tree to a new syntax tree, returning an array of changed ranges.
 std::tuple<ts::TSRange, uint32_t> TSTree::changedRanges(const TSTree & oldTree) const
 {
     uint32_t * length;
-    TSRange range = TSUtils::freeTSRangePtrToTSRange(ts::ts_tree_get_changed_ranges(oldTree, tree, length));
+    TSRange range = TSUtils::freeTSRangePtrToTSRange(ts::ts_tree_get_changed_ranges(oldTree, *this, length));
     return {range, *length};
 }
 
 // Write a DOT graph describing the syntax tree to the given file descriptor.
 void TSTree::printDotGraph(int fileDescriptor) const
 {
-    ts::ts_tree_print_dot_graph(tree, fileDescriptor);
+    ts::ts_tree_print_dot_graph(*this, fileDescriptor);
 }
 
 
@@ -669,63 +659,57 @@ void TSTree::printDotGraph(int fileDescriptor) const
 
 // Create a new parser and set its language.
 TSParser::TSParser(const ts::TSLanguage * language)
-    : parser(ts::ts_parser_new())
+    : parser(ts::ts_parser_new(), ts::ts_parser_delete)
 {
-    ts::ts_parser_set_language(parser, language);
+    ts::ts_parser_set_language(*this, language);
 }
 
 // Construct a TSParser from an existing ts::TSParser pointer.
 TSParser::TSParser(ts::TSParser * parser)
-    : parser(parser)
+    : parser(parser, ts::ts_parser_delete)
 {
-}
-
-// Delete the parser, freeing all associated memory.
-TSParser::~TSParser()
-{
-    ts::ts_parser_delete(parser);
 }
 
 // Conversion operator: Get the underlying ts::TSParser pointer.
 TSParser::operator ts::TSParser *()
 {
-    return parser;
+    return parser.get();
 }
 
 // Conversion operator: Get the underlying const ts::TSParser pointer.
 inline TSParser::operator const ts::TSParser *() const
 {
-    return parser;
+    return parser.get();
 }
 
 // Returns the stored ts::TSParser pointer.
 ts::TSParser * TSParser::get()
 {
-    return parser;
+    return *this;
 }
 
 // Get the parser's current language.
 const ts::TSLanguage * TSParser::language() const
 {
-    return ts::ts_parser_language(parser);
+    return ts::ts_parser_language(*this);
 }
 
 // Set the language for the parser.
 bool TSParser::setLanguage(const ts::TSLanguage * language)
 {
-    return ts::ts_parser_set_language(parser, language);
+    return ts::ts_parser_set_language(*this, language);
 }
 
 // Use the parser to parse a string and create a syntax tree.
 TSTree TSParser::parseString(std::string_view str)
 {
-    return ts::ts_parser_parse_string(parser, nullptr, str.data(), str.size());
+    return ts::ts_parser_parse_string(*this, nullptr, str.data(), str.size());
 }
 
 // Reset the parser to start the next parse from the beginning.
 void TSParser::reset()
 {
-    ts::ts_parser_reset(parser);
+    ts::ts_parser_reset(*this);
 }
 
 
@@ -733,88 +717,77 @@ void TSParser::reset()
 
 // Create a new query from a source string and associate it with a language.
 TSQuery::TSQuery(const ts::TSLanguage * language, std::string_view source)
+    : query(nullptr, ts::ts_query_delete)
 {
     uint32_t error_offset;
     ts::TSQueryError error_type;
-    query = ts::ts_query_new(language, source.data(), source.size(), &error_offset, &error_type);
+    query.reset(ts::ts_query_new(language, source.data(), source.size(), &error_offset, &error_type));
     if (query == nullptr)
     {
         throw std::runtime_error("Failed to create query");
     }
 }
 
-// Delete the query, freeing all of its memory.
-TSQuery::~TSQuery()
-{
-    ts::ts_query_delete(query);
-}
-
 // Conversion operator: Get the underlying ts::TSQuery pointer.
 TSQuery::operator ts::TSQuery *()
 {
-    return query;
+    return query.get();
 }
 
 // Conversion operator: Get the underlying const ts::TSQuery pointer.
 TSQuery::operator const ts::TSQuery *() const
 {
-    return query;
+    return query.get();
 }
 
 // Returns the stored ts::TSQuery pointer.
 ts::TSQuery * TSQuery::get()
 {
-    return query;
+    return *this;
 }
 
 // Get the number of patterns in the query.
 uint32_t TSQuery::patternCount() const
 {
-    return ts::ts_query_pattern_count(query);
+    return ts::ts_query_pattern_count(*this);
 }
 
 // Get the number of captures in the query.
 uint32_t TSQuery::captureCount() const
 {
-    return ts::ts_query_capture_count(query);
+    return ts::ts_query_capture_count(*this);
 }
 
 // Get the number of string literals in the query.
 uint32_t TSQuery::stringCount() const
 {
-    return ts::ts_query_string_count(query);
+    return ts::ts_query_string_count(*this);
 }
 
 // Get the byte offset where the given pattern starts in the query's source.
 uint32_t TSQuery::startByteForPattern(uint32_t patternIndex) const
 {
-    return ts::ts_query_start_byte_for_pattern(query, patternIndex);
+    return ts::ts_query_start_byte_for_pattern(*this, patternIndex);
 }
 
 // Get the byte offset where the given pattern ends in the query's source.
 uint32_t TSQuery::endByteForPattern(uint32_t patternIndex) const
 {
-    return ts::ts_query_end_byte_for_pattern(query, patternIndex);
+    return ts::ts_query_end_byte_for_pattern(*this, patternIndex);
 }
 
 
 // TSTreeCursor
 
-// Construct a tree cursor from an existing ts::TSTreeCursor.
-TSTreeCursor::TSTreeCursor(ts::TSTreeCursor cursor)
-    : cursor(cursor)
+TSTreeCursor::TSTreeCursor(const TSTreeCursor & src)
+    : cursor(ts::ts_tree_cursor_copy(src)), cursorPtr(&cursor, ts::ts_tree_cursor_delete)
 {
 }
 
 // Create a new tree cursor starting from the given node.
-TSTreeCursor::TSTreeCursor(ts::TSNode node)
-    : cursor(ts::ts_tree_cursor_new(node))
+TSTreeCursor::TSTreeCursor(const ts::TSNode & node)
+    : cursor(ts::ts_tree_cursor_new(node)), cursorPtr(&cursor, ts::ts_tree_cursor_delete)
 {
-}
-
-TSTreeCursor::~TSTreeCursor()
-{
-    ts::ts_tree_cursor_delete(&cursor);
 }
 
 // Conversion operator: Get the underlying ts::TSTreeCursor.
@@ -838,98 +811,92 @@ TSTreeCursor::operator const ts::TSTreeCursor *() const
 // Re-initialize the tree cursor to start at the given node.
 void TSTreeCursor::reset(TSNode node)
 {
-    ts::ts_tree_cursor_reset(&cursor, node);
+    ts::ts_tree_cursor_reset(*this, node);
 }
 
 // Re-initialize the tree cursor to the same position as another cursor.
 void TSTreeCursor::resetTo(const TSTreeCursor & src)
 {
-    ts::ts_tree_cursor_reset_to(&cursor, src);
+    ts::ts_tree_cursor_reset_to(*this, src);
 }
 
 // Get the tree cursor's current node.
 TSNode TSTreeCursor::currentNode() const
 {
-    return ts::ts_tree_cursor_current_node(&cursor);
+    return ts::ts_tree_cursor_current_node(*this);
 }
 
 // Get the field name of the tree cursor's current node.
 std::string TSTreeCursor::currentFieldName() const
 {
-    const char *field_name = ts::ts_tree_cursor_current_field_name(&cursor);
+    const char *field_name = ts::ts_tree_cursor_current_field_name(*this);
     return field_name ? std::string(field_name) : std::string();
 }
 
 // Get the field id of the tree cursor's current node.
 ts::TSFieldId TSTreeCursor::currentFieldId() const
 {
-    return ts::ts_tree_cursor_current_field_id(&cursor);
+    return ts::ts_tree_cursor_current_field_id(*this);
 }
 
 // Move the cursor to the parent of its current node.
 bool TSTreeCursor::gotoParent()
 {
-    return ts::ts_tree_cursor_goto_parent(&cursor);
+    return ts::ts_tree_cursor_goto_parent(*this);
 }
 
 // Move the cursor to the next sibling of its current node.
 bool TSTreeCursor::gotoNextSibling()
 {
-    return ts::ts_tree_cursor_goto_next_sibling(&cursor);
+    return ts::ts_tree_cursor_goto_next_sibling(*this);
 }
 
 // Move the cursor to the previous sibling of its current node.
 bool TSTreeCursor::gotoPreviousSibling()
 {
-    return ts::ts_tree_cursor_goto_previous_sibling(&cursor);
+    return ts::ts_tree_cursor_goto_previous_sibling(*this);
 }
 
 // Move the cursor to the first child of its current node.
 bool TSTreeCursor::gotoFirstChild()
 {
-    return ts::ts_tree_cursor_goto_first_child(&cursor);
+    return ts::ts_tree_cursor_goto_first_child(*this);
 }
 
 // Move the cursor to the last child of its current node.
 bool TSTreeCursor::gotoLastChild()
 {
-    return ts::ts_tree_cursor_goto_last_child(&cursor);
+    return ts::ts_tree_cursor_goto_last_child(*this);
 }
 
 // Move the cursor to the nth descendant of the original node, where zero represents the original node itself.
 void TSTreeCursor::gotoDescendant(uint32_t goalDescendantIndex)
 {
-    ts::ts_tree_cursor_goto_descendant(&cursor, goalDescendantIndex);
+    ts::ts_tree_cursor_goto_descendant(*this, goalDescendantIndex);
 }
 
 // Get the index of the cursor's current node among all descendants of the original node.
 uint32_t TSTreeCursor::currentDescendantIndex() const
 {
-    return ts::ts_tree_cursor_current_descendant_index(&cursor);
+    return ts::ts_tree_cursor_current_descendant_index(*this);
 }
 
 // Get the depth of the cursor's current node relative to the original node.
 uint32_t TSTreeCursor::currentDepth() const
 {
-    return ts::ts_tree_cursor_current_depth(&cursor);
+    return ts::ts_tree_cursor_current_depth(*this);
 }
 
 // Move the cursor to the first child for the given byte offset.
 int64_t TSTreeCursor::gotoFirstChildForByte(uint32_t goalByte)
 {
-    return ts::ts_tree_cursor_goto_first_child_for_byte(&cursor, goalByte);
+    return ts::ts_tree_cursor_goto_first_child_for_byte(*this, goalByte);
 }
 
 // Move the cursor to the first child for the given (row, column) point.
 int64_t TSTreeCursor::gotoFirstChildForPoint(TSPoint goalPoint)
 {
-    return ts::ts_tree_cursor_goto_first_child_for_point(&cursor, goalPoint);
-}
-
-// Create a copy of the tree cursor.
-TSTreeCursor TSTreeCursor::copy() const
-{
-    return ts::ts_tree_cursor_copy(&cursor);
+    return ts::ts_tree_cursor_goto_first_child_for_point(*this, goalPoint);
 }
 
 TSTreeCursorIterateChildren TSTreeCursor::iterateChildren() const
