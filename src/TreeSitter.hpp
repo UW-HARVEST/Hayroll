@@ -51,6 +51,8 @@ public:
     uint32_t endByte() const;
     TSPoint endPoint() const;
 
+    std::string sExpression() const;
+
     uint32_t childCount() const;
     uint32_t namedChildCount() const;
     TSNode child(uint32_t index) const;
@@ -102,6 +104,7 @@ class TSTree
 {
 public:
     TSTree(ts::TSTree * tree);
+    TSTree();
 
     TSTree(const TSTree &) = delete;
     TSTree(TSTree &&) = default;
@@ -397,6 +400,11 @@ TSPoint TSNode::endPoint() const
     return ts::ts_node_end_point(node);
 }
 
+std::string TSNode::sExpression() const
+{
+    return TSUtils::freeCstrToString(ts::ts_node_string(node));
+}
+
 // Get the node's number of children.
 uint32_t TSNode::childCount() const
 {
@@ -616,6 +624,11 @@ TSTreeCursorIterateChildren TSNode::iterateChildren() const
 // Construct a TSTree with the given ts::TSTree pointer.
 TSTree::TSTree(ts::TSTree * tree)
     : tree(tree, ts::ts_tree_delete)
+{
+}
+
+TSTree::TSTree()
+    : tree(nullptr, ts::ts_tree_delete)
 {
 }
 
