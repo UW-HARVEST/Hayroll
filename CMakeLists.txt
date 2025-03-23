@@ -98,6 +98,21 @@ link_libraries(
     spdlog::spdlog
 )
 
+add_library(hayroll_exe_config INTERFACE)
+target_compile_definitions(hayroll_exe_config INTERFACE
+    HAYROLL_SEEDER_EXE="$<TARGET_FILE:seeder>"
+    HAYROLL_PIONEER_EXE="$<TARGET_FILE:pioneer>"
+    HAYROLL_REMOVE_COMMENTS_EXE="$<TARGET_FILE:remove-comments>"
+    HAYROLL_REMOVE_NON_PREPROCESSOR_EXE="$<TARGET_FILE:remove-non-preprocessor>"
+    HAYROLL_MACRO_SKELETON_EXE="$<TARGET_FILE:macro-skeleton>"
+)
+
+add_library(external_exe_config INTERFACE)
+target_compile_definitions(external_exe_config INTERFACE
+    AWK_EXE="${AWK_EXE}"
+    CLANG_EXE="${CLANG_EXE}"
+)
+
 add_library(clang_tooling_config INTERFACE)
 target_link_libraries(clang_tooling_config INTERFACE
     clangTooling
@@ -108,9 +123,6 @@ target_link_libraries(clang_tooling_config INTERFACE
     clangFrontend
     clangDriver
     LLVMSupport
-)
-target_compile_definitions(clang_tooling_config INTERFACE
-    CLANG_EXE="${CLANG_EXE}"
 )
 
 add_library(z3_config INTERFACE)
@@ -144,6 +156,8 @@ add_executable(seeder src/seeder.cpp)
 
 add_executable(pioneer src/pioneer.cpp)
 target_link_libraries(pioneer PRIVATE
+    hayroll_exe_config
+    external_exe_config
     clang_tooling_config
     z3_config
     tree_sitter_config
@@ -151,16 +165,22 @@ target_link_libraries(pioneer PRIVATE
 
 add_executable(remove-comments src/remove-comments.cpp)
 target_link_libraries(remove-comments PRIVATE
+    hayroll_exe_config
+    external_exe_config
     clang_tooling_config
 )
 
 add_executable(remove-non-preprocessor src/remove-non-preprocessor.cpp)
 target_link_libraries(remove-non-preprocessor PRIVATE
+    hayroll_exe_config
+    external_exe_config
     clang_tooling_config
 )
 
 add_executable(macro-skeleton src/macro-skeleton.cpp)
 target_link_libraries(macro-skeleton PRIVATE
+    hayroll_exe_config
+    external_exe_config
     clang_tooling_config
 )
 
@@ -185,6 +205,8 @@ target_compile_definitions(testing_config INTERFACE
 
 add_executable(TempDir_test tests/TempDir_test.cpp)
 target_link_libraries(TempDir_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
     testing_config
 )
 add_test(
@@ -194,8 +216,11 @@ add_test(
 
 add_executable(IncludeTree_test tests/IncludeTree_test.cpp)
 target_link_libraries(IncludeTree_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
     testing_config
     clang_tooling_config
+    tree_sitter_config
 )
 add_test(
     NAME IncludeTree_test
@@ -204,10 +229,24 @@ add_test(
 
 add_executable(SymbolTable_test tests/SymbolTable_test.cpp)
 target_link_libraries(SymbolTable_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
     testing_config
     tree_sitter_config
 )
 add_test(
     NAME SymbolTable_test
     COMMAND SymbolTable_test
+)
+
+add_executable(ASTBank_test tests/ASTBank_test.cpp)
+target_link_libraries(ASTBank_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME ASTBank_test
+    COMMAND ASTBank_test
 )

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <random>
 #include <system_error>
+#include <memory>
 
 namespace Hayroll
 {
@@ -24,27 +25,32 @@ public:
     }
 
     TempDir(const TempDir &) = delete;
+    TempDir(TempDir &&) = default;
     TempDir & operator=(const TempDir &) = delete;
+    TempDir & operator=(TempDir &&) = default;
+    ~TempDir() = default;
 
-    TempDir() : path(generateUniquePath())
+    TempDir()
+        : path(generateUniquePath()), pathPtr(&path, &deleteDir)
     {
         createDir();
     }
 
     explicit TempDir(const std::filesystem::path & parent) 
-        : path(parent / generateUniqueName())
+        : path(parent / generateUniqueName()), pathPtr(&path, &deleteDir)
     {
         createDir();
     }
 
-    ~TempDir() noexcept
+    static void deleteDir(const std::filesystem::path * path)
     {
         std::error_code ec;
-        std::filesystem::remove_all(path, ec);
+        std::filesystem::remove_all(*path, ec);
     }
 
 private:
     std::filesystem::path path;
+    std::unique_ptr<std::filesystem::path, decltype(&deleteDir)> pathPtr;
 
     static std::filesystem::path generateUniquePath()
     {
