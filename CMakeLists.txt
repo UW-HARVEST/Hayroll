@@ -136,7 +136,6 @@ target_link_libraries(tree_sitter_config INTERFACE
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-add_definitions("-g")
 
 include_directories(include)
 include_directories(src)
@@ -150,17 +149,17 @@ target_link_libraries(pioneer PRIVATE
     tree_sitter_config
 )
 
-add_executable(remove-comments src/RemoveComments.cpp)
+add_executable(remove-comments src/remove-comments.cpp)
 target_link_libraries(remove-comments PRIVATE
     clang_tooling_config
 )
 
-add_executable(remove-non-preprocessor src/RemoveNonPreprocessor.cpp)
+add_executable(remove-non-preprocessor src/remove-non-preprocessor.cpp)
 target_link_libraries(remove-non-preprocessor PRIVATE
     clang_tooling_config
 )
 
-add_executable(macro-skeleton src/MacroSkeleton.cpp)
+add_executable(macro-skeleton src/macro-skeleton.cpp)
 target_link_libraries(macro-skeleton PRIVATE
     clang_tooling_config
 )
