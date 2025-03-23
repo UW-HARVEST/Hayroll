@@ -9,6 +9,7 @@
 #include <optional>
 #include <sstream>
 
+#include "Util.hpp"
 #include "TreeSitter.hpp"
 #include "tree_sitter/tree-sitter-c-preproc.h"
 
@@ -86,11 +87,6 @@ public:
         // Missing: unknown symbol, should create a symbolic value
         return std::nullopt;
     }
-
-    template<class... Ts>
-    struct overloaded : Ts... { using Ts::operator()...; };
-    template<class... Ts>
-    overloaded(Ts...) -> overloaded<Ts...>;
 
     std::string toString() const
     {

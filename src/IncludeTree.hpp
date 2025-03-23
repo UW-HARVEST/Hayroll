@@ -77,7 +77,7 @@ public:
         // parentPath:lineNumber -> path
         if (auto parent = this->parent.lock())
         {
-            ss << parent->path.string() << ":" << parent->line << " -> ";
+            ss << parent->path.string() << ":" << line << " -> ";
         }
         ss << path.string() << "\n";
 
