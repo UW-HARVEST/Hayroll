@@ -65,11 +65,12 @@ public:
     TSNode firstNamedChildForByte(uint32_t byte) const;
     uint32_t descendantCount() const;
     TSNode descendantForByteRange(uint32_t start, uint32_t end) const;
-    TSNode descendantForPointRange(TSPoint start, TSPoint end) const;
+    TSNode descendantForPointRange(ts::TSPoint start, ts::TSPoint end) const;
     TSNode namedDescendantForByteRange(uint32_t start, uint32_t end) const;
-    TSNode namedDescendantForPointRange(TSPoint start, TSPoint end) const;
+    TSNode namedDescendantForPointRange(ts::TSPoint start, ts::TSPoint end) const;
 
     void edit(const ts::TSInputEdit *edit);
+    bool eq(const ts::TSNode & other) const;
     bool operator==(const TSNode & other) const;
 
     bool isNull() const;
@@ -87,7 +88,7 @@ public:
     std::string fieldNameForChild(uint32_t child_index) const;
     std::string fieldNameForNamedChild(uint32_t named_child_index) const;
     TSNode childByFieldName(const std::string & name) const;
-    TSNode childByFieldId(TSFieldId field_id) const;
+    TSNode childByFieldId(ts::TSFieldId field_id) const;
 
     // Helper functions
     std::string text(std::string_view source) const;
@@ -107,12 +108,12 @@ public:
     ts::TSTree * get();
 
     TSNode rootNode() const;
-    TSNode rootNodeWithOffset(uint32_t offsetBytes, TSPoint offsetExtent) const;
+    TSNode rootNodeWithOffset(uint32_t offsetBytes, ts::TSPoint offsetExtent) const;
     const ts::TSLanguage * language() const;
 
     std::tuple<ts::TSRange, uint32_t> includedRanges() const;
     void edit(const ts::TSInputEdit *edit);
-    std::tuple<ts::TSRange, uint32_t> changedRanges(const TSTree & oldTree) const;
+    std::tuple<ts::TSRange, uint32_t> changedRanges(const ts::TSTree * oldTree) const;
     void printDotGraph(int fileDescriptor) const;
 private:
     std::unique_ptr<ts::TSTree, decltype(&ts::ts_tree_delete)> tree;
@@ -178,7 +179,7 @@ public:
     uint32_t currentDescendantIndex() const;
     uint32_t currentDepth() const;
     int64_t gotoFirstChildForByte(uint32_t goalByte);
-    int64_t gotoFirstChildForPoint(TSPoint goalPoint);
+    int64_t gotoFirstChildForPoint(ts::TSPoint goalPoint);
 
     // Helper functions
     TSTreeCursorIterateChildren iterateChildren() const;
@@ -446,7 +447,7 @@ TSNode TSNode::descendantForByteRange(uint32_t start, uint32_t end) const
 }
 
 // Get the smallest node within this node that spans the given range of (row, column) positions.
-TSNode TSNode::descendantForPointRange(TSPoint start, TSPoint end) const
+TSNode TSNode::descendantForPointRange(ts::TSPoint start, ts::TSPoint end) const
 {
     return ts::ts_node_descendant_for_point_range(node, start, end);
 }
@@ -458,7 +459,7 @@ TSNode TSNode::namedDescendantForByteRange(uint32_t start, uint32_t end) const
 }
 
 // Get the smallest named node within this node that spans the given range of (row, column) positions.
-TSNode TSNode::namedDescendantForPointRange(TSPoint start, TSPoint end) const
+TSNode TSNode::namedDescendantForPointRange(ts::TSPoint start, ts::TSPoint end) const
 {
     return ts::ts_node_named_descendant_for_point_range(node, start, end);
 }
@@ -469,10 +470,15 @@ void TSNode::edit(const ts::TSInputEdit *edit)
     ts::ts_node_edit(&node, edit);
 }
 
+bool TSNode::eq(const ts::TSNode & other) const
+{
+    return ts::ts_node_eq(node, other);
+}
+
 // Check if two nodes are identical.
 bool TSNode::operator==(const TSNode & other) const
 {
-    return ts::ts_node_eq(node, other.node);
+    return ts::ts_node_eq(node, other);
 }
 
 // Check if the node is null.
@@ -615,7 +621,7 @@ TSNode TSTree::rootNode() const
 }
 
 // Get the root node of the syntax tree, with its position shifted by the given offset.
-TSNode TSTree::rootNodeWithOffset(uint32_t offsetBytes, TSPoint offsetExtent) const
+TSNode TSTree::rootNodeWithOffset(uint32_t offsetBytes, ts::TSPoint offsetExtent) const
 {
     return ts::ts_tree_root_node_with_offset(*this, offsetBytes, offsetExtent);
 }
@@ -641,7 +647,7 @@ void TSTree::edit(const ts::TSInputEdit *edit)
 }
 
 // Compare an old edited syntax tree to a new syntax tree, returning an array of changed ranges.
-std::tuple<ts::TSRange, uint32_t> TSTree::changedRanges(const TSTree & oldTree) const
+std::tuple<ts::TSRange, uint32_t> TSTree::changedRanges(const ts::TSTree * oldTree) const
 {
     uint32_t * length;
     TSRange range = TSUtils::freeTSRangePtrToTSRange(ts::ts_tree_get_changed_ranges(oldTree, *this, length));
@@ -894,7 +900,7 @@ int64_t TSTreeCursor::gotoFirstChildForByte(uint32_t goalByte)
 }
 
 // Move the cursor to the first child for the given (row, column) point.
-int64_t TSTreeCursor::gotoFirstChildForPoint(TSPoint goalPoint)
+int64_t TSTreeCursor::gotoFirstChildForPoint(ts::TSPoint goalPoint)
 {
     return ts::ts_tree_cursor_goto_first_child_for_point(*this, goalPoint);
 }
