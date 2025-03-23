@@ -103,6 +103,12 @@ class TSTree
 public:
     TSTree(ts::TSTree * tree);
 
+    TSTree(const TSTree &) = delete;
+    TSTree(TSTree &&) = default;
+    TSTree & operator=(const TSTree &) = delete;
+    TSTree & operator=(TSTree &&) = default;
+    ~TSTree() = default;
+
     operator ts::TSTree *();
     operator const ts::TSTree *() const;
     ts::TSTree * get();
@@ -125,6 +131,12 @@ public:
     TSParser(const ts::TSLanguage * language);
     TSParser(ts::TSParser * parser);
 
+    TSParser(const TSParser &) = delete;
+    TSParser(TSParser &&) = default;
+    TSParser & operator=(const TSParser &) = delete;
+    TSParser & operator=(TSParser &&) = default;
+    ~TSParser() = default;
+
     operator ts::TSParser *();
     operator const ts::TSParser *() const;
     ts::TSParser * get();
@@ -143,6 +155,12 @@ class TSQuery
 public:
     TSQuery(const ts::TSLanguage * language, std::string_view source);
 
+    TSQuery(const TSQuery &) = delete;
+    TSQuery(TSQuery &&) = default;
+    TSQuery & operator=(const TSQuery &) = delete;
+    TSQuery & operator=(TSQuery &&) = default;
+    ~TSQuery() = default;
+
     operator ts::TSQuery *();
     operator const ts::TSQuery *() const;
     ts::TSQuery * get();
@@ -159,8 +177,13 @@ private:
 class TSTreeCursor
 {
 public:
-    TSTreeCursor(const TSTreeCursor & src);
     TSTreeCursor(const ts::TSNode & node);
+
+    TSTreeCursor(const TSTreeCursor & src);
+    TSTreeCursor(TSTreeCursor && src);
+    TSTreeCursor & operator=(const TSTreeCursor & src);
+    TSTreeCursor & operator=(TSTreeCursor && src);
+    ~TSTreeCursor() = default;
 
     operator ts::TSTreeCursor() const;
     operator ts::TSTreeCursor *();
@@ -785,15 +808,46 @@ uint32_t TSQuery::endByteForPattern(uint32_t patternIndex) const
 
 // TSTreeCursor
 
+// Create a new tree cursor starting from the given node.
+TSTreeCursor::TSTreeCursor(const ts::TSNode & node)
+    : cursor(ts::ts_tree_cursor_new(node)), cursorPtr(&cursor, ts::ts_tree_cursor_delete)
+{
+}
+
+// Copy constructor.
 TSTreeCursor::TSTreeCursor(const TSTreeCursor & src)
     : cursor(ts::ts_tree_cursor_copy(src)), cursorPtr(&cursor, ts::ts_tree_cursor_delete)
 {
 }
 
-// Create a new tree cursor starting from the given node.
-TSTreeCursor::TSTreeCursor(const ts::TSNode & node)
-    : cursor(ts::ts_tree_cursor_new(node)), cursorPtr(&cursor, ts::ts_tree_cursor_delete)
+// Move constructor.
+TSTreeCursor::TSTreeCursor(TSTreeCursor && src)
+    : cursor(src.cursor), cursorPtr(&cursor, ts::ts_tree_cursor_delete)
 {
+    src.cursorPtr.release();
+}
+
+// Copy assignment operator.
+TSTreeCursor & TSTreeCursor::operator=(const TSTreeCursor & src)
+{
+    if (this != &src)
+    {
+        cursor = ts::ts_tree_cursor_copy(src);
+        cursorPtr.reset(&cursor);
+    }
+    return *this;
+}
+
+// Move assignment operator.
+TSTreeCursor & TSTreeCursor::operator=(TSTreeCursor && src)
+{
+    if (this != &src)
+    {
+        cursor = src.cursor;
+        cursorPtr.reset(&cursor);
+        src.cursorPtr.release();
+    }
+    return *this;
 }
 
 // Conversion operator: Get the underlying ts::TSTreeCursor.
