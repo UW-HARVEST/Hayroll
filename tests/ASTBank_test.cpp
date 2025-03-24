@@ -64,9 +64,10 @@ int main(int argc, char **argv)
         std::cout << root.sExpression() << std::endl;
         for (TSNode node : root.iterateChildren())
         {
-            if (node.type() == "preproc_ifndef")
+            if (node.symbol() == lang.ifndef_s)
             {
-                std::cout << node.childByFieldName("name").type() << std::endl;
+                // std::cout << node.childByFieldName("name").text(source) << std::endl;
+                std::cout << node.childByFieldId(lang.ifndef_s.name_f).text(source) << std::endl;
             }
         }
         std::cout << std::endl;
