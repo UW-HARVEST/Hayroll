@@ -22,8 +22,8 @@ int main(int argc, char **argv)
     srcFile << "#include <stdio.h>\n";
     srcFile.close();
 
-    IncludeTreePtr root = IncludeTree::make(0, srcPath);
-    IncludeTreePtr node = root;
+    IncludeTreePtr includeRoot = IncludeTree::make(0, srcPath);
+    IncludeTreePtr includeNode = includeRoot;
 
     // (isSystemInclude, includeName)
     std::vector<std::pair<bool, std::string>> includes =
@@ -40,29 +40,39 @@ int main(int argc, char **argv)
         { true, "bits/typesizes.h" },
     };
 
-    ASTBank astBank{TSLanguageCPreproc()};
+    CPreproc lang = CPreproc();
+
+    ASTBank astBank(lang);
 
     for (const auto & [isSystemInclude, includeName] : includes)
     {
-        auto ancestorDirs = node->getAncestorDirs();
+        auto ancestorDirs = includeNode->getAncestorDirs();
         auto includePath = resolver.resolveInclude(isSystemInclude, includeName, ancestorDirs);
         std::cout << "Resolved include path: " << includePath << std::endl;
-        node->addChild(0, includePath);
-        node = node->children[0];
+        includeNode->addChild(0, includePath);
+        includeNode = includeNode->children[0];
         astBank.addFile(includePath);
     }
 
     // Go from the last node to the root (excluding the root), printing the included files
-    for (auto it = node; it->parent.lock(); it = it->parent.lock())
+    for (auto it = includeNode; it->parent.lock(); it = it->parent.lock())
     {
         std::cout << "Included file: " << it->path << std::endl;
         std::cout << std::flush;
-        const auto & [text, ast] = astBank.find(it->path);
-        std::cout << text << std::endl;
-        std::cout << ast.rootNode().sExpression() << std::endl;
+        const auto & [source, ast] = astBank.find(it->path);
+        TSNode root = ast.rootNode();
+        std::cout << root.sExpression() << std::endl;
+        for (TSNode node : root.iterateChildren())
+        {
+            if (node.type() == "preproc_ifndef")
+            {
+                std::cout << node.childByFieldName("name").type() << std::endl;
+            }
+        }
+        std::cout << std::endl;
     }
 
-    std::cout << root->toString() << std::endl;
+    std::cout << includeRoot->toString() << std::endl;
 
     return 0;
 }

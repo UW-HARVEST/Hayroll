@@ -50,7 +50,7 @@ public:
 
     uint32_t symbolCount() const;
     uint32_t stateCount() const;
-    TSSymbol symbolForName(const std::string & name, bool isName) const;
+    TSSymbol symbolForName(const std::string & name, bool isNamed) const;
     uint32_t fieldCount() const;
     std::string fieldNameForId(ts::TSFieldId id) const;
     ts::TSFieldId fieldIdForName(const std::string & name) const;
@@ -74,7 +74,6 @@ public:
     TSNode(ts::TSNode node);
 
     operator ts::TSNode() const;
-    TSNode get();
 
     std::string type() const;
     TSSymbol symbol() const;
@@ -113,6 +112,7 @@ public:
     bool operator==(const TSNode & other) const;
 
     bool isNull() const;
+    operator bool() const;
     bool isNamed() const;
     bool isMissing() const;
     bool isExtra() const;
@@ -122,7 +122,7 @@ public:
     TSStateId parseState() const;
     TSStateId nextParseState() const;
     TSNode parent() const;
-    TSNode childWithDescendant(TSNode descendant) const;
+    TSNode childWithDescendant(ts::TSNode descendant) const;
 
     std::string fieldNameForChild(uint32_t child_index) const;
     std::string fieldNameForNamedChild(uint32_t named_child_index) const;
@@ -135,6 +135,8 @@ public:
     TSTreeCursorIterateChildren iterateChildren() const;
 private:
     ts::TSNode node;
+
+    void assertNonNull() const;
 };
 
 class TSTree
@@ -507,266 +509,306 @@ TSNode::operator ts::TSNode() const
     return node;
 }
 
-// Returns the stored TSNode.
-TSNode TSNode::get()
-{
-    return node;
-}
 
 // Get the node's type as a null-terminated string.
 std::string TSNode::type() const
 {
-    return TSUtils::freeCstrToString(ts::ts_node_type(node));
+    assertNonNull();
+    return ts::ts_node_type(*this);
 }
 
 // Get the node's type as a numerical id.
 TSSymbol TSNode::symbol() const
 {
-    return ts::ts_node_symbol(node);
+    assertNonNull();
+    return ts::ts_node_symbol(*this);
 }
 
 // Get the node's language.
 const TSLanguage TSNode::language() const
 {
-    return ts::ts_node_language(node);
+    assertNonNull();
+    return ts::ts_node_language(*this);
 }
 
 // Get the node's type as it appears in the grammar ignoring aliases as a null-terminated string.
 std::string TSNode::grammarType() const
 {
-    return TSUtils::freeCstrToString(ts::ts_node_grammar_type(node));
+    assertNonNull();
+    return ts::ts_node_grammar_type(*this);
 }
 
 // Get the node's type as a numerical id as it appears in the grammar ignoring aliases.
 TSSymbol TSNode::grammarSymbol() const
 {
-    return ts::ts_node_grammar_symbol(node);
+    assertNonNull();
+    return ts::ts_node_grammar_symbol(*this);
 }
 
 // Get the node's start byte.
 uint32_t TSNode::startByte() const
 {
-    return ts::ts_node_start_byte(node);
+    assertNonNull();
+    return ts::ts_node_start_byte(*this);
 }
 
 // Get the node's start position in terms of rows and columns.
 TSPoint TSNode::startPoint() const
 {
-    return ts::ts_node_start_point(node);
+    assertNonNull();
+    return ts::ts_node_start_point(*this);
 }
 
 // Get the node's end byte.
 uint32_t TSNode::endByte() const
 {
-    return ts::ts_node_end_byte(node);
+    assertNonNull();
+    return ts::ts_node_end_byte(*this);
 }
 
 // Get the node's end position in terms of rows and columns.
 TSPoint TSNode::endPoint() const
 {
-    return ts::ts_node_end_point(node);
+    assertNonNull();
+    return ts::ts_node_end_point(*this);
 }
 
 std::string TSNode::sExpression() const
 {
-    return TSUtils::freeCstrToString(ts::ts_node_string(node));
+    assertNonNull();
+    return TSUtils::freeCstrToString(ts::ts_node_string(*this));
 }
 
 // Get the node's number of children.
 uint32_t TSNode::childCount() const
 {
-    return ts::ts_node_child_count(node);
+    assertNonNull();
+    return ts::ts_node_child_count(*this);
 }
 
 // Get the node's number of named children.
 uint32_t TSNode::namedChildCount() const
 {
-    return ts::ts_node_named_child_count(node);
+    assertNonNull();
+    return ts::ts_node_named_child_count(*this);
 }
 
 // Get the node's child at the given index, where zero represents the first child.
 TSNode TSNode::child(uint32_t index) const
 {
-    return ts::ts_node_child(node, index);
+    assertNonNull();
+    return ts::ts_node_child(*this, index);
 }
 
 // Get the node's named child at the given index.
 TSNode TSNode::namedChild(uint32_t index) const
 {
-    return ts::ts_node_named_child(node, index);
+    assertNonNull();
+    return ts::ts_node_named_child(*this, index);
 }
 
 // Get the node's next sibling.
 TSNode TSNode::nextSibling() const
 {
-    return ts::ts_node_next_sibling(node);
+    assertNonNull();
+    return ts::ts_node_next_sibling(*this);
 }
 
 // Get the node's previous sibling.
 TSNode TSNode::prevSibling() const
 {
-    return ts::ts_node_prev_sibling(node);
+    assertNonNull();
+    return ts::ts_node_prev_sibling(*this);
 }
 
 // Get the node's next named sibling.
 TSNode TSNode::nextNamedSibling() const
 {
-    return ts::ts_node_next_named_sibling(node);
+    assertNonNull();
+    return ts::ts_node_next_named_sibling(*this);
 }
 
 // Get the node's previous named sibling.
 TSNode TSNode::prevNamedSibling() const
 {
-    return ts::ts_node_prev_named_sibling(node);
+    assertNonNull();
+    return ts::ts_node_prev_named_sibling(*this);
 }
 
 // Get the node's first child that contains or starts after the given byte offset.
 TSNode TSNode::firstChildForByte(uint32_t byte) const
 {
-    return ts::ts_node_first_child_for_byte(node, byte);
+    assertNonNull();
+    return ts::ts_node_first_child_for_byte(*this, byte);
 }
 
 // Get the node's first named child that contains or starts after the given byte offset.
 TSNode TSNode::firstNamedChildForByte(uint32_t byte) const
 {
-    return ts::ts_node_first_named_child_for_byte(node, byte);
+    assertNonNull();
+    return ts::ts_node_first_named_child_for_byte(*this, byte);
 }
 
 // Get the node's number of descendants, including one for the node itself.
 uint32_t TSNode::descendantCount() const
 {
-    return ts::ts_node_descendant_count(node);
+    assertNonNull();
+    return ts::ts_node_descendant_count(*this);
 }
 
 // Get the smallest node within this node that spans the given range of bytes.
 TSNode TSNode::descendantForByteRange(uint32_t start, uint32_t end) const
 {
-    return ts::ts_node_descendant_for_byte_range(node, start, end);
+    assertNonNull();
+    return ts::ts_node_descendant_for_byte_range(*this, start, end);
 }
 
 // Get the smallest node within this node that spans the given range of (row, column) positions.
 TSNode TSNode::descendantForPointRange(ts::TSPoint start, ts::TSPoint end) const
 {
-    return ts::ts_node_descendant_for_point_range(node, start, end);
+    assertNonNull();
+    return ts::ts_node_descendant_for_point_range(*this, start, end);
 }
 
 // Get the smallest named node within this node that spans the given range of bytes.
 TSNode TSNode::namedDescendantForByteRange(uint32_t start, uint32_t end) const
 {
-    return ts::ts_node_named_descendant_for_byte_range(node, start, end);
+    assertNonNull();
+    return ts::ts_node_named_descendant_for_byte_range(*this, start, end);
 }
 
 // Get the smallest named node within this node that spans the given range of (row, column) positions.
 TSNode TSNode::namedDescendantForPointRange(ts::TSPoint start, ts::TSPoint end) const
 {
-    return ts::ts_node_named_descendant_for_point_range(node, start, end);
+    assertNonNull();
+    return ts::ts_node_named_descendant_for_point_range(*this, start, end);
 }
 
 // Edit the node to keep it in sync with source code that has been edited.
 void TSNode::edit(const ts::TSInputEdit *edit)
 {
+    assertNonNull();
     ts::ts_node_edit(&node, edit);
 }
 
 bool TSNode::eq(const ts::TSNode & other) const
 {
-    return ts::ts_node_eq(node, other);
+    return ts::ts_node_eq(*this, other);
 }
 
 // Check if two nodes are identical.
 bool TSNode::operator==(const TSNode & other) const
 {
-    return ts::ts_node_eq(node, other);
+    return ts::ts_node_eq(*this, other);
 }
 
 // Check if the node is null.
 bool TSNode::isNull() const
 {
-    return ts::ts_node_is_null(node);
+    return ts::ts_node_is_null(*this);
+}
+
+TSNode::operator bool() const
+{
+    return !isNull();
 }
 
 // Check if the node is named.
 bool TSNode::isNamed() const
 {
-    return ts::ts_node_is_named(node);
+    assertNonNull();
+    return ts::ts_node_is_named(*this);
 }
 
 // Check if the node is missing.
 bool TSNode::isMissing() const
 {
-    return ts::ts_node_is_missing(node);
+    assertNonNull();
+    return ts::ts_node_is_missing(*this);
 }
 
 // Check if the node is extra.
 bool TSNode::isExtra() const
 {
-    return ts::ts_node_is_extra(node);
+    assertNonNull();
+    return ts::ts_node_is_extra(*this);
 }
 
 // Check if the syntax node has been edited.
 bool TSNode::hasChanges() const
 {
-    return ts::ts_node_has_changes(node);
+    assertNonNull();
+    return ts::ts_node_has_changes(*this);
 }
 
 // Check if the node has any syntax errors.
 bool TSNode::hasError() const
 {
-    return ts::ts_node_has_error(node);
+    assertNonNull();
+    return ts::ts_node_has_error(*this);
 }
 
 // Check if the node is a syntax error.
 bool TSNode::isError() const
 {
-    return ts::ts_node_is_error(node);
+    assertNonNull();
+    return ts::ts_node_is_error(*this);
 }
 
 // Get this node's parse state.
 TSStateId TSNode::parseState() const
 {
-    return ts::ts_node_parse_state(node);
+    assertNonNull();
+    return ts::ts_node_parse_state(*this);
 }
 
 // Get the parse state after this node.
 TSStateId TSNode::nextParseState() const
 {
-    return ts::ts_node_next_parse_state(node);
+    assertNonNull();
+    return ts::ts_node_next_parse_state(*this);
 }
 
 // Get the node's immediate parent.
 TSNode TSNode::parent() const
 {
-    return ts::ts_node_parent(node);
+    assertNonNull();
+    return ts::ts_node_parent(*this);
 }
 
 // Get the node that contains the given descendant.
-TSNode TSNode::childWithDescendant(TSNode descendant) const
+TSNode TSNode::childWithDescendant(ts::TSNode descendant) const
 {
-    return ts::ts_node_child_with_descendant(node, descendant);
+    assertNonNull();
+    return ts::ts_node_child_with_descendant(*this, descendant);
 }
 
 // Get the field name for the node's child at the given index.
 std::string TSNode::fieldNameForChild(uint32_t child_index) const
 {
-    return TSUtils::freeCstrToString(ts::ts_node_field_name_for_child(node, child_index));
+    assertNonNull();
+    return TSUtils::freeCstrToString(ts::ts_node_field_name_for_child(*this, child_index));
 }
 
 // Get the field name for the node's named child at the given index.
 std::string TSNode::fieldNameForNamedChild(uint32_t named_child_index) const
 {
-    return TSUtils::freeCstrToString(ts::ts_node_field_name_for_named_child(node, named_child_index));
+    assertNonNull();
+    return TSUtils::freeCstrToString(ts::ts_node_field_name_for_named_child(*this, named_child_index));
 }
 
 // Get the node's child with the given field name.
 TSNode TSNode::childByFieldName(const std::string & name) const
 {
-    return ts::ts_node_child_by_field_name(node, name.c_str(), name.size());
+    assertNonNull();
+    return ts::ts_node_child_by_field_name(*this, name.c_str(), name.size());
 }
 
 // Get the node's child with the given numerical field id.
 TSNode TSNode::childByFieldId(ts::TSFieldId field_id) const
 {
-    return ts::ts_node_child_by_field_id(node, field_id);
+    assertNonNull();
+    return ts::ts_node_child_by_field_id(*this, field_id);
 }
 
 // Helper function: Get the text of the node from the source.
@@ -778,12 +820,18 @@ std::string TSNode::text(std::string_view source) const
 // Create a tree cursor for this node.
 TSTreeCursor TSNode::cursor() const
 {
-    return TSTreeCursor(node);
+    assertNonNull();
+    return TSTreeCursor(*this);
 }
 
 TSTreeCursorIterateChildren TSNode::iterateChildren() const
 {
     return cursor().iterateChildren();
+}
+
+void TSNode::assertNonNull() const
+{
+    assert(*this);
 }
 
 // TSTree

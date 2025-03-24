@@ -34,7 +34,7 @@ int main()
 
     IncludeResolver resolver(clang_exe_path, {});
 
-    TSParser parser{TSLanguageCPreproc()};
+    TSParser parser{CPreproc()};
 
     std::string predefinedMacros = resolver.getPredefinedMacros();
 
