@@ -4,9 +4,8 @@
 #include <variant>
 #include <memory>
 
-#include "tree_sitter/tree-sitter-c-preproc.h"
-
 #include "TreeSitter.hpp"
+#include "TreeSitterCPreproc.hpp"
 #include "SymbolTable.hpp"
 #include "IncludeResolver.hpp"
 
@@ -35,7 +34,7 @@ int main()
 
     IncludeResolver resolver(clang_exe_path, {});
 
-    TSParser parser(tree_sitter_c_preproc());
+    TSParser parser{TSLanguageCPreproc()};
 
     std::string predefinedMacros = resolver.getPredefinedMacros();
 

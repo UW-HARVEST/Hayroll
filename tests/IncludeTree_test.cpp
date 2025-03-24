@@ -43,7 +43,8 @@ int main(int argc, char **argv)
     auto node = root;
 
     // (isSystemInclude, includeName)
-    std::vector<std::pair<bool, std::string>> includes = {
+    std::vector<std::pair<bool, std::string>> includes =
+    {
         { false, "nonsense/../test.h" },
         { true, "stdio.h" },
         { true, "bits/types.h" },

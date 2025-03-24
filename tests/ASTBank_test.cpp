@@ -1,12 +1,11 @@
 #include <iostream>
 
-#include "tree_sitter/tree-sitter-c-preproc.h"
-
 #include "ASTBank.hpp"
 #include "IncludeTree.hpp"
 #include "IncludeResolver.hpp"
 #include "SymbolTable.hpp"
 #include "TreeSitter.hpp"
+#include "TreeSitterCPreproc.hpp"
 
 
 int main(int argc, char **argv)
@@ -27,7 +26,8 @@ int main(int argc, char **argv)
     IncludeTreePtr node = root;
 
     // (isSystemInclude, includeName)
-    std::vector<std::pair<bool, std::string>> includes = {
+    std::vector<std::pair<bool, std::string>> includes =
+    {
         { true, "stdio.h" },
         { true, "bits/types.h" },
         { true, "bits/timesize.h" },
@@ -40,7 +40,7 @@ int main(int argc, char **argv)
         { true, "bits/typesizes.h" },
     };
 
-    ASTBank astBank(tree_sitter_c_preproc());
+    ASTBank astBank{TSLanguageCPreproc()};
 
     for (const auto & [isSystemInclude, includeName] : includes)
     {

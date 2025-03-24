@@ -158,7 +158,6 @@ add_executable(pioneer src/pioneer.cpp)
 target_link_libraries(pioneer PRIVATE
     hayroll_exe_config
     external_exe_config
-    clang_tooling_config
     z3_config
     tree_sitter_config
 )
@@ -219,7 +218,6 @@ target_link_libraries(IncludeTree_test PRIVATE
     hayroll_exe_config
     external_exe_config
     testing_config
-    clang_tooling_config
     tree_sitter_config
 )
 add_test(

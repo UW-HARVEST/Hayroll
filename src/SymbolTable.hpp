@@ -11,7 +11,6 @@
 
 #include "Util.hpp"
 #include "TreeSitter.hpp"
-#include "tree_sitter/tree-sitter-c-preproc.h"
 
 namespace Hayroll
 {

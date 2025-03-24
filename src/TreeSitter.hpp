@@ -1,5 +1,5 @@
-#ifndef HAYROLL_TREE_SITTER_HPP
-#define HAYROLL_TREE_SITTER_HPP
+#ifndef HAYROLL_TREESITTER_HPP
+#define HAYROLL_TREESITTER_HPP
 
 #include <memory>
 #include <string>
@@ -8,10 +8,11 @@
 #include <stdexcept>
 #include <optional>
 #include <cassert>
+#include <vector>
 
 namespace ts
 {
-#include "tree_sitter/api.h"
+    #include "tree_sitter/api.h"
 } // namespace ts
 
 namespace Hayroll
@@ -21,6 +22,8 @@ using TSPoint = ts::TSPoint;
 using TSRange = ts::TSRange;
 using TSStateId = ts::TSStateId;
 using TSFieldId = ts::TSFieldId;
+using TSSymbol = ts::TSSymbol;
+using TSSymbolType = ts::TSSymbolType;
 
 namespace TSUtils
 {
@@ -31,6 +34,40 @@ namespace TSUtils
 class TSTreeCursor;
 class TSTreeCursorIterateChildren;
 
+class TSLanguage
+{
+public:
+    TSLanguage(const ts::TSLanguage * language);
+
+    TSLanguage(const TSLanguage & src) = delete;
+    TSLanguage(TSLanguage && src) = default;
+    TSLanguage & operator=(const TSLanguage & src) = delete;
+    TSLanguage & operator=(TSLanguage && src) = default;
+    ~TSLanguage() = default;
+
+    operator const ts::TSLanguage *() const;
+    const ts::TSLanguage * get();
+
+    uint32_t symbolCount() const;
+    uint32_t stateCount() const;
+    TSSymbol symbolForName(const std::string & name, bool isName) const;
+    uint32_t fieldCount() const;
+    std::string fieldNameForId(ts::TSFieldId id) const;
+    ts::TSFieldId fieldIdForName(const std::string & name) const;
+    std::vector<TSSymbol> supertypes() const;
+    std::vector<TSSymbol> subtypes(ts::TSSymbol supertype) const;
+    std::string symbolName(ts::TSSymbol symbol) const;
+    TSSymbolType symbolType(ts::TSSymbol symbol) const;
+    uint32_t languageVersion() const;
+    uint32_t abiVersion() const;
+    const ts::TSLanguageMetadata *metadata() const;
+    ts::TSStateId nextState(ts::TSStateId state, ts::TSSymbol symbol) const;
+    std::string name() const;
+
+private:
+    std::unique_ptr<const ts::TSLanguage, decltype(&ts::ts_language_delete)> language;
+};
+
 class TSNode
 {
 public:
@@ -40,11 +77,11 @@ public:
     TSNode get();
 
     std::string type() const;
-    ts::TSSymbol symbol() const;
-    const ts::TSLanguage * language() const;
+    TSSymbol symbol() const;
+    const TSLanguage language() const;
 
     std::string grammarType() const;
-    ts::TSSymbol grammarSymbol() const;
+    TSSymbol grammarSymbol() const;
 
     uint32_t startByte() const;
     TSPoint startPoint() const;
@@ -118,7 +155,7 @@ public:
 
     TSNode rootNode() const;
     TSNode rootNodeWithOffset(uint32_t offsetBytes, ts::TSPoint offsetExtent) const;
-    const ts::TSLanguage * language() const;
+    const TSLanguage language() const;
 
     std::tuple<ts::TSRange, uint32_t> includedRanges() const;
     void edit(const ts::TSInputEdit *edit);
@@ -144,7 +181,7 @@ public:
     operator const ts::TSParser *() const;
     ts::TSParser * get();
 
-    const ts::TSLanguage * language() const;
+    const TSLanguage language() const;
     bool setLanguage(const ts::TSLanguage * language);
 
     TSTree parseString(std::string_view source);
@@ -326,6 +363,136 @@ TSRange freeTSRangePtrToTSRange(const ts::TSRange *range)
 } // namespace TSUtils
 
 
+// TSLanguage
+
+// Constructor
+TSLanguage::TSLanguage(const ts::TSLanguage * language)
+    : language(language, &ts::ts_language_delete)
+{
+}
+
+TSLanguage::operator const ts::TSLanguage *() const
+{
+    return language.get();
+}
+
+const ts::TSLanguage * TSLanguage::get()
+{
+    return language.get();
+}
+
+// Get the number of distinct node types in the language.
+uint32_t TSLanguage::symbolCount() const
+{
+    return ts::ts_language_symbol_count(*this);
+}
+
+// Get the number of valid states in this language.
+uint32_t TSLanguage::stateCount() const
+{
+    return ts::ts_language_state_count(*this);
+}
+
+// Get the numerical id for the given node type string.
+TSSymbol TSLanguage::symbolForName(const std::string & name, bool isNamed) const
+{
+    return ts::ts_language_symbol_for_name(*this, name.c_str(), name.size(), isNamed);
+}
+
+// Get the number of distinct field names in the language.
+uint32_t TSLanguage::fieldCount() const
+{
+    return ts::ts_language_field_count(*this);
+}
+
+// Get the field name string for the given numerical id.
+std::string TSLanguage::fieldNameForId(ts::TSFieldId id) const
+{
+    const char * fname = ts::ts_language_field_name_for_id(*this, id);
+    return fname ? std::string( fname ) : std::string();
+}
+
+// Get the numerical id for the given field name string.
+ts::TSFieldId TSLanguage::fieldIdForName(const std::string & name) const
+{
+    return ts::ts_language_field_id_for_name(*this, name.c_str(), static_cast< uint32_t >( name.size() ) );
+}
+
+// Get a list of all supertype symbols for the language.
+std::vector<TSSymbol> TSLanguage::supertypes() const
+{
+    uint32_t length = 0;
+    const ts::TSSymbol * symbols = ts::ts_language_supertypes(*this, & length );
+    return std::vector<ts::TSSymbol>( symbols, symbols + length );
+}
+
+// Get a list of all subtype symbol ids for a given supertype symbol.
+// See [`ts_language_supertypes`] for fetching all supertype symbols.
+std::vector<TSSymbol> TSLanguage::subtypes(ts::TSSymbol supertype) const
+{
+    uint32_t length = 0;
+    const TSSymbol * symbols = ts::ts_language_subtypes(*this, supertype, & length );
+    return std::vector<TSSymbol>( symbols, symbols + length );
+}
+
+// Get a node type string for the given numerical id.
+std::string TSLanguage::symbolName(ts::TSSymbol symbol) const
+{
+    const char * name = ts::ts_language_symbol_name(*this, symbol);
+    return TSUtils::freeCstrToString(name);
+}
+
+// Check whether the given node type id belongs to named nodes, anonymous nodes,
+// or a hidden nodes.
+// See also [`ts_node_is_named`]. Hidden nodes are never returned from the API.
+TSSymbolType TSLanguage::symbolType(ts::TSSymbol symbol) const
+{
+    return ts::ts_language_symbol_type(*this, symbol);
+}
+
+// @deprecated use [`ts_language_abi_version`] instead, this will be removed in 0.26.
+// Get the ABI version number for this language. This version number is used
+// to ensure that languages were generated by a compatible version of
+// Tree-sitter.
+// See also [`ts_parser_set_language`].
+uint32_t TSLanguage::languageVersion() const
+{
+    return ts::ts_language_version(*this);
+}
+
+// Get the ABI version number for this language. This version number is used
+// to ensure that languages were generated by a compatible version of
+// Tree-sitter.
+// See also [`ts_parser_set_language`].
+uint32_t TSLanguage::abiVersion() const
+{
+    return ts::ts_language_abi_version(*this);
+}
+
+// Get the metadata for this language. This information is generated by the
+// CLI, and relies on the language author providing the correct metadata in
+// the language's `tree-sitter.json` file.
+// See also [`TSMetadata`].
+const ts::TSLanguageMetadata * TSLanguage::metadata() const
+{
+    return ts::ts_language_metadata(*this);
+}
+
+// Get the next parse state. Combine this with lookahead iterators to generate
+// completion suggestions or valid symbols in error nodes. Use
+// [`ts_node_grammar_symbol`] for valid symbols.
+ts::TSStateId TSLanguage::nextState(ts::TSStateId state, ts::TSSymbol symbol) const
+{
+    return ts::ts_language_next_state(*this, state, symbol);
+}
+
+// Get the name of this language. This returns `NULL` in older parsers.
+std::string TSLanguage::name() const
+{
+    const char * langName = ts::ts_language_name(*this);
+    return TSUtils::freeCstrToString(langName);
+}
+
 // TSNode
 
 // Constructor for TSNode
@@ -353,13 +520,13 @@ std::string TSNode::type() const
 }
 
 // Get the node's type as a numerical id.
-ts::TSSymbol TSNode::symbol() const
+TSSymbol TSNode::symbol() const
 {
     return ts::ts_node_symbol(node);
 }
 
 // Get the node's language.
-const ts::TSLanguage * TSNode::language() const
+const TSLanguage TSNode::language() const
 {
     return ts::ts_node_language(node);
 }
@@ -371,7 +538,7 @@ std::string TSNode::grammarType() const
 }
 
 // Get the node's type as a numerical id as it appears in the grammar ignoring aliases.
-ts::TSSymbol TSNode::grammarSymbol() const
+TSSymbol TSNode::grammarSymbol() const
 {
     return ts::ts_node_grammar_symbol(node);
 }
@@ -663,7 +830,7 @@ TSNode TSTree::rootNodeWithOffset(uint32_t offsetBytes, ts::TSPoint offsetExtent
 }
 
 // Get the language that was used to parse the syntax tree.
-const ts::TSLanguage * TSTree::language() const
+const TSLanguage TSTree::language() const
 {
     return ts::ts_tree_language(*this);
 }
@@ -731,7 +898,7 @@ ts::TSParser * TSParser::get()
 }
 
 // Get the parser's current language.
-const ts::TSLanguage * TSParser::language() const
+const TSLanguage TSParser::language() const
 {
     return ts::ts_parser_language(*this);
 }
@@ -979,4 +1146,5 @@ TSTreeCursorIterateChildren TSTreeCursor::iterateChildren() const
 
 } // namespace Hayroll
 
-#endif // HAYROLL_TREE_SITTER_HPP
+#endif // HAYROLL_TREESITTER_HPP
+
