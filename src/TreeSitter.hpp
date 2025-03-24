@@ -495,6 +495,7 @@ std::string TSLanguage::name() const
     return TSUtils::freeCstrToString(langName);
 }
 
+
 // TSNode
 
 // Constructor for TSNode
@@ -539,6 +540,7 @@ std::string TSNode::grammarType() const
 }
 
 // Get the node's type as a numerical id as it appears in the grammar ignoring aliases.
+// This should be used in ts_language_next_state instead of ts_node_symbol.
 TSSymbol TSNode::grammarSymbol() const
 {
     assertNonNull();
@@ -573,6 +575,8 @@ TSPoint TSNode::endPoint() const
     return ts::ts_node_end_point(*this);
 }
 
+// Get an S-expression representing the node as a string.
+// This string is allocated with malloc and the caller is responsible for freeing it using free.
 std::string TSNode::sExpression() const
 {
     assertNonNull();
@@ -685,12 +689,15 @@ TSNode TSNode::namedDescendantForPointRange(ts::TSPoint start, ts::TSPoint end) 
 }
 
 // Edit the node to keep it in sync with source code that has been edited.
+// This function is only rarely needed. When you edit a syntax tree with the ts_tree_edit function, all of the nodes that you retrieve from the tree afterward will already reflect the edit.
+// You only need to use ts_node_edit when you have a TSNode instance that you want to keep and continue to use after an edit.
 void TSNode::edit(const ts::TSInputEdit *edit)
 {
     assertNonNull();
     ts::ts_node_edit(&node, edit);
 }
 
+// Check if two nodes are identical.
 bool TSNode::eq(const ts::TSNode & other) const
 {
     return ts::ts_node_eq(*this, other);
@@ -703,6 +710,7 @@ bool TSNode::operator==(const TSNode & other) const
 }
 
 // Check if the node is null.
+// Functions like ts_node_child and ts_node_next_sibling will return a null node to indicate that no such node was found.
 bool TSNode::isNull() const
 {
     return ts::ts_node_is_null(*this);
@@ -714,6 +722,7 @@ TSNode::operator bool() const
 }
 
 // Check if the node is named.
+// Named nodes correspond to named rules in the grammar, whereas anonymous nodes correspond to string literals in the grammar.
 bool TSNode::isNamed() const
 {
     assertNonNull();
@@ -721,6 +730,7 @@ bool TSNode::isNamed() const
 }
 
 // Check if the node is missing.
+// Missing nodes are inserted by the parser in order to recover from certain kinds of syntax errors.
 bool TSNode::isMissing() const
 {
     assertNonNull();
@@ -728,6 +738,7 @@ bool TSNode::isMissing() const
 }
 
 // Check if the node is extra.
+// Extra nodes represent things like comments, which are not required the grammar, but can appear anywhere.
 bool TSNode::isExtra() const
 {
     assertNonNull();
@@ -770,6 +781,7 @@ TSStateId TSNode::nextParseState() const
 }
 
 // Get the node's immediate parent.
+// Prefer ts_node_child_with_descendant for iterating over the node's ancestors.
 TSNode TSNode::parent() const
 {
     assertNonNull();
@@ -777,6 +789,7 @@ TSNode TSNode::parent() const
 }
 
 // Get the node that contains the given descendant.
+// Note that this can return descendant itself.
 TSNode TSNode::childWithDescendant(ts::TSNode descendant) const
 {
     assertNonNull();
@@ -784,6 +797,7 @@ TSNode TSNode::childWithDescendant(ts::TSNode descendant) const
 }
 
 // Get the field name for the node's child at the given index.
+// Returns NULL if no field is found.
 std::string TSNode::fieldNameForChild(uint32_t child_index) const
 {
     assertNonNull();
@@ -791,6 +805,7 @@ std::string TSNode::fieldNameForChild(uint32_t child_index) const
 }
 
 // Get the field name for the node's named child at the given index.
+// Returns NULL if no field is found.
 std::string TSNode::fieldNameForNamedChild(uint32_t named_child_index) const
 {
     assertNonNull();
@@ -805,6 +820,7 @@ TSNode TSNode::childByFieldName(const std::string & name) const
 }
 
 // Get the node's child with the given numerical field id.
+// You can convert a field name to an id using the ts_language_field_id_for_name function.
 TSNode TSNode::childByFieldId(ts::TSFieldId field_id) const
 {
     assertNonNull();
@@ -833,6 +849,7 @@ void TSNode::assertNonNull() const
 {
     assert(*this);
 }
+
 
 // TSTree
 
