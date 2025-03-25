@@ -130,6 +130,7 @@ public:
     TSNode childByFieldId(ts::TSFieldId field_id) const;
 
     // Helper functions
+    bool isSymbol(ts::TSSymbol symbol) const;
     std::string text(std::string_view source) const;
     TSTreeCursor cursor() const;
     TSTreeCursorIterateChildren iterateChildren() const;
@@ -825,6 +826,11 @@ TSNode TSNode::childByFieldId(ts::TSFieldId field_id) const
 {
     assertNonNull();
     return ts::ts_node_child_by_field_id(*this, field_id);
+}
+
+bool TSNode::isSymbol(ts::TSSymbol symbol) const
+{
+    return symbol == this->symbol();
 }
 
 // Helper function: Get the text of the node from the source.

@@ -82,6 +82,9 @@ find_program(AWK_EXE awk REQUIRED)
 # spdlog
 find_package(spdlog REQUIRED)
 
+# fmt
+find_package(fmt REQUIRED)
+
 message(STATUS "AWK_EXE: ${AWK_EXE}")
 
 # tree-sitter
@@ -96,6 +99,7 @@ message(STATUS "TREE_SITTER_C_PREPROC_DIR: ${TREE_SITTER_C_PREPROC_DIR}")
 # Common config
 link_libraries(
     spdlog::spdlog
+    fmt::fmt
 )
 
 add_library(hayroll_exe_config INTERFACE)

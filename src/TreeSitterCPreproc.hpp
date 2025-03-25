@@ -17,16 +17,34 @@ public:
     // X-macro that defines the symbols and fields of the tree-sitter-c_preproc language
     // In this way we don't need to use string literals in the code
     #define C_PREPROC_GRAMMAR \
-        X(arg) XX \
-        X(argument_list) \
+        X(preproc_arg) XX \
+        X(preproc_argument_list) \
             Y(argument) \
         XX \
         X(binary_expression) \
             Y(left) \
             Y(operator) \
             Y(right) \
+            Z(+, add) \
+            Z(-, sub) \
+            Z(*, mul) \
+            Z(/, div) \
+            Z(%, mod) \
+            Z(||, or) \
+            Z(&&, and) \
+            Z(|, bor) \
+            Z(^, bxor) \
+            Z(&, band) \
+            Z(==, eq) \
+            Z(!=, neq) \
+            Z(>, gt) \
+            Z(>=, ge) \
+            Z(<=, le) \
+            Z(<, lt) \
+            Z(<<, lsh) \
+            Z(>>, rsh) \
         XX \
-        X(call) \
+        X(preproc_call) \
             Y(directive) \
             Y(argument) \
         XX \
@@ -39,81 +57,90 @@ public:
             Y(consequence) \
             Y(alternative) \
         XX \
-        X(def) \
+        X(preproc_def) \
             Y(name) \
             Y(value) \
         XX \
-        X(defined) XX \
-        X(directive) XX \
-        X(elif) \
+        X(preproc_defined) \
+            Y(name) \
+        XX \
+        X(preproc_directive) XX \
+        X(preproc_elif) \
             Y(condition) \
             Y(body) \
             Y(alternative) \
         XX \
-        X(elifdef) \
+        X(preproc_elifdef) \
             Y(name) \
             Y(body) \
             Y(alternative) \
         XX \
-        X(elifndef) \
+        X(preproc_elifndef) \
             Y(name) \
             Y(body) \
             Y(alternative) \
         XX \
-        X(else) \
+        X(preproc_else) \
             Y(body) \
         XX \
-        X(error) \
+        X(preproc_error) \
             Y(message) \
         XX \
-        X(eval) \
-            Y(expression) \
+        X(preproc_eval) \
+            Y(expr) \
         XX \
-        X(expression) XX \
-        X(function_def) \
+        X(preproc_function_def) \
             Y(name) \
             Y(parameters) \
             Y(value) \
         XX \
-        X(if) \
+        X(preproc_if) \
             Y(condition) \
             Y(body) \
             Y(alternative) \
         XX \
-        X(ifdef) \
+        X(preproc_ifdef) \
             Y(name) \
             Y(body) \
             Y(alternative) \
         XX \
-        X(ifndef) \
+        X(preproc_ifndef) \
             Y(name) \
             Y(body) \
             Y(alternative) \
         XX \
-        X(include) \
+        X(preproc_include) \
             Y(path) \
         XX \
-        X(include_next) \
+        X(preproc_include_next) \
             Y(path) \
         XX \
-        X(line) \
+        X(preproc_line) \
             Y(line_number) \
             Y(filename) \
         XX \
-        X(params) \
+        X(preproc_params) \
             Y(parameter) \
         XX \
-        X(parenthesized_expression) XX \
+        X(parenthesized_expression) \
+            Y(expr) \
+        XX \
         X(unary_expression) \
             Y(operator) \
             Y(argument) \
+            Z(!, not) \
+            Z(~, bnot) \
+            Z(-, neg) \
+            Z(+, pos) \
         XX \
-        X(undef) \
+        X(preproc_undef) \
             Y(name) \
-        XX
+        XX \
+        X(number_literal) XX \
 
-    #define X(sym) , sym##_s({ .str = "preproc_"#sym, .tsSymbol = symbolForName("preproc_"#sym, true)
+    #define X(sym) , sym##_s({ .str = #sym, .tsSymbol = symbolForName(#sym, true)
     #define Y(fld) , .fld##_f = { .str = #fld, .tsFieldId = fieldIdForName(#fld) }
+    #define Z(op, name)
     #define XX })
     CPreproc()
         : TSLanguage(ts::tree_sitter_c_preproc())
@@ -121,6 +148,7 @@ public:
     {
     }
     #undef XX
+    #undef Z
     #undef Y
     #undef X
     // Exapmle:
@@ -128,9 +156,11 @@ public:
 
     #define X(sym) struct type_##sym##_s { std::string str; TSSymbol tsSymbol; operator TSSymbol() const { return tsSymbol; }
     #define Y(fld) const struct type_##fld##_f { std::string str; TSFieldId tsFieldId; operator TSFieldId() const { return tsFieldId; } } fld##_f;
+    #define Z(op, name) const std::string name##_o = #op;
     #define XX };
     C_PREPROC_GRAMMAR
     #undef XX
+    #undef Z
     #undef Y
     #undef X
     // Exapmle:
@@ -169,13 +199,17 @@ public:
     //             return tsFieldId;
     //         }
     //     } alternative_f;
+    //     // Only for operators
+    //     const std::string add_o = "+";
     // };
 
     #define X(sym) const type_##sym##_s sym##_s;
     #define Y(fld)
+    #define Z(op, name)
     #define XX
     C_PREPROC_GRAMMAR
     #undef XX
+    #undef Z
     #undef Y
     #undef X
     // Exapmle:

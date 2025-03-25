@@ -19,7 +19,9 @@ int main(int argc, char **argv)
 
     auto srcPath = tmpPath / "test.c";
     std::ofstream srcFile(srcPath);
-    srcFile << "#include <stdio.h>\n";
+    srcFile
+        << "#include <stdio.h>" << std::endl
+        << "#eval 1 + 2 - 3 * 4 / 5" << std::endl;
     srcFile.close();
 
     IncludeTreePtr includeRoot = IncludeTree::make(0, srcPath);
@@ -43,6 +45,7 @@ int main(int argc, char **argv)
     CPreproc lang = CPreproc();
 
     ASTBank astBank(lang);
+    astBank.addFile(srcPath);
 
     for (const auto & [isSystemInclude, includeName] : includes)
     {
@@ -55,7 +58,7 @@ int main(int argc, char **argv)
     }
 
     // Go from the last node to the root (excluding the root), printing the included files
-    for (auto it = includeNode; it->parent.lock(); it = it->parent.lock())
+    for (auto it = includeNode; it; it = it->parent.lock())
     {
         std::cout << "Included file: " << it->path << std::endl;
         std::cout << std::flush;
@@ -64,10 +67,22 @@ int main(int argc, char **argv)
         std::cout << root.sExpression() << std::endl;
         for (TSNode node : root.iterateChildren())
         {
-            if (node.symbol() == lang.ifndef_s)
+            if (node.isSymbol(lang.preproc_ifndef_s))
             {
-                // std::cout << node.childByFieldName("name").text(source) << std::endl;
-                std::cout << node.childByFieldId(lang.ifndef_s.name_f).text(source) << std::endl;
+                std::cout << node.childByFieldId(lang.preproc_ifndef_s.name_f).text(source) << std::endl;
+            }
+            if (node.isSymbol(lang.preproc_eval_s))
+            {
+                TSNode expr = node.childByFieldId(lang.preproc_eval_s.expr_f);
+                std::cout << expr.text(source) << std::endl;
+                std::cout << "Expression type: " << expr.type() << std::endl;
+                std::cout << lang.binary_expression_s.str << std::endl;
+                if (expr.isSymbol(lang.binary_expression_s))
+                {
+                    std::cout << "operator: ";
+                    TSNode op = expr.childByFieldId(lang.binary_expression_s.operator_f);
+                    std::cout << op.text(source) << std::endl;
+                }
             }
         }
         std::cout << std::endl;
