@@ -40,9 +40,9 @@ class TSLanguage
 public:
     TSLanguage(const ts::TSLanguage * language);
 
-    TSLanguage(const TSLanguage & src) = delete;
+    TSLanguage(const TSLanguage & src);
     TSLanguage(TSLanguage && src) = default;
-    TSLanguage & operator=(const TSLanguage & src) = delete;
+    TSLanguage & operator=(const TSLanguage & src);
     TSLanguage & operator=(TSLanguage && src) = default;
     ~TSLanguage() = default;
 
@@ -72,7 +72,7 @@ private:
 class TSNode
 {
 public:
-    TSNode(ts::TSNode node);
+    TSNode(ts::TSNode node, std::string_view source);
 
     operator ts::TSNode() const;
 
@@ -132,12 +132,15 @@ public:
 
     // Helper functions
     bool isSymbol(ts::TSSymbol symbol) const;
-    std::string text(std::string_view source) const;
+    std::string_view getSource() const;
+    std::string_view textView() const;
+    std::string text() const;
     TSTreeCursor cursor() const;
     TSTreeCursorIterateChildren iterateChildren() const;
     TSTreeCursorIterateDescendants iterateDescendants() const;
 private:
     ts::TSNode node;
+    std::string_view source;
 
     void assertNonNull() const;
 };
@@ -145,7 +148,7 @@ private:
 class TSTree
 {
 public:
-    TSTree(ts::TSTree * tree);
+    TSTree(ts::TSTree * tree, std::string_view source);
     TSTree();
 
     TSTree(const TSTree &) = delete;
@@ -168,6 +171,7 @@ public:
     void printDotGraph(int fileDescriptor) const;
 private:
     std::unique_ptr<ts::TSTree, decltype(&ts::ts_tree_delete)> tree;
+    std::string_view source;
 };
 
 class TSParser
@@ -222,7 +226,7 @@ private:
 class TSTreeCursor
 {
 public:
-    TSTreeCursor(const ts::TSNode & node);
+    TSTreeCursor(const TSNode & node);
 
     TSTreeCursor(const TSTreeCursor & src);
     TSTreeCursor(TSTreeCursor && src);
@@ -237,7 +241,7 @@ public:
     void resetTo(const TSTreeCursor & src);
     TSNode currentNode() const;
     std::string currentFieldName() const;
-    ts::TSFieldId currentFieldId() const;
+    TSFieldId currentFieldId() const;
     bool gotoParent();
     bool gotoNextSibling();
     bool gotoPreviousSibling();
@@ -257,6 +261,7 @@ public:
 private:
     ts::TSTreeCursor cursor;
     std::unique_ptr<ts::TSTreeCursor, decltype(&ts::ts_tree_cursor_delete)> cursorPtr;
+    TSNode root;
 };
 
 // Class to iterate over children of a TSTreeCursor's current node.
@@ -473,6 +478,17 @@ TSLanguage::TSLanguage(const ts::TSLanguage * language)
 {
 }
 
+TSLanguage::TSLanguage(const TSLanguage &src)
+    : language(ts::ts_language_copy(src), &ts::ts_language_delete)
+{
+}
+
+TSLanguage &TSLanguage::operator=(const TSLanguage &src)
+{
+    language.reset(ts::ts_language_copy(src));
+    return *this;
+}
+
 TSLanguage::operator const ts::TSLanguage *() const
 {
     return language.get();
@@ -599,8 +615,8 @@ std::string TSLanguage::name() const
 // TSNode
 
 // Constructor for TSNode
-TSNode::TSNode(ts::TSNode node)
-    : node(node)
+TSNode::TSNode(ts::TSNode node, std::string_view source)
+    : node(node), source(source)
 {
 }
 
@@ -701,56 +717,56 @@ uint32_t TSNode::namedChildCount() const
 TSNode TSNode::child(uint32_t index) const
 {
     assertNonNull();
-    return ts::ts_node_child(*this, index);
+    return { ts::ts_node_child(*this, index), source };
 }
 
 // Get the node's named child at the given index.
 TSNode TSNode::namedChild(uint32_t index) const
 {
     assertNonNull();
-    return ts::ts_node_named_child(*this, index);
+    return { ts::ts_node_named_child(*this, index), source };
 }
 
 // Get the node's next sibling.
 TSNode TSNode::nextSibling() const
 {
     assertNonNull();
-    return ts::ts_node_next_sibling(*this);
+    return { ts::ts_node_next_sibling(*this), source };
 }
 
 // Get the node's previous sibling.
 TSNode TSNode::prevSibling() const
 {
     assertNonNull();
-    return ts::ts_node_prev_sibling(*this);
+    return { ts::ts_node_prev_sibling(*this), source };
 }
 
 // Get the node's next named sibling.
 TSNode TSNode::nextNamedSibling() const
 {
     assertNonNull();
-    return ts::ts_node_next_named_sibling(*this);
+    return { ts::ts_node_next_named_sibling(*this), source };
 }
 
 // Get the node's previous named sibling.
 TSNode TSNode::prevNamedSibling() const
 {
     assertNonNull();
-    return ts::ts_node_prev_named_sibling(*this);
+    return { ts::ts_node_prev_named_sibling(*this), source };
 }
 
 // Get the node's first child that contains or starts after the given byte offset.
 TSNode TSNode::firstChildForByte(uint32_t byte) const
 {
     assertNonNull();
-    return ts::ts_node_first_child_for_byte(*this, byte);
+    return { ts::ts_node_first_child_for_byte(*this, byte), source };
 }
 
 // Get the node's first named child that contains or starts after the given byte offset.
 TSNode TSNode::firstNamedChildForByte(uint32_t byte) const
 {
     assertNonNull();
-    return ts::ts_node_first_named_child_for_byte(*this, byte);
+    return { ts::ts_node_first_named_child_for_byte(*this, byte), source };
 }
 
 // Get the node's number of descendants, including one for the node itself.
@@ -764,28 +780,28 @@ uint32_t TSNode::descendantCount() const
 TSNode TSNode::descendantForByteRange(uint32_t start, uint32_t end) const
 {
     assertNonNull();
-    return ts::ts_node_descendant_for_byte_range(*this, start, end);
+    return { ts::ts_node_descendant_for_byte_range(*this, start, end), source };
 }
 
 // Get the smallest node within this node that spans the given range of (row, column) positions.
 TSNode TSNode::descendantForPointRange(ts::TSPoint start, ts::TSPoint end) const
 {
     assertNonNull();
-    return ts::ts_node_descendant_for_point_range(*this, start, end);
+    return { ts::ts_node_descendant_for_point_range(*this, start, end), source };
 }
 
 // Get the smallest named node within this node that spans the given range of bytes.
 TSNode TSNode::namedDescendantForByteRange(uint32_t start, uint32_t end) const
 {
     assertNonNull();
-    return ts::ts_node_named_descendant_for_byte_range(*this, start, end);
+    return { ts::ts_node_named_descendant_for_byte_range(*this, start, end), source };
 }
 
 // Get the smallest named node within this node that spans the given range of (row, column) positions.
 TSNode TSNode::namedDescendantForPointRange(ts::TSPoint start, ts::TSPoint end) const
 {
     assertNonNull();
-    return ts::ts_node_named_descendant_for_point_range(*this, start, end);
+    return { ts::ts_node_named_descendant_for_point_range(*this, start, end), source };
 }
 
 // Edit the node to keep it in sync with source code that has been edited.
@@ -885,7 +901,7 @@ TSStateId TSNode::nextParseState() const
 TSNode TSNode::parent() const
 {
     assertNonNull();
-    return ts::ts_node_parent(*this);
+    return { ts::ts_node_parent(*this), source };
 }
 
 // Get the node that contains the given descendant.
@@ -893,7 +909,7 @@ TSNode TSNode::parent() const
 TSNode TSNode::childWithDescendant(ts::TSNode descendant) const
 {
     assertNonNull();
-    return ts::ts_node_child_with_descendant(*this, descendant);
+    return { ts::ts_node_child_with_descendant(*this, descendant), source };
 }
 
 // Get the field name for the node's child at the given index.
@@ -916,7 +932,7 @@ std::string TSNode::fieldNameForNamedChild(uint32_t named_child_index) const
 TSNode TSNode::childByFieldName(const std::string & name) const
 {
     assertNonNull();
-    return ts::ts_node_child_by_field_name(*this, name.c_str(), name.size());
+    return { ts::ts_node_child_by_field_name(*this, name.c_str(), name.size()), source };
 }
 
 // Get the node's child with the given numerical field id.
@@ -924,7 +940,7 @@ TSNode TSNode::childByFieldName(const std::string & name) const
 TSNode TSNode::childByFieldId(ts::TSFieldId field_id) const
 {
     assertNonNull();
-    return ts::ts_node_child_by_field_id(*this, field_id);
+    return { ts::ts_node_child_by_field_id(*this, field_id), source };
 }
 
 bool TSNode::isSymbol(ts::TSSymbol symbol) const
@@ -932,10 +948,20 @@ bool TSNode::isSymbol(ts::TSSymbol symbol) const
     return symbol == this->symbol();
 }
 
-// Helper function: Get the text of the node from the source.
-std::string TSNode::text(std::string_view source) const
+std::string_view TSNode::getSource() const
 {
-    return std::string(source.substr(startByte(), endByte() - startByte()));
+    return source;
+}
+
+std::string_view TSNode::textView() const
+{
+    return source.substr(startByte(), endByte() - startByte());
+}
+
+// Helper function: Get the text of the node from the source.
+std::string TSNode::text() const
+{
+    return std::string(textView());
 }
 
 // Create a tree cursor for this node.
@@ -964,13 +990,13 @@ void TSNode::assertNonNull() const
 // TSTree
 
 // Construct a TSTree with the given ts::TSTree pointer.
-TSTree::TSTree(ts::TSTree * tree)
-    : tree(tree, ts::ts_tree_delete)
+TSTree::TSTree(ts::TSTree * tree, std::string_view source)
+    : tree(tree, ts::ts_tree_delete), source(source)
 {
 }
 
 TSTree::TSTree()
-    : tree(nullptr, ts::ts_tree_delete)
+    : tree(nullptr, ts::ts_tree_delete), source()
 {
 }
 
@@ -995,13 +1021,13 @@ ts::TSTree * TSTree::get()
 // Get the root node of the syntax tree.
 TSNode TSTree::rootNode() const
 {
-    return ts::ts_tree_root_node(*this);
+    return { ts::ts_tree_root_node(*this), source };
 }
 
 // Get the root node of the syntax tree, with its position shifted by the given offset.
 TSNode TSTree::rootNodeWithOffset(uint32_t offsetBytes, ts::TSPoint offsetExtent) const
 {
-    return ts::ts_tree_root_node_with_offset(*this, offsetBytes, offsetExtent);
+    return { ts::ts_tree_root_node_with_offset(*this, offsetBytes, offsetExtent), source };
 }
 
 // Get the language that was used to parse the syntax tree.
@@ -1087,7 +1113,7 @@ bool TSParser::setLanguage(const ts::TSLanguage * language)
 // Use the parser to parse a string and create a syntax tree.
 TSTree TSParser::parseString(std::string_view str)
 {
-    return ts::ts_parser_parse_string(*this, nullptr, str.data(), str.size());
+    return { ts::ts_parser_parse_string(*this, nullptr, str.data(), str.size()), str };
 }
 
 // Reset the parser to start the next parse from the beginning.
@@ -1164,20 +1190,20 @@ uint32_t TSQuery::endByteForPattern(uint32_t patternIndex) const
 // TSTreeCursor
 
 // Create a new tree cursor starting from the given node.
-TSTreeCursor::TSTreeCursor(const ts::TSNode & node)
-    : cursor(ts::ts_tree_cursor_new(node)), cursorPtr(&cursor, ts::ts_tree_cursor_delete)
+TSTreeCursor::TSTreeCursor(const TSNode & node)
+    : cursor(ts::ts_tree_cursor_new(node)), cursorPtr(&cursor, ts::ts_tree_cursor_delete), root(node)
 {
 }
 
 // Copy constructor.
 TSTreeCursor::TSTreeCursor(const TSTreeCursor & src)
-    : cursor(ts::ts_tree_cursor_copy(src)), cursorPtr(&cursor, ts::ts_tree_cursor_delete)
+    : cursor(ts::ts_tree_cursor_copy(src)), cursorPtr(&cursor, ts::ts_tree_cursor_delete), root(src.root)
 {
 }
 
 // Move constructor.
 TSTreeCursor::TSTreeCursor(TSTreeCursor && src)
-    : cursor(src.cursor), cursorPtr(&cursor, ts::ts_tree_cursor_delete)
+    : cursor(src.cursor), cursorPtr(&cursor, ts::ts_tree_cursor_delete), root(src.root)
 {
     src.cursorPtr.release();
 }
@@ -1189,6 +1215,7 @@ TSTreeCursor & TSTreeCursor::operator=(const TSTreeCursor & src)
     {
         cursor = ts::ts_tree_cursor_copy(src);
         cursorPtr.reset(&cursor);
+        root = src.root;
     }
     return *this;
 }
@@ -1201,6 +1228,7 @@ TSTreeCursor & TSTreeCursor::operator=(TSTreeCursor && src)
         cursor = src.cursor;
         cursorPtr.reset(&cursor);
         src.cursorPtr.release();
+        root = src.root;
     }
     return *this;
 }
@@ -1238,7 +1266,7 @@ void TSTreeCursor::resetTo(const TSTreeCursor & src)
 // Get the tree cursor's current node.
 TSNode TSTreeCursor::currentNode() const
 {
-    return ts::ts_tree_cursor_current_node(*this);
+    return { ts::ts_tree_cursor_current_node(*this), root.getSource() };
 }
 
 // Get the field name of the tree cursor's current node.
@@ -1249,7 +1277,7 @@ std::string TSTreeCursor::currentFieldName() const
 }
 
 // Get the field id of the tree cursor's current node.
-ts::TSFieldId TSTreeCursor::currentFieldId() const
+TSFieldId TSTreeCursor::currentFieldId() const
 {
     return ts::ts_tree_cursor_current_field_id(*this);
 }
@@ -1347,4 +1375,3 @@ TSTreeCursorIterateDescendants TSTreeCursor::iterateDescendants() const
 } // namespace Hayroll
 
 #endif // HAYROLL_TREESITTER_HPP
-

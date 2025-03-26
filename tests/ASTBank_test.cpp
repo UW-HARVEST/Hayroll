@@ -69,16 +69,16 @@ int main(int argc, char **argv)
         {
             if (node.isSymbol(lang.preproc_ifndef_s))
             {
-                std::cout << node.childByFieldId(lang.preproc_ifndef_s.name_f).text(source) << std::endl;
+                std::cout << node.childByFieldId(lang.preproc_ifndef_s.name_f).text() << std::endl;
             }
             if (node.isSymbol(lang.preproc_eval_s))
             {
                 TSNode expr = node.childByFieldId(lang.preproc_eval_s.expr_f);
-                std::cout << expr.text(source) << std::endl;
+                std::cout << expr.text() << std::endl;
                 
                 for (TSNode descendant : expr.iterateDescendants())
                 {
-                    std::cout << descendant.text(source) << ",";
+                    std::cout << descendant.text() << ",";
                 }
                 std::cout << std::endl;
 
@@ -86,7 +86,7 @@ int main(int argc, char **argv)
                 {
                     std::cout << "operator: ";
                     TSNode op = expr.childByFieldId(lang.binary_expression_s.operator_f);
-                    std::cout << op.text(source) << std::endl;
+                    std::cout << op.text() << std::endl;
                 }
             }
         }
