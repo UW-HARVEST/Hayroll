@@ -250,6 +250,8 @@ public:
     int64_t gotoFirstChildForPoint(ts::TSPoint goalPoint);
 
     // Helper functions
+    bool preorderNext();
+    bool preorderSkip();
     TSTreeCursorIterateChildren iterateChildren() const;
     TSTreeCursorIterateDescendants iterateDescendants() const;
 private:
@@ -363,11 +365,11 @@ public:
         using iterator_category = std::input_iterator_tag;
 
         // Default constructor (end iterator).
-        Iterator() : cursor(std::nullopt), root(std::nullopt) {}
+        Iterator() : cursor(std::nullopt) {}
 
         // Constructor with a given TSTreeCursor state and the root node.
         explicit Iterator(TSTreeCursor && cursor, const TSNode & root)
-            : cursor(std::move(cursor)), root(root) {}
+            : cursor(std::move(cursor)) {}
 
         // Dereference operator returns the current node.
         TSNode operator*() const
@@ -381,32 +383,11 @@ public:
         {
             assert(cursor.has_value());
             TSTreeCursor cur = std::move(cursor.value());
-            // Try to descend to the first child.
-            if (cur.gotoFirstChild())
-            {
-                cursor = std::move(cur);
-                return *this;
-            }
-            // Otherwise, climb up to find a next sibling.
-            while (true)
-            {
-                if (cur.gotoNextSibling())
-                {
-                    cursor = std::move(cur);
-                    return *this;
-                }
-                if (!cur.gotoParent())
-                {
-                    cursor = std::nullopt;
-                    return *this;
-                }
-                // If we've reached the root of our traversal, iteration ends.
-                if (cur.currentNode() == root)
-                {
-                    cursor = std::nullopt;
-                    return *this;
-                }
-            }
+            // Use the preorderNext helper function to move to the next node.
+            if (!cur.preorderNext()) cursor = std::nullopt;
+            else cursor = std::move(cur);
+
+            return *this;
         }
 
         // Post-increment.
@@ -436,8 +417,6 @@ public:
 
     private:
         std::optional<TSTreeCursor> cursor;
-        // The original node whose descendants we are iterating.
-        std::optional<TSNode> root;
     };
 
     // Constructor: store a copy of the parent's cursor.
@@ -1333,6 +1312,26 @@ int64_t TSTreeCursor::gotoFirstChildForByte(uint32_t goalByte)
 int64_t TSTreeCursor::gotoFirstChildForPoint(ts::TSPoint goalPoint)
 {
     return ts::ts_tree_cursor_goto_first_child_for_point(*this, goalPoint);
+}
+
+// Go to the next node in a pre-order traversal of the tree.
+bool TSTreeCursor::preorderNext()
+{
+    // Try to descend to the first child.
+    if (gotoFirstChild()) return true;
+    // Otherwise, climb up to find a next sibling.
+    return preorderSkip();
+}
+
+// Skip the subtree of the current node.
+bool TSTreeCursor::preorderSkip()
+{
+    // Climb up to find a next sibling.
+    while (true)
+    {
+        if (gotoNextSibling()) return true;
+        if (!gotoParent()) return false;
+    }
 }
 
 TSTreeCursorIterateChildren TSTreeCursor::iterateChildren() const
