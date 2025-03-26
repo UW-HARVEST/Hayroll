@@ -75,8 +75,13 @@ int main(int argc, char **argv)
             {
                 TSNode expr = node.childByFieldId(lang.preproc_eval_s.expr_f);
                 std::cout << expr.text(source) << std::endl;
-                std::cout << "Expression type: " << expr.type() << std::endl;
-                std::cout << lang.binary_expression_s.str << std::endl;
+                
+                for (TSNode descendant : expr.iterateDescendants())
+                {
+                    std::cout << descendant.text(source) << ",";
+                }
+                std::cout << std::endl;
+
                 if (expr.isSymbol(lang.binary_expression_s))
                 {
                     std::cout << "operator: ";

@@ -33,6 +33,7 @@ namespace TSUtils
 
 class TSTreeCursor;
 class TSTreeCursorIterateChildren;
+class TSTreeCursorIterateDescendants;
 
 class TSLanguage
 {
@@ -134,6 +135,7 @@ public:
     std::string text(std::string_view source) const;
     TSTreeCursor cursor() const;
     TSTreeCursorIterateChildren iterateChildren() const;
+    TSTreeCursorIterateDescendants iterateDescendants() const;
 private:
     ts::TSNode node;
 
@@ -249,6 +251,7 @@ public:
 
     // Helper functions
     TSTreeCursorIterateChildren iterateChildren() const;
+    TSTreeCursorIterateDescendants iterateDescendants() const;
 private:
     ts::TSTreeCursor cursor;
     std::unique_ptr<ts::TSTreeCursor, decltype(&ts::ts_tree_cursor_delete)> cursorPtr;
@@ -333,6 +336,123 @@ public:
         if (!childCursor.gotoFirstChild())
             return end();
         return Iterator(std::move(childCursor));
+    }
+
+    // end() returns a default-constructed iterator (i.e. invalid).
+    Iterator end() const
+    {
+        return Iterator();
+    }
+
+private:
+    TSTreeCursor parentCursor;
+};
+
+// Class to iterate over all descendants (pre-order) of a TSTreeCursor's current node.
+class TSTreeCursorIterateDescendants
+{
+public:
+    // Nested iterator class.
+    class Iterator
+    {
+    public:
+        using value_type = TSNode;
+        using difference_type = std::ptrdiff_t;
+        using pointer = TSNode*;
+        using reference = TSNode;
+        using iterator_category = std::input_iterator_tag;
+
+        // Default constructor (end iterator).
+        Iterator() : cursor(std::nullopt), root(std::nullopt) {}
+
+        // Constructor with a given TSTreeCursor state and the root node.
+        explicit Iterator(TSTreeCursor && cursor, const TSNode & root)
+            : cursor(std::move(cursor)), root(root) {}
+
+        // Dereference operator returns the current node.
+        TSNode operator*() const
+        {
+            assert(cursor.has_value());
+            return cursor.value().currentNode();
+        }
+
+        // Pre-increment: move to the next descendant in pre-order.
+        Iterator & operator++()
+        {
+            assert(cursor.has_value());
+            TSTreeCursor cur = std::move(cursor.value());
+            // Try to descend to the first child.
+            if (cur.gotoFirstChild())
+            {
+                cursor = std::move(cur);
+                return *this;
+            }
+            // Otherwise, climb up to find a next sibling.
+            while (true)
+            {
+                if (cur.gotoNextSibling())
+                {
+                    cursor = std::move(cur);
+                    return *this;
+                }
+                if (!cur.gotoParent())
+                {
+                    cursor = std::nullopt;
+                    return *this;
+                }
+                // If we've reached the root of our traversal, iteration ends.
+                if (cur.currentNode() == root)
+                {
+                    cursor = std::nullopt;
+                    return *this;
+                }
+            }
+        }
+
+        // Post-increment.
+        Iterator operator++(int)
+        {
+            Iterator copy = *this;
+            ++(*this);
+            return copy;
+        }
+
+        // Equality: iterators are equal if both are invalid (i.e., at the end)
+        // or if both are valid and their current nodes compare equal.
+        bool operator==(const Iterator & other) const
+        {
+            if (!cursor.has_value() && !other.cursor.has_value())
+                return true;
+            if (cursor.has_value() && other.cursor.has_value())
+                return cursor.value().currentNode() == other.cursor.value().currentNode();
+            return false;
+        }
+
+        // Inequality operator.
+        bool operator!=(const Iterator & other) const
+        {
+            return !(*this == other);
+        }
+
+    private:
+        std::optional<TSTreeCursor> cursor;
+        // The original node whose descendants we are iterating.
+        std::optional<TSNode> root;
+    };
+
+    // Constructor: store a copy of the parent's cursor.
+    explicit TSTreeCursorIterateDescendants(const TSTreeCursor & parentCursor)
+        : parentCursor(parentCursor)
+    {}
+
+    // begin() returns an iterator positioned at the first descendant.
+    Iterator begin() const
+    {
+        TSTreeCursor childCursor = parentCursor;
+        TSNode root = childCursor.currentNode();
+        if (!childCursor.gotoFirstChild())
+            return end();
+        return Iterator(std::move(childCursor), root);
     }
 
     // end() returns a default-constructed iterator (i.e. invalid).
@@ -851,6 +971,11 @@ TSTreeCursorIterateChildren TSNode::iterateChildren() const
     return cursor().iterateChildren();
 }
 
+TSTreeCursorIterateDescendants TSNode::iterateDescendants() const
+{
+    return cursor().iterateDescendants();
+}
+
 void TSNode::assertNonNull() const
 {
     assert(*this);
@@ -1213,6 +1338,11 @@ int64_t TSTreeCursor::gotoFirstChildForPoint(ts::TSPoint goalPoint)
 TSTreeCursorIterateChildren TSTreeCursor::iterateChildren() const
 {
     return TSTreeCursorIterateChildren(*this);
+}
+
+TSTreeCursorIterateDescendants TSTreeCursor::iterateDescendants() const
+{
+    return TSTreeCursorIterateDescendants(*this);
 }
 
 } // namespace Hayroll
