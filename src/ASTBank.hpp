@@ -57,20 +57,20 @@ public:
         std::string macroSkeleton = out.buf.data();
         
         // Parse the macro skeleton into a tree
-        TSTree tree = parser.parseString(macroSkeleton);
+        TSTree tree = parser.parseString(std::move(macroSkeleton));
 
         // Store the tree in the bank
-        bank[path] = std::make_tuple(std::move(macroSkeleton), std::move(tree));
+        bank[path] = std::move(tree);
     }
 
-    const std::tuple<std::string, TSTree> & find(const std::filesystem::path & path) const
+    const TSTree & find(const std::filesystem::path & path) const
     {
         return bank.at(path);
     }
 
 private:
     TSParser parser;
-    std::unordered_map<std::filesystem::path, std::tuple<std::string, TSTree>> bank;
+    std::unordered_map<std::filesystem::path, TSTree> bank;
 };
 
 } // namespace Hayroll

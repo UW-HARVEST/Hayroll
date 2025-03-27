@@ -78,14 +78,19 @@ message(STATUS "Z3_DIR: ${Z3_DIR}")
 
 # awk
 find_program(AWK_EXE awk REQUIRED)
+message(STATUS "AWK_EXE: ${AWK_EXE}")
 
 # spdlog
 find_package(spdlog REQUIRED)
+message(STATUS "spdlog_FOUND: ${spdlog_FOUND}")
 
 # # fmt
 # find_package(fmt REQUIRED)
 
-message(STATUS "AWK_EXE: ${AWK_EXE}")
+# Boost
+cmake_policy(SET CMP0167 NEW)
+find_package(Boost 1.65 REQUIRED CONFIG COMPONENTS stacktrace_addr2line)
+include_directories(${Boost_INCLUDE_DIRS})
 
 # tree-sitter
 set(TREE_SITTER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tree-sitter")
@@ -100,7 +105,16 @@ message(STATUS "TREE_SITTER_C_PREPROC_DIR: ${TREE_SITTER_C_PREPROC_DIR}")
 link_libraries(
     spdlog::spdlog
     # fmt::fmt
+    Boost::stacktrace_addr2line
+    dl
 )
+add_compile_definitions(
+    BOOST_STACKTRACE_USE_ADDR2LINE
+    BOOST_STACKTRACE_LINK
+)
+
+# For backtraces
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
 
 add_library(hayroll_exe_config INTERFACE)
 target_compile_definitions(hayroll_exe_config INTERFACE
@@ -203,7 +217,7 @@ enable_testing()
 
 add_library(testing_config INTERFACE)
 target_compile_definitions(testing_config INTERFACE
-    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_INFO
+    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG
 )
 
 add_executable(TempDir_test tests/TempDir_test.cpp)

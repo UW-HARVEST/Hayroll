@@ -17,6 +17,8 @@ int main(int argc, char **argv)
 {
     using namespace Hayroll;
 
+    spdlog::set_level(spdlog::level::debug);
+
     IncludeResolver resolver(CLANG_EXE, {});
 
     std::cout << "Predefined macros:\n" << resolver.getPredefinedMacros() << std::endl;

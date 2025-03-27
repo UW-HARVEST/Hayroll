@@ -12,6 +12,8 @@ int main(int argc, char **argv)
 {
     using namespace Hayroll;
 
+    spdlog::set_level(spdlog::level::debug);
+
     IncludeResolver resolver(CLANG_EXE, {});
 
     auto tmpDir = TempDir();
@@ -62,7 +64,7 @@ int main(int argc, char **argv)
     {
         std::cout << "Included file: " << it->path << std::endl;
         std::cout << std::flush;
-        const auto & [source, ast] = astBank.find(it->path);
+        const TSTree & ast = astBank.find(it->path);
         TSNode root = ast.rootNode();
         std::cout << root.sExpression() << std::endl;
         for (TSNode node : root.iterateChildren())

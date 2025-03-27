@@ -10,6 +10,13 @@
 #include <cassert>
 #include <vector>
 
+#include <iostream>
+
+#include <boost/stacktrace.hpp>
+#include <spdlog/spdlog.h>
+
+#include "Util.hpp"
+
 namespace ts
 {
     #include "tree_sitter/api.h"
@@ -138,6 +145,7 @@ public:
     TSTreeCursor cursor() const;
     TSTreeCursorIterateChildren iterateChildren() const;
     TSTreeCursorIterateDescendants iterateDescendants() const;
+    size_t length() const;
 private:
     ts::TSNode node;
     std::string_view source;
@@ -172,7 +180,7 @@ public:
     void printDotGraph(int fileDescriptor) const;
 private:
     std::unique_ptr<ts::TSTree, decltype(&ts::ts_tree_delete)> tree;
-    std::string source;
+    std::unique_ptr<std::string> sourcePtr; // To make sure std::string_views in its nodes are valid after moving
 };
 
 class TSParser
@@ -983,9 +991,20 @@ TSTreeCursorIterateDescendants TSNode::iterateDescendants() const
     return cursor().iterateDescendants();
 }
 
+size_t TSNode::length() const
+{
+    return endByte() - startByte();
+}
+
 void TSNode::assertNonNull() const
 {
-    assert(*this);
+    // Throw and print stack trace if the node is null.
+    if (isNull())
+    {
+        std::cout << boost::stacktrace::stacktrace() << std::endl;
+        std::cout << std::flush;
+        throw std::runtime_error("TSNode is null");
+    }
 }
 
 
@@ -993,17 +1012,17 @@ void TSNode::assertNonNull() const
 
 // Construct a TSTree with the given ts::TSTree pointer.
 TSTree::TSTree(ts::TSTree * tree, std::string_view source)
-    : tree(tree, ts::ts_tree_delete), source(source) // Copy and own
+    : tree(tree, ts::ts_tree_delete), sourcePtr(std::make_unique<std::string>(source)) // Copy and own
 {
 }
 
 TSTree::TSTree(ts::TSTree *tree, std::string && source)
-    : tree(tree, ts::ts_tree_delete), source(source) // Move and own
+    : tree(tree, ts::ts_tree_delete), sourcePtr(std::make_unique<std::string>(std::move(source))) // Move and own
 {
 }
 
 TSTree::TSTree()
-    : tree(nullptr, ts::ts_tree_delete), source()
+    : tree(nullptr, ts::ts_tree_delete), sourcePtr()
 {
 }
 
@@ -1028,13 +1047,13 @@ ts::TSTree * TSTree::get()
 // Get the root node of the syntax tree.
 TSNode TSTree::rootNode() const
 {
-    return { ts::ts_tree_root_node(*this), source };
+    return { ts::ts_tree_root_node(*this), *sourcePtr };
 }
 
 // Get the root node of the syntax tree, with its position shifted by the given offset.
 TSNode TSTree::rootNodeWithOffset(uint32_t offsetBytes, ts::TSPoint offsetExtent) const
 {
-    return { ts::ts_tree_root_node_with_offset(*this, offsetBytes, offsetExtent), source };
+    return { ts::ts_tree_root_node_with_offset(*this, offsetBytes, offsetExtent), *sourcePtr };
 }
 
 // Get the language that was used to parse the syntax tree.
@@ -1118,9 +1137,9 @@ bool TSParser::setLanguage(const ts::TSLanguage * language)
 }
 
 // Use the parser to parse a string and create a syntax tree.
-TSTree TSParser::parseString(std::string_view str)
+TSTree TSParser::parseString(std::string_view source)
 {
-    return { ts::ts_parser_parse_string(*this, nullptr, str.data(), str.size()), str };
+    return { ts::ts_parser_parse_string(*this, nullptr, source.data(), source.size()), source };
 }
 
 TSTree TSParser::parseString(std::string && source)

@@ -1,11 +1,15 @@
 #include <iostream>
 #include <filesystem>
 
+#include <spdlog/spdlog.h>
+
 #include "TempDir.hpp"
 
 int main(int argc, char **argv)
 {
     using namespace Hayroll;
+
+    spdlog::set_level(spdlog::level::debug);
 
     // Test TempDir by creating 10 temporary directories
     for (int i = 0; i < 10; i++)

@@ -39,7 +39,15 @@ public:
     std::string name;
 };
 
-using Symbol = std::variant<ObjectSymbol, FunctionSymbol, UndefinedSymbol>;
+// Used for marking symbols that have been expanded, to avoid infinite recursion
+// Why not undefine it? You can do "#define A defined A", and then "#if A" should still be true
+class ExpandedSymbol
+{
+public:
+    std::string name;
+};
+
+using Symbol = std::variant<ObjectSymbol, FunctionSymbol, UndefinedSymbol, ExpandedSymbol>;
 
 
 // Tree-shaped symbol table
@@ -52,6 +60,11 @@ public:
         auto table = std::make_shared<SymbolTable>();
         table->parent = parent;
         return table;
+    }
+
+    SymbolTablePtr makeChild() const
+    {
+        return make(shared_from_this());
     }
 
     void define(Symbol && symbol)
@@ -96,7 +109,8 @@ public:
                         }
                         ss << ") -> " << s.body;
                     },
-                    [&ss](const UndefinedSymbol & s) { ss << "undefined"; }
+                    [&ss](const UndefinedSymbol & s) { ss << "undefined"; },
+                    [&ss](const ExpandedSymbol & s) { ss << "expanded"; }
                 },
                 symbol
             );

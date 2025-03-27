@@ -52,6 +52,11 @@ private:
     size_t bufferSize;
 };
 
+bool isAllWhitespace(const std::string & s)
+{
+    return s.find_first_not_of(" \t\n\v\f\r") == std::string::npos;
+}
+
 } // namespace Hayroll
 
 #endif // HAYROLL_UTIL_HPP

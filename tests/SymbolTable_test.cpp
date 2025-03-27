@@ -4,12 +4,12 @@
 #include <variant>
 #include <memory>
 
+#include <spdlog/spdlog.h>
+
 #include "TreeSitter.hpp"
 #include "TreeSitterCPreproc.hpp"
 #include "SymbolTable.hpp"
 #include "IncludeResolver.hpp"
-
-using namespace Hayroll;
 
 #ifdef CLANG_EXE
 const char * clang_exe_path = CLANG_EXE;
@@ -19,6 +19,10 @@ const char * clang_exe_path = "clang";
 
 int main()
 {
+    using namespace Hayroll;
+
+    spdlog::set_level(spdlog::level::debug);
+
     SymbolTablePtr symbolTable = SymbolTable::make();
     symbolTable->define(ObjectSymbol{"x", "1"});
     symbolTable->define(FunctionSymbol{"f", {"x"}, "x + 1"});

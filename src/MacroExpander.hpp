@@ -2,6 +2,8 @@
 #include <vector>
 #include <tuple>
 
+#include <spdlog/spdlog.h>
+
 #include "TreeSitter.hpp"
 #include "TreeSitterCPreproc.hpp"
 #include "Util.hpp"
@@ -26,18 +28,21 @@ public:
         assert(tokens.isSymbol(lang.preproc_tokens_s));
         // We care about three types of atoms: identifier, call_expression, and preproc_defined
         // identifier: look up in the symbol table
-        //     if defined as ObjectSymbol: replace with the value
+        //     if defined as ObjectSymbol: return expandObjectLikeMacro()
         //     if defined as FunctionSymbol: error
         //     if undefined: replace with 0
+        //     if expanded: leave as is, no recursion
         //     if unknown: leave as is, it will be turned into a symbolic value
         // call_expression: look up in the symbol table
         //     if defined as ObjectSymbol: error
         //     if defined as FunctionSymbol: return expandFunctionLikeMacro()
         //     if undefined: error
+        //     if expanded: leave as is, no recursion
         //     if unknown: error
         // preproc_defined: look up in the symbol table
-        //     if defined: replace with 1
+        //     if defined (as anything): replace with 1
         //     if undefined: replace with 0
+        //     if expanded: this means the symbol was defined before, so replace with 1
         //     if unknown: leave as is, it will be turned into a symbolic value
         // We walk through the descendants of the tokens node, expanding as we go
         // Whenever seeing an expandable node, we expand it and skip its descendants
@@ -70,10 +75,11 @@ public:
                     if (symbol.has_value())
                     {
                         const Symbol & sym = *symbol.value();
-                        std::string_view replacement;
                         if (std::holds_alternative<ObjectSymbol>(sym))
                         {
-                            replacement = std::get<ObjectSymbol>(sym).spelling;
+                            const ObjectSymbol & objSymbol = std::get<ObjectSymbol>(sym);
+                            std::string expanded = expandObjectLikeMacro(node, objSymbol, symbolTable);
+                            buffer.append(std::move(expanded));
                         }
                         else if (std::holds_alternative<FunctionSymbol>(sym))
                         {
@@ -81,14 +87,18 @@ public:
                         }
                         else if (std::holds_alternative<UndefinedSymbol>(sym))
                         {
-                            replacement = "0";
+                            buffer.append("0");
+                        }
+                        else if (std::holds_alternative<ExpandedSymbol>(sym))
+                        {
+                            // Leave as is
+                            buffer.append(name);
                         }
                         else assert(false);
-                        buffer.append(replacement);
                     }
                     else
                     {
-                        // Unknown symbol, leave as is
+                        // Unknown symbol, leave as is, it will be turned into a symbolic value
                         buffer.append(name);
                     }
                 }
@@ -115,6 +125,11 @@ public:
                         {
                             throw std::runtime_error(fmt::format("Undefined function-like macro {} used", name));
                         }
+                        else if (std::holds_alternative<ExpandedSymbol>(sym))
+                        {
+                            // Leave as is
+                            buffer.append(node.textView());
+                        }
                         else assert(false);
                     }
                     else
@@ -131,7 +146,7 @@ public:
                     if (symbol.has_value())
                     {
                         const Symbol & sym = *symbol.value();
-                        if (std::holds_alternative<ObjectSymbol>(sym) || std::holds_alternative<FunctionSymbol>(sym))
+                        if (std::holds_alternative<ObjectSymbol>(sym) || std::holds_alternative<FunctionSymbol>(sym) || std::holds_alternative<ExpandedSymbol>(sym))
                         {
                             buffer.append("1");
                         }
@@ -143,7 +158,7 @@ public:
                     }
                     else
                     {
-                        // Unknown symbol, leave as is
+                        // Unknown symbol, leave as is, it will be turned into a symbolic value
                         buffer.append(name);
                     }
                 }
@@ -178,56 +193,87 @@ public:
     {
         assert(call.isSymbol(lang.call_expression_s));
 
+        if (funcSymbol.body.empty()) return "";
+
         // Make sure there funcSymbol accepts the right number of arguments
         TSNode argList = call.childByFieldId(lang.call_expression_s.arguments_f);
         assert(argList.isSymbol(lang.argument_list_s));
-        if (argList.childCount() != funcSymbol.params.size())
-        {
-            throw std::runtime_error("Function-like macro " + funcSymbol.name + " called with the wrong number of arguments");
-        }
 
         // Parse the function body into tokens
-        auto [tree, tokens] = parseIntoPreprocTokens(funcSymbol.body);
+        auto [tree, bodyTokens] = parseIntoPreprocTokens(funcSymbol.body);
 
-        // Create a temp symbol table with the arguments defined, if any
+        // Create a temp symbol table
+        
+        // Define the arguments in the temp symbol table
         if (!funcSymbol.params.empty())
         {
-            SymbolTablePtr tempSymbolTable = SymbolTable::make(symbolTable);
+            SymbolTablePtr tempSymbolTable = symbolTable->makeChild();
             size_t i = 0;
             for (TSNode arg : argList.iterateChildren())
             {
-                assert(arg.isSymbol(lang.preproc_tokens_s));
+                // TODO: filter with field name
+                if (!arg.isSymbol(lang.preproc_tokens_s)) continue;
                 std::string argName = funcSymbol.params[i];
-                std::string argValue = arg.text();
-                tempSymbolTable->define(ObjectSymbol{std::move(argName), std::move(argValue)});
+                std::string expandedArg = expandPreprocTokens(arg, tempSymbolTable);
+                tempSymbolTable->define(ObjectSymbol{std::move(argName), std::move(expandedArg)});
                 i++;
             }
-            // Expand the tokens with the temp symbol table
-            return expandPreprocTokens(tokens, tempSymbolTable);
+            if (i != funcSymbol.params.size())
+            {
+                throw std::runtime_error(fmt::format("Function-like macro {} called with {} arguments, expected {}", funcSymbol.name, i, funcSymbol.params.size()));
+            }
+
+            return expandPreprocTokens(bodyTokens, tempSymbolTable);
         }
-        else
-        {
-            // No arguments, expand as if it were an object-like macro
-            return expandPreprocTokens(tokens, symbolTable);
-        }
+
+        return expandPreprocTokens(bodyTokens, symbolTable);
     }
 
+    std::string expandObjectLikeMacro
+    (
+        const TSNode & identifier,
+        const ObjectSymbol & objSymbol,
+        const ConstSymbolTablePtr & symbolTable
+    )
+    {
+        assert(identifier.isSymbol(lang.identifier_s));
+
+        if (objSymbol.spelling.empty()) return "";
+
+        // Parse the object-like macro body into tokens
+        auto [tree, bodyTokens] = parseIntoPreprocTokens(objSymbol.spelling);
+
+        // Create a temp symbol table
+        SymbolTablePtr tempSymbolTable = symbolTable->makeChild();
+        // Mark this object-like macro as being expanded
+        // This will not overwrite the original object symbol because we are using a child symbol table
+        tempSymbolTable->define(ExpandedSymbol{objSymbol.name});
+
+        return expandPreprocTokens(bodyTokens, tempSymbolTable);
+    }
+
+    // Parse a string into preprocessor tokens
+    // Returns (tree, tokens)
+    // Source must not be blank (\s*)
     std::tuple<TSTree, TSNode> parseIntoPreprocTokens(std::string_view source)
     {
         std::string ifSource = "#if " + std::string(source) + "\n#endif\n";
         TSTree tree = parser.parseString(std::move(ifSource));
-        TSNode root = tree.rootNode();
-        TSNode tokens = root.childByFieldId(lang.preproc_if_s.condition_f);
+        TSNode root = tree.rootNode(); // translation_unit
+        TSNode tokens = root.firstChildForByte(0).childByFieldId(lang.preproc_if_s.condition_f);
         assert(tokens.isSymbol(lang.preproc_tokens_s));
         return { std::move(tree), std::move(tokens) };
     }
 
+    // Parse a string into a preprocessor expression
+    // Returns (tree, expr)
+    // Source must not be blank (\s*)
     std::tuple<TSTree, TSNode> parseIntoExpression(std::string_view source)
     {
         std::string evalSource = "#eval " + std::string(source) + "\n#endeval\n";
         TSTree tree = parser.parseString(std::move(evalSource));
-        TSNode root = tree.rootNode();
-        TSNode expr = root.childByFieldId(lang.preproc_eval_s.expr_f);
+        TSNode root = tree.rootNode(); // translation_unit
+        TSNode expr = root.firstChildForByte(0).childByFieldId(lang.preproc_eval_s.expr_f);
         return { std::move(tree), std::move(expr) };
     }
 
