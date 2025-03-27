@@ -10,7 +10,6 @@
 #include <sstream>
 
 #include "Util.hpp"
-#include "TreeSitter.hpp"
 
 namespace Hayroll
 {
@@ -24,11 +23,6 @@ class ObjectSymbol
 public:
     std::string name;
     std::string spelling;
-
-    std::string expand() const
-    {
-        return spelling;
-    }
 };
 
 class FunctionSymbol
@@ -37,12 +31,6 @@ public:
     std::string name;
     std::vector<std::string> params;
     std::string body;
-
-    std::string expand(const std::vector<std::string> & args) const
-    {
-        // TODO: Implement with tree-sitter
-        return "";
-    }
 };
 
 class UndefinedSymbol
@@ -72,7 +60,7 @@ public:
         symbols[name] = symbol;
     }
 
-    std::optional<const Symbol *> lookup(const std::string & name) const
+    std::optional<const Symbol *> lookup(std::string_view name) const
     {
         auto it = symbols.find(name);
         if (it != symbols.end())
@@ -122,8 +110,40 @@ public:
         return ss.str();
     }
 
+    struct TransparentStringHash
+    {
+        using is_transparent = void;
+    
+        size_t operator()(const std::string & s) const
+        {
+            return std::hash<std::string>{}(s);
+        }
+        size_t operator()(std::string_view sv) const
+        {
+            return std::hash<std::string_view>{}(sv);
+        }
+    };
+    
+    struct TransparentStringEqual
+    {
+        using is_transparent = void;
+    
+        bool operator()(const std::string & lhs, const std::string & rhs) const
+        {
+            return lhs == rhs;
+        }
+        bool operator()(const std::string & lhs, std::string_view rhs) const
+        {
+            return lhs == rhs;
+        }
+        bool operator()(std::string_view lhs, const std::string & rhs) const
+        {
+            return lhs == rhs;
+        }
+    };
+
 private:
-    std::unordered_map<std::string, Symbol> symbols;
+    std::unordered_map<std::string, Symbol, TransparentStringHash, TransparentStringEqual> symbols;
     ConstSymbolTablePtr parent;
 };
 

@@ -18,7 +18,7 @@ public:
     // In this way we don't need to use string literals in the code
     #define C_PREPROC_GRAMMAR \
         X(preproc_arg) XX \
-        X(preproc_argument_list) \
+        X(argument_list) \
             Y(argument) \
         XX \
         X(binary_expression) \
@@ -122,6 +122,9 @@ public:
         X(preproc_params) \
             Y(parameter) \
         XX \
+        X(preproc_tokens) \
+            Y(token) \
+        XX \
         X(parenthesized_expression) \
             Y(expr) \
         XX \
@@ -137,6 +140,7 @@ public:
             Y(name) \
         XX \
         X(number_literal) XX \
+        X(identifier) XX \
 
     #define X(sym) , sym##_s({ .str = #sym, .tsSymbol = symbolForName(#sym, true)
     #define Y(fld) , .fld##_f = { .str = #fld, .tsFieldId = fieldIdForName(#fld) }

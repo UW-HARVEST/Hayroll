@@ -82,8 +82,8 @@ find_program(AWK_EXE awk REQUIRED)
 # spdlog
 find_package(spdlog REQUIRED)
 
-# fmt
-find_package(fmt REQUIRED)
+# # fmt
+# find_package(fmt REQUIRED)
 
 message(STATUS "AWK_EXE: ${AWK_EXE}")
 
@@ -99,7 +99,7 @@ message(STATUS "TREE_SITTER_C_PREPROC_DIR: ${TREE_SITTER_C_PREPROC_DIR}")
 # Common config
 link_libraries(
     spdlog::spdlog
-    fmt::fmt
+    # fmt::fmt
 )
 
 add_library(hayroll_exe_config INTERFACE)
@@ -251,4 +251,16 @@ target_link_libraries(ASTBank_test PRIVATE
 add_test(
     NAME ASTBank_test
     COMMAND ASTBank_test
+)
+
+add_executable(MacroExpander_test tests/MacroExpander_test.cpp)
+target_link_libraries(MacroExpander_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME MacroExpander_test
+    COMMAND MacroExpander_test
 )

@@ -72,7 +72,7 @@ private:
 class TSNode
 {
 public:
-    TSNode(ts::TSNode node, std::string_view source);
+    TSNode(const ts::TSNode & node, std::string_view source);
 
     operator ts::TSNode() const;
 
@@ -149,6 +149,7 @@ class TSTree
 {
 public:
     TSTree(ts::TSTree * tree, std::string_view source);
+    TSTree(ts::TSTree * tree, std::string && source);
     TSTree();
 
     TSTree(const TSTree &) = delete;
@@ -171,7 +172,7 @@ public:
     void printDotGraph(int fileDescriptor) const;
 private:
     std::unique_ptr<ts::TSTree, decltype(&ts::ts_tree_delete)> tree;
-    std::string_view source;
+    std::string source;
 };
 
 class TSParser
@@ -194,6 +195,7 @@ public:
     bool setLanguage(const ts::TSLanguage * language);
 
     TSTree parseString(std::string_view source);
+    TSTree parseString(std::string && source);
     void reset();
 private:
     std::unique_ptr<ts::TSParser, decltype(&ts::ts_parser_delete)> parser;
@@ -237,7 +239,7 @@ public:
     operator ts::TSTreeCursor() const;
     operator ts::TSTreeCursor *();
     operator const ts::TSTreeCursor *() const;
-    void reset(TSNode node);
+    void reset(const TSNode & node);
     void resetTo(const TSTreeCursor & src);
     TSNode currentNode() const;
     std::string currentFieldName() const;
@@ -615,7 +617,7 @@ std::string TSLanguage::name() const
 // TSNode
 
 // Constructor for TSNode
-TSNode::TSNode(ts::TSNode node, std::string_view source)
+TSNode::TSNode(const ts::TSNode & node, std::string_view source)
     : node(node), source(source)
 {
 }
@@ -991,7 +993,12 @@ void TSNode::assertNonNull() const
 
 // Construct a TSTree with the given ts::TSTree pointer.
 TSTree::TSTree(ts::TSTree * tree, std::string_view source)
-    : tree(tree, ts::ts_tree_delete), source(source)
+    : tree(tree, ts::ts_tree_delete), source(source) // Copy and own
+{
+}
+
+TSTree::TSTree(ts::TSTree *tree, std::string && source)
+    : tree(tree, ts::ts_tree_delete), source(source) // Move and own
 {
 }
 
@@ -1114,6 +1121,11 @@ bool TSParser::setLanguage(const ts::TSLanguage * language)
 TSTree TSParser::parseString(std::string_view str)
 {
     return { ts::ts_parser_parse_string(*this, nullptr, str.data(), str.size()), str };
+}
+
+TSTree TSParser::parseString(std::string && source)
+{
+    return { ts::ts_parser_parse_string(*this, nullptr, source.data(), source.size()), source };
 }
 
 // Reset the parser to start the next parse from the beginning.
@@ -1252,7 +1264,7 @@ TSTreeCursor::operator const ts::TSTreeCursor *() const
 }
 
 // Re-initialize the tree cursor to start at the given node.
-void TSTreeCursor::reset(TSNode node)
+void TSTreeCursor::reset(const TSNode & node)
 {
     ts::ts_tree_cursor_reset(*this, node);
 }
@@ -1373,5 +1385,14 @@ TSTreeCursorIterateDescendants TSTreeCursor::iterateDescendants() const
 }
 
 } // namespace Hayroll
+
+// #define A 1
+
+// #define CCC A(1)
+
+
+// #if CCC
+// const int x = 1;
+// #endif
 
 #endif // HAYROLL_TREESITTER_HPP
