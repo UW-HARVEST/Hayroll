@@ -1,3 +1,5 @@
+// Dummy file for the symbolic executor
+
 #include <iostream>
 #include <sstream>
 #include <vector>

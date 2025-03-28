@@ -1,3 +1,6 @@
+// "Stack trace" representation of header inclusion
+// It is a tree because symbolic execution can branch out into multiple paths
+
 #ifndef HAYROLL_INCLUDETREE_HPP
 #define HAYROLL_INCLUDETREE_HPP
 

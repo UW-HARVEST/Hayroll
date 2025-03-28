@@ -1,3 +1,5 @@
+// A clang-based command line tool that removes all comments from a C file
+
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/Tooling.h"

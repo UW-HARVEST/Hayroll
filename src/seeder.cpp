@@ -1,3 +1,5 @@
+// Reads the .cpp2c invocation summary file and generates the instrumentation task
+
 #include <iostream>
 #include <fstream>
 #include <string>

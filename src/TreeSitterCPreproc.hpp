@@ -1,3 +1,6 @@
+// Specialized TSLanguage class for the tree-sitter-c_preproc language
+// Also encodes the symbolized grammar for the language
+
 #ifndef HAYROLL_TREESITTERCPREPROC_HPP
 #define HAYROLL_TREESITTERCPREPROC_HPP
 

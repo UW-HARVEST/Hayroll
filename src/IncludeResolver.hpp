@@ -1,3 +1,5 @@
+// Resolves include paths using the given C compiler
+
 #ifndef HAYROLL_INCLUDERESOLVER_HPP
 #define HAYROLL_INCLUDERESOLVER_HPP
 

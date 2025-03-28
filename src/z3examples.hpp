@@ -1,3 +1,6 @@
+// Official Z3 examples
+// Put here for copilot to reference
+
 #ifndef HAYROLL_Z3EXAMPLES_HPP
 #define HAYROLL_Z3EXAMPLES_HPP
 

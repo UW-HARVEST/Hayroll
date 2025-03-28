@@ -1,3 +1,6 @@
+// A data structure that holds a syntax tree and its source code
+// Supports finding trees by file path
+
 #ifndef HAYROLL_ASTBANK_HPP
 #define HAYROLL_ASTBANK_HPP
 

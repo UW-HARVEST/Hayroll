@@ -1,3 +1,5 @@
+// A chained hashmap symbol table that holds macro difinitions
+
 #ifndef HAYROLL_SYMBOLTABLE_HPP
 #define HAYROLL_SYMBOLTABLE_HPP
 

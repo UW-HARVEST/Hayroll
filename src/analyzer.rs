@@ -1,3 +1,5 @@
+// Test playground, not functional
+
 use std::env;
 use std::fs;
 use syntax;

@@ -1,3 +1,5 @@
+// Utility class for creating and managing temporary directories
+
 #ifndef HAYROLL_TEMPDIR_HPP
 #define HAYROLL_TEMPDIR_HPP
 

@@ -1,4 +1,6 @@
-// RemoveNonPreprocessor.cc
+// A clang-based command line tool that removes all non-macro code from a C file that does not contain comments
+// leaving only the preprocessor directives
+
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
 #include "clang/Frontend/FrontendAction.h"

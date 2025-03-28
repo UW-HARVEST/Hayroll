@@ -1,3 +1,6 @@
+// A clang-based command line tool that removes all non-macro code and comments from a C file
+// leaving only the preprocessor directives
+
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Tooling/Tooling.h"
