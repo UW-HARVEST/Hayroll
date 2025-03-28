@@ -53,6 +53,7 @@ std::string escapeString(std::string_view str)
     return result;
 }
 
+// Parse a location string in the format "path:line:col" into a tuple of (path, line, col)
 std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view loc)
 {
     std::string_view pathStr;
@@ -81,6 +82,8 @@ std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view
     return {path, line, col};
 }
 
+// Tag structure to hold the information about the instrumentation task
+// This maps to the JSON structure in the .cpp2c invocation summary file
 struct Tag
 {
     bool hayroll = true;
@@ -98,6 +101,7 @@ struct Tag
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locDecl, locInv, locArg, canFn)
 
+    // Escape the JSON string to make it a valid C string that embeds into C code
     std::string stringLiteral() const
     {
         json j = *this;
@@ -105,6 +109,7 @@ struct Tag
     }
 };
 
+// InstrumentationTask structure that can be transformed into an awk command
 struct InstrumentationTask
 {
     std::string filename;
@@ -139,6 +144,7 @@ struct InstrumentationTask
     }
 };
 
+// Generate instrumentation tasks based on the provided parameters
 std::list<InstrumentationTask> genInstrumentationTasks
 (
     std::string_view locBegin,
@@ -294,6 +300,8 @@ std::list<InstrumentationTask> genInstrumentationTasks
     return tasks;
 }
 
+// ArgInfo structure to hold the information about the arguments
+// This maps to the JSON structure in the .cpp2c invocation summary file
 struct ArgInfo
 {
     std::string Name;
@@ -309,6 +317,7 @@ struct ArgInfo
     
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(ArgInfo, Name, ASTKind, Type, IsLValue, ActualArgLocBegin, ActualArgLocEnd)
 
+    // Generate tags for the arguments
     std::list<InstrumentationTask> collectInstrumentationTasks() const
     {
         return genInstrumentationTasks(
@@ -327,6 +336,8 @@ struct ArgInfo
     }
 };
 
+// MakiInvocationInfo structure to hold the information about the invocation
+// This maps to the JSON structure in the .cpp2c invocation summary file
 struct MakiInvocationInfo
 {
     // In accordance with the Maki macros.py
@@ -439,6 +450,7 @@ struct MakiInvocationInfo
         Args
     )
 
+    // Get the filename from the definition location
     std::string definitionLocationFilename() const
     {
         if (!IsDefinitionLocationValid)
@@ -456,11 +468,13 @@ struct MakiInvocationInfo
         }
     }
 
+    // Concept translated from Maki implementation
     bool isFunctionLike() const
     {
         return !IsObjectLike;
     }
 
+    // Concept translated from Maki implementation
     bool isTopLevelNonArgument() const
     {
         return InvocationDepth == 0
@@ -469,14 +483,16 @@ struct MakiInvocationInfo
             && IsDefinitionLocationValid;
     }
 
+    // Concept translated from Maki implementation
     bool isAligned() const
     {
         assert(isTopLevelNonArgument());
         return isTopLevelNonArgument()
             && NumASTRoots == 1
             && HasAlignedArguments;
-        }
+    }
 
+    // Concept translated from Maki implementation
     bool hasSemanticData() const
     {
         return isTopLevelNonArgument()
@@ -485,6 +501,7 @@ struct MakiInvocationInfo
             && !(ASTKind == "Expr" && IsExpansionTypeNull);
     }
 
+    // Concept translated from Maki implementation
     bool canBeTurnedIntoEnum() const
     {
         assert(hasSemanticData());
@@ -492,6 +509,7 @@ struct MakiInvocationInfo
         return IsExpansionICE;
     }
 
+    // Concept translated from Maki implementation
     bool canBeTurnedIntoVariable() const
     {
         assert(hasSemanticData());
@@ -507,12 +525,14 @@ struct MakiInvocationInfo
             && !IsExpansionTypeVoid;
     }
 
+    // Concept translated from Maki implementation
     bool canBeTurnedIntoEnumOrVariable() const
     {
         assert(hasSemanticData());
         return canBeTurnedIntoEnum() || canBeTurnedIntoVariable();
     }
 
+    // Concept translated from Maki implementation
     bool canBeTurnedIntoFunction() const
     {
         assert(hasSemanticData());
@@ -523,18 +543,21 @@ struct MakiInvocationInfo
             && !IsInvokedWhereICERequired;
     }
 
+    // Concept translated from Maki implementation
     bool canBeTurnedIntoAFunctionOrVariable() const
     {
         assert(hasSemanticData());
         return canBeTurnedIntoFunction() || canBeTurnedIntoVariable();
     }
 
+    // Concept translated from Maki implementation
     bool canBeTurnedIntoTypeDef() const
     {
         assert(hasSemanticData());
         return ASTKind == "TypeLoc";
     }
 
+    // Concept translated from Maki implementation
     bool mustAlterArgumentsOrReturnTypeToTransform() const
     {
         assert(hasSemanticData());
@@ -545,6 +568,7 @@ struct MakiInvocationInfo
             || IsAnyArgumentExpandedWhereAddressableValueRequired;
     }
 
+    // Concept translated from Maki implementation
     bool mustAlterDeclarationsToTransform() const
     {
         assert(hasSemanticData());
@@ -562,6 +586,7 @@ struct MakiInvocationInfo
             || ASTKind == "TypeLoc";
     }
 
+    // Concept translated from Maki implementation
     bool mustAlterCallSiteToTransform() const
     {
         if (!isAligned())
@@ -573,11 +598,13 @@ struct MakiInvocationInfo
         return IsExpansionControlFlowStmt || IsAnyArgumentConditionallyEvaluated;
     }
 
+    // Concept translated from Maki implementation
     bool mustCreateThunksToTransform() const
     {
         return DoesAnyArgumentHaveSideEffects || IsAnyArgumentTypeVoid;
     }
 
+    // Concept translated from Maki implementation
     bool mustUseMetaprogrammingToTransform() const
     {
         return (HasStringification || HasTokenPasting) 
@@ -590,11 +617,13 @@ struct MakiInvocationInfo
             );
     }
 
+    // Concept translated from Maki implementation
     bool satisfiesASyntacticProperty() const
     {
         return !isAligned();
     }
 
+    // Concept translated from Maki implementation
     bool satisfiesAScopingRuleProperty() const
     {
         assert(hasSemanticData());
@@ -611,6 +640,7 @@ struct MakiInvocationInfo
             || IsAnyArgumentTypeLocalType;
     }
 
+    // Concept translated from Maki implementation
     bool satisfiesATypingProperty() const
     {
         assert(hasSemanticData());
@@ -624,6 +654,7 @@ struct MakiInvocationInfo
             || IsAnyArgumentTypeLocalType;
     }
 
+    // Concept translated from Maki implementation
     bool satisfiesACallingConventionProperty() const
     {
         assert(hasSemanticData());
@@ -631,12 +662,14 @@ struct MakiInvocationInfo
             || IsAnyArgumentConditionallyEvaluated;
     }
 
+    // Concept translated from Maki implementation
     bool satisfiesALanguageSpecificProperty() const
     {
         return mustUseMetaprogrammingToTransform();
     }
 
-    // HAYROLL original
+    // HAYROLL original concept
+    // Whether the function can be turned into a Rust function
     bool canRustFn() const
     {
         return 
@@ -676,6 +709,7 @@ struct MakiInvocationInfo
             );
     }
 
+    // Collect the instrumentation tasks for the invocation and its arguments
     std::list<InstrumentationTask> collectInstrumentationTasks() const
     {
         std::list<InstrumentationTask> tasks;
@@ -710,6 +744,7 @@ struct MakiInvocationInfo
     }
 };
 
+// Check if the invocation info is valid and should be kept
 bool keepInvocationInfo(const MakiInvocationInfo & invocation, const std::filesystem::path & projectRootDir)
 {
     if

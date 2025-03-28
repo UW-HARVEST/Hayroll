@@ -27,6 +27,8 @@ public:
     std::map<int, IncludeTreePtr> children; // Line number to IncludeTreePtr
     std::weak_ptr<IncludeTree> parent;
 
+    // Constructor
+    // An IncludeTree object shall only be managed by a shared_ptr
     static IncludeTreePtr make
     (
         int line,
@@ -41,6 +43,7 @@ public:
         return tree;
     }
 
+    // Add a child IncludeTree object to the current one
     void addChild(int line, const std::filesystem::path & path)
     {
         children[line] = make(line, path, shared_from_this());
@@ -54,6 +57,8 @@ public:
         return path.string().ends_with(header);
     }
 
+    // Get a vector of ancestor directories
+    // This is useful for resolving user includes
     std::vector<std::filesystem::path> getAncestorDirs() const
     {
         // Peel off the filenames from the path

@@ -57,6 +57,9 @@ class SymbolTable
     : public std::enable_shared_from_this<SymbolTable>
 {
 public:
+
+    // Constructor
+    // A SymbolTable object shall only be managed by a shared_ptr
     static SymbolTablePtr make(ConstSymbolTablePtr parent = nullptr)
     {
         auto table = std::make_shared<SymbolTable>();
@@ -69,12 +72,15 @@ public:
         return make(shared_from_this());
     }
 
+    // Define a symbol in the current table
+    // The defined symbol can be a "UndefinedSymbol" or an "ExpandedSymbol" too
     void define(Symbol && symbol)
     {
         std::string name = std::visit([](const auto & s) { return s.name; }, symbol);
         symbols[name] = symbol;
     }
 
+    // Lookup a symbol in the current table and its parent tables
     std::optional<const Symbol *> lookup(std::string_view name) const
     {
         auto it = symbols.find(name);
@@ -126,6 +132,7 @@ public:
         return ss.str();
     }
 
+    // In support of lookup using std::string_view
     struct TransparentStringHash
     {
         using is_transparent = void;
@@ -139,7 +146,8 @@ public:
             return std::hash<std::string_view>{}(sv);
         }
     };
-    
+
+    // In support of lookup using std::string_view
     struct TransparentStringEqual
     {
         using is_transparent = void;

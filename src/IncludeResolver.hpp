@@ -25,6 +25,9 @@ public:
     {
     }
 
+    // Resolve an include path using the given C compiler
+    // Parent paths are also necessary for user includes
+    // You can generate that with InludeTree::getAncestorDirs()
     std::filesystem::path resolveInclude
     (
         bool isSystemInclude,
@@ -100,6 +103,7 @@ public:
         return resolveInclude(false, includeName, parentPaths);
     }
 
+    // Get macros that are predefined by the compiler before processing any source file
     std::string getPredefinedMacros() const
     {
         // cc -dM -E - < /dev/null

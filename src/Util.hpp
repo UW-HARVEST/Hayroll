@@ -12,11 +12,14 @@ struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 
+// A string builder that can append std::string, std::string_view, and const char *
+// Reduces copys at best effort
 class StringBuilder
 {
 public:
     StringBuilder() : bufferSize(0) {}
 
+    // Take ownership of the string
     void append(std::string && str)
     {
         bufferOwnershipCache.emplace_back(std::move(str));
@@ -24,18 +27,21 @@ public:
         bufferSize += bufferOwnershipCache.back().size();
     }
 
+    // Use only reference to the string
     void append(std::string_view str)
     {
         buffer.emplace_back(str);
         bufferSize += str.size();
     }
 
+    // Use only reference to the string (implicitly converted to std::string_view)
     void append(const char * str)
     {
         buffer.emplace_back(str);
         bufferSize += std::char_traits<char>::length(str);
     }
 
+    // Concatenate all segments into a single string
     std::string str() const
     {
         std::string result;

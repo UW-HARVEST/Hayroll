@@ -29,6 +29,7 @@ public:
     {
     }
 
+    // Add a file to the bank. The bank parses the file and stores the syntax tree.
     void addFile(const std::filesystem::path & path)
     {
         // Read file into string
@@ -66,6 +67,7 @@ public:
         bank[path] = std::move(tree);
     }
 
+    // Find a tree in the bank by file path
     const TSTree & find(const std::filesystem::path & path) const
     {
         return bank.at(path);

@@ -12,6 +12,7 @@ use vfs::FileId;
 use std::fs;
 use hir;
 
+// Create an AST node from a string
 fn ast_from_text<N: AstNode>(text: &str) -> N {
     let parse = SourceFile::parse(text, Edition::CURRENT);
     let node = match parse.tree().syntax().descendants().find_map(N::cast) {
@@ -26,10 +27,12 @@ fn ast_from_text<N: AstNode>(text: &str) -> N {
     node
 }
 
+// Create an expression from a string
 fn expr_from_text(text: &str) -> ast::Expr {
     ast_from_text(&format!("const C: () = {text};"))
 }
 
+// Get a mutable dollar token from a macro_rules
 fn get_dollar_token_mut() -> SyntaxToken {
     let macro_rules = ast_from_text::<ast::MacroRules>("macro_rules! M {($x:expr) => {};}");
     // find a dollar token in the parsed macro_rules
@@ -40,6 +43,7 @@ fn get_dollar_token_mut() -> SyntaxToken {
     dollar_token_mut
 }
 
+// HayrollSeed is a tagged literal in the source code
 #[derive(Clone)]
 struct HayrollSeed {
     literal: ast::Literal,
@@ -47,6 +51,8 @@ struct HayrollSeed {
     file_id: FileId,
 }
 
+// HayrollRegion is a tagged region in the source code
+// This can be either a single expression or a span of statements
 #[derive(Clone)]
 enum HayrollRegion {
     Expr(HayrollSeed),
@@ -248,6 +254,8 @@ impl HayrollRegion {
     }
 }
 
+// CodeRegion is a region of code represented by AST nodes
+// It can be either a single expression or a span of statements
 #[derive(Clone)]
 enum CodeRegion {
     Expr(ast::Expr),
@@ -375,6 +383,7 @@ impl std::fmt::Display for CodeRegion {
     }
 }
 
+// HayrollMacroInv is a macro invocation in AST representation
 #[derive(Clone)]
 struct HayrollMacroInv {
     region: HayrollRegion,
@@ -542,6 +551,7 @@ impl HayrollMacroInv {
     }
 }
 
+// HayrollMacroDB is a database of Hayroll macros collected from the source code
 struct HayrollMacroDB{
     map: HashMap<String, Vec<HayrollMacroInv>>,
 }
@@ -873,6 +883,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+// Apply the source change to the RootDatabase
 fn apply_source_change(db: &mut RootDatabase, source_change: &ide::SourceChange){
     // Fs edits (NOT TESTED!!!)
     // for file_system_edit in source_change.file_system_edits.iter() {
