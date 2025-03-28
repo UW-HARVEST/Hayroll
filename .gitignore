@@ -65,7 +65,7 @@ Cargo.lock
 *.pdb
 
 # Trace files
-trace.txt
+trace*.txt
 
 # Soft links
 /seeder
