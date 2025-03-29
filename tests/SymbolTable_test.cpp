@@ -23,22 +23,26 @@ int main()
 
     spdlog::set_level(spdlog::level::debug);
 
+    // The SymbolTable API has changed from the original design
+    // This part of test is disabled
     SymbolTablePtr symbolTable = SymbolTable::make();
-    symbolTable->define(ObjectSymbol{"x", "1"});
-    symbolTable->define(FunctionSymbol{"f", {"x"}, "x + 1"});
+    // symbolTable->define(ObjectSymbol{"x", "1"});
+    // symbolTable->define(FunctionSymbol{"f", {"x"}, "x + 1"});
 
-    auto x = symbolTable->lookup("x");
-    if (x.has_value())
-    {
-        const Symbol & symbol = *x.value();
-        std::cout << std::visit([](const auto & s) { return s.name; }, symbol) << std::endl;
-    }
+    // auto x = symbolTable->lookup("x");
+    // if (x.has_value())
+    // {
+    //     const Symbol & symbol = *x.value();
+    //     std::cout << std::visit([](const auto & s) { return s.name; }, symbol) << std::endl;
+    // }
 
     // Parse the predefined macros
 
     IncludeResolver resolver(clang_exe_path, {});
 
-    TSParser parser{CPreproc()};
+    CPreproc lang = CPreproc();
+
+    TSParser parser(lang);
 
     std::string predefinedMacros = resolver.getPredefinedMacros();
 
@@ -48,33 +52,28 @@ int main()
 
     // Walk the tree and add the macros to the symbol table
     // The tree will be like:
-    // translation_unit [0, 0] - [2, 0]
+    // translation_unit [0, 0] - [358, 0]
     //     preproc_def [0, 0] - [1, 0]
-    //         #define [0, 0] - [0, 7]
-    //         name: identifier [0, 8] - [0, 28]
-    //         value: preproc_arg [0, 29] - [0, 51]
+    //         name: identifier [0, 8] - [0, 13]
+    //         value: preproc_tokens [0, 14] - [0, 15]
+    //             token: number_literal [0, 14] - [0, 15]
     //     preproc_def [1, 0] - [2, 0]
-    //         #define [1, 0] - [1, 7]
-    //         name: identifier [1, 8] - [1, 29]
-    //         value: preproc_arg [1, 30] - [1, 47]
+    //         name: identifier [1, 8] - [1, 24]
+    //         value: preproc_tokens [1, 25] - [1, 26]
+    //             token: number_literal [1, 25] - [1, 26]
 
     for (TSNode node : tree.rootNode().iterateChildren())
     {
         assert(node.isNamed());
 
-        TSNode nameNode = node.childByFieldName("name");
-        TSNode valueNode = node.childByFieldName("value");
+        TSNode nameNode = node.childByFieldId(lang.preproc_def_s.name_f);
+        TSNode valueNode = node.childByFieldId(lang.preproc_def_s.value_f);
 
         assert(!nameNode.isNull());
         std::string name = nameNode.text();
 
-        std::string value;
-        if (!valueNode.isNull())
-        {
-            value = valueNode.text();
-        }
-
-        symbolTable->define(ObjectSymbol{name, value});
+        // valueNode can be an invalid node, but wo store it as-is
+        symbolTable->define(ObjectSymbol{name, valueNode});
     }
 
     std::cout << symbolTable->toString() << std::endl;

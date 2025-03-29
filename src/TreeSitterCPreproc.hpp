@@ -4,6 +4,8 @@
 #ifndef HAYROLL_TREESITTERCPREPROC_HPP
 #define HAYROLL_TREESITTERCPREPROC_HPP
 
+#include <vector>
+
 #include "TreeSitter.hpp"
 
 namespace ts
@@ -89,9 +91,6 @@ public:
         X(preproc_error) \
             Y(message) \
         XX \
-        X(preproc_eval) \
-            Y(expr) \
-        XX \
         X(preproc_function_def) \
             Y(name) \
             Y(parameters) \
@@ -142,7 +141,14 @@ public:
         X(preproc_undef) \
             Y(name) \
         XX \
+        X(preproc_evalexpr) \
+            Y(expr) \
+        XX \
+        X(preproc_evalcall) \
+            Y(call) \
+        XX \
         X(number_literal) XX \
+        X(preproc_defined_literal) XX \
         X(identifier) XX \
 
     #define X(sym) , sym##_s({ .str = #sym, .tsSymbol = symbolForName(#sym, true)
@@ -223,6 +229,17 @@ public:
     // const struct type_ifndef_s ifndef_s;
 
     #undef C_PREPROC_GRAMMAR
+
+    std::vector<TSNode> tokensToTokenVector(const TSNode & tokens) const
+    {
+        assert(tokens.isSymbol(preproc_tokens_s));
+        std::vector<TSNode> result;
+        for (const TSNode & token : tokens.iterateChildren())
+        {
+            result.emplace_back(token);
+        }
+        return result;
+    }
 };
 
 } // namespace Hayroll

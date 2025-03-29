@@ -11,6 +11,9 @@
 #include <optional>
 #include <sstream>
 
+#include <spdlog/spdlog.h>
+
+#include "TreeSitter.hpp"
 #include "Util.hpp"
 
 namespace Hayroll
@@ -24,7 +27,7 @@ class ObjectSymbol
 {
 public:
     std::string name;
-    std::string spelling;
+    TSNode body; // preproc_tokens, can be a null node
 };
 
 class FunctionSymbol
@@ -32,7 +35,7 @@ class FunctionSymbol
 public:
     std::string name;
     std::vector<std::string> params;
-    std::string body;
+    TSNode body; // preproc_tokens, can be a null node
 };
 
 class UndefinedSymbol
@@ -42,7 +45,8 @@ public:
 };
 
 // Used for marking symbols that have been expanded, to avoid infinite recursion
-// Why not undefine it? You can do "#define A defined A", and then "#if A" should still be true
+// Instead of not expanding them, we raise an error, because if such a symbol is later symbolized,
+// it will seem like -D can change its value, which is not true
 class ExpandedSymbol
 {
 public:
@@ -62,6 +66,7 @@ public:
     // A SymbolTable object shall only be managed by a shared_ptr
     static SymbolTablePtr make(ConstSymbolTablePtr parent = nullptr)
     {
+        SPDLOG_DEBUG("Creating symbol table");
         auto table = std::make_shared<SymbolTable>();
         table->parent = parent;
         return table;
@@ -77,7 +82,7 @@ public:
     void define(Symbol && symbol)
     {
         std::string name = std::visit([](const auto & s) { return s.name; }, symbol);
-        symbols[name] = symbol;
+        symbols[name] = std::move(symbol);
     }
 
     // Lookup a symbol in the current table and its parent tables
@@ -105,7 +110,7 @@ public:
             (
                 overloaded
                 {
-                    [&ss](const ObjectSymbol & s) { ss << s.name << " -> " << s.spelling; },
+                    [&ss](const ObjectSymbol & s) { ss << s.name << " -> " << s.body.text(); },
                     [&ss](const FunctionSymbol & s) { ss << s.name << "(";
                         for (size_t i = 0; i < s.params.size(); i++)
                         {
@@ -115,7 +120,7 @@ public:
                                 ss << ", ";
                             }
                         }
-                        ss << ") -> " << s.body;
+                        ss << ") -> " << s.body.text();
                     },
                     [&ss](const UndefinedSymbol & s) { ss << "undefined"; },
                     [&ss](const ExpandedSymbol & s) { ss << "expanded"; }
@@ -132,43 +137,59 @@ public:
         return ss.str();
     }
 
-    // In support of lookup using std::string_view
-    struct TransparentStringHash
-    {
-        using is_transparent = void;
-    
-        size_t operator()(const std::string & s) const
-        {
-            return std::hash<std::string>{}(s);
-        }
-        size_t operator()(std::string_view sv) const
-        {
-            return std::hash<std::string_view>{}(sv);
-        }
-    };
-
-    // In support of lookup using std::string_view
-    struct TransparentStringEqual
-    {
-        using is_transparent = void;
-    
-        bool operator()(const std::string & lhs, const std::string & rhs) const
-        {
-            return lhs == rhs;
-        }
-        bool operator()(const std::string & lhs, std::string_view rhs) const
-        {
-            return lhs == rhs;
-        }
-        bool operator()(std::string_view lhs, const std::string & rhs) const
-        {
-            return lhs == rhs;
-        }
-    };
-
 private:
     std::unordered_map<std::string, Symbol, TransparentStringHash, TransparentStringEqual> symbols;
     ConstSymbolTablePtr parent;
+};
+
+// A top-level symbol table wrapper used for expanding macros
+// Undefines symbols in prevention of recursive expansion
+// Not intended for generating child symbol tables or being passd to other functions
+class UndefStackSymbolTable
+{
+public:
+    UndefStackSymbolTable(const ConstSymbolTablePtr & symbolTable)
+        : symbolTable(symbolTable)
+    {
+        SPDLOG_DEBUG("Creating UndefStackSymbolTable");
+    }
+
+    void pushExpanded(std::string_view name)
+    {
+        // Actually we use ExpandedSymbol instead of UndefinedSymbol
+        undefStack.emplace_back(ExpandedSymbol{std::string(name)});
+    }
+
+    void pushExpanded(std::string && name)
+    {
+        undefStack.emplace_back(ExpandedSymbol{std::move(name)});
+    }
+
+    void pop()
+    {
+        undefStack.pop_back();
+    }
+
+    std::optional<const Symbol *> lookup(std::string_view name) const
+    {
+        // size
+        auto it = std::find_if(undefStack.rbegin(), undefStack.rend(), [&name](const Symbol & s)
+        {
+            assert(std::holds_alternative<ExpandedSymbol>(s));
+            const ExpandedSymbol & expanded = std::get<ExpandedSymbol>(s);
+            return expanded.name == name;
+        });
+        if (it != undefStack.rend())
+        {
+            return &*it;
+        }
+        // Check the parent symbol table
+        return symbolTable->lookup(name);
+    }
+
+private:
+    const ConstSymbolTablePtr & symbolTable;
+    std::vector<Symbol> undefStack;
 };
 
 } // namespace Hayroll

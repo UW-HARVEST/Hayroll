@@ -49,8 +49,33 @@ int main(int argc, char **argv)
         #endif
         #if F(B) + 1
         #endif
+        #if F((x ? x : x))
+        #endif
         #define E
         #if E
+        #endif
+        #define F(x) x
+        #define Y 1 + F
+        #if Y(1)
+        #endif
+        #define F(x) ((x) + 1)
+        #define Y F(
+        #if Y 1)
+        #endif
+        #if Y 1) + Y 2)
+        #endif
+        #define F(x) ((x) + 1)
+        #define Y F(
+        #define Z F
+        #if T Y Z (1))
+        #endif
+        #define G(a, b) a + b
+        #define F(x) x(1
+        #if F(G) , 2)
+        #endif
+        #define D defined
+        #define A D A
+        #if A
         #endif
     )";
     srcFile.close();
@@ -77,8 +102,7 @@ int main(int argc, char **argv)
             TSNode name = node.childByFieldId(lang.preproc_def_s.name_f);
             TSNode value = node.childByFieldId(lang.preproc_def_s.value_f); // May not exist
             std::string nameStr = name.text();
-            std::string valueStr = value ? value.text() : "";
-            symbolTable->define(ObjectSymbol{std::move(nameStr), std::move(valueStr)});
+            symbolTable->define(ObjectSymbol{std::move(nameStr), value});
             std::cout << node.text();
         }
         else if (node.isSymbol(lang.preproc_function_def_s))
@@ -94,8 +118,7 @@ int main(int argc, char **argv)
                 if (!param.isSymbol(lang.identifier_s)) continue;
                 paramsStrs.push_back(param.text());
             }
-            std::string bodyStr = body ? body.text() : "";
-            symbolTable->define(FunctionSymbol{std::move(nameStr), std::move(paramsStrs), std::move(bodyStr)});
+            symbolTable->define(FunctionSymbol{std::move(nameStr), std::move(paramsStrs), body});
             std::cout << node.text();
         }
         else if (node.isSymbol(lang.preproc_undef_s))
@@ -109,8 +132,14 @@ int main(int argc, char **argv)
         {
             TSNode condition = node.childByFieldId(lang.preproc_if_s.condition_f);
             assert(condition.isSymbol(lang.preproc_tokens_s));
-            std::string expanded = expander.expandPreprocTokens(condition, symbolTable);
-            std::cout << condition.text() << " -> " << expanded << std::endl;
+            std::vector<TSNode> conditionTokens = lang.tokensToTokenVector(condition);
+            auto expanded = expander.expandPreprocTokens(conditionTokens, symbolTable);
+            std::cout << condition.text() << " -> ";
+            for (const TSNode & token : expanded)
+            {
+                std::cout << token.text() << " ";
+            }
+            std::cout << std::endl;
         }
         else assert(false);
     }

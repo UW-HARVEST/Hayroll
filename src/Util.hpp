@@ -63,6 +63,40 @@ bool isAllWhitespace(const std::string & s)
     return s.find_first_not_of(" \t\n\v\f\r") == std::string::npos;
 }
 
+// In support of std::unordered_map<std::string, T> lookup using std::string_view
+struct TransparentStringHash
+{
+    using is_transparent = void;
+
+    size_t operator()(const std::string & s) const
+    {
+        return std::hash<std::string>{}(s);
+    }
+    size_t operator()(std::string_view sv) const
+    {
+        return std::hash<std::string_view>{}(sv);
+    }
+};
+
+// In support of std::unordered_map<std::string, T> lookup using std::string_view
+struct TransparentStringEqual
+{
+    using is_transparent = void;
+
+    bool operator()(const std::string & lhs, const std::string & rhs) const
+    {
+        return lhs == rhs;
+    }
+    bool operator()(const std::string & lhs, std::string_view rhs) const
+    {
+        return lhs == rhs;
+    }
+    bool operator()(std::string_view lhs, const std::string & rhs) const
+    {
+        return lhs == rhs;
+    }
+};
+
 } // namespace Hayroll
 
 #endif // HAYROLL_UTIL_HPP

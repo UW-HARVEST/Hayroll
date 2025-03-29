@@ -11,6 +11,7 @@
 #include <optional>
 #include <cassert>
 #include <vector>
+#include <ranges>
 
 #include <iostream>
 
@@ -82,6 +83,7 @@ class TSNode
 {
 public:
     TSNode(const ts::TSNode & node, std::string_view source);
+    TSNode();
 
     operator ts::TSNode() const;
 
@@ -278,6 +280,7 @@ private:
 
 // Class to iterate over children of a TSTreeCursor's current node.
 class TSTreeCursorIterateChildren
+    // : public std::ranges::view_interface<TSTreeCursorIterateChildren>
 {
 public:
     // Nested iterator class
@@ -288,29 +291,27 @@ public:
         using difference_type = std::ptrdiff_t;
         using pointer = TSNode *;
         using reference = TSNode;
-        using iterator_category = std::input_iterator_tag;
-
-        // Default constructor (end iterator)
-        Iterator() : cursor(std::nullopt) {}
+        using iterator_category = std::bidirectional_iterator_tag;
 
         // Constructor with a given TSTreeCursor state and valid flag
-        explicit Iterator(TSTreeCursor && cursor)
-            : cursor(std::move(cursor)) {}
+        explicit Iterator(TSTreeCursor && cursor, bool atEnd = false)
+            : cursor(std::move(cursor)), atEnd(atEnd) {}
 
         // Dereference operator returns the current node.
         TSNode operator *() const
         {
-            assert(cursor.has_value());
-            return cursor.value().currentNode();
+            assert(!atEnd);
+            return cursor.currentNode();
         }
 
         // Pre-increment: move to the next sibling child.
         Iterator & operator++()
         {
-            assert(cursor.has_value());
-            if (!cursor.value().gotoNextSibling())
+            assert(!atEnd);
+            if (!cursor.gotoNextSibling())
             {
-                cursor = std::nullopt;
+                cursor.gotoParent();
+                atEnd = true;
             }
             return *this;
         }
@@ -323,15 +324,36 @@ public:
             return copy;
         }
 
+        Iterator & operator--()
+        {
+            if (atEnd)
+            {
+                if (cursor.gotoLastChild())
+                {
+                    atEnd = false;
+                }
+            }
+            else cursor.gotoPreviousSibling();
+
+            return *this;
+        }
+
+        Iterator operator--(int)
+        {
+            Iterator copy = *this;
+            --(*this);
+            return copy;
+        }
+
         // Equality: iterators are equal if both are invalid (i.e. at the end) or 
         // if both are valid and their current nodes compare equal.
         bool operator==(const Iterator & other) const
         {
-            if (!cursor.has_value() && !other.cursor.has_value())
+            if (atEnd && other.atEnd)
                 return true;
-            if (cursor.has_value() && other.cursor.has_value())
-                return cursor.value().currentNode() == other.cursor.value().currentNode();
-            return false;
+            if (atEnd || other.atEnd)
+                return false;
+            return cursor.currentNode() == other.cursor.currentNode();
         }
 
         // Inequality operator.
@@ -341,7 +363,9 @@ public:
         }
 
     private:
-        std::optional<TSTreeCursor> cursor;
+        TSTreeCursor cursor;
+        bool atEnd;
+        // if atEnd, cursor must be the parent node
     };
 
     // Constructor: store a copy of the parent's cursor.
@@ -357,15 +381,27 @@ public:
         return Iterator(std::move(childCursor));
     }
 
-    // end() returns a default-constructed iterator (i.e. invalid).
     Iterator end() const
     {
-        return Iterator();
+        TSTreeCursor parentCursorCopy = parentCursor;
+        return Iterator(std::move(parentCursorCopy), true);
+    }
+
+    std::reverse_iterator<Iterator> rbegin() const
+    {
+        return std::reverse_iterator<Iterator>(end());
+    }
+
+    std::reverse_iterator<Iterator> rend() const
+    {
+        return std::reverse_iterator<Iterator>(begin());
     }
 
 private:
     TSTreeCursor parentCursor;
 };
+// static_assert(std::ranges::bidirectional_range<TSTreeCursorIterateChildren>);
+// static_assert(std::ranges::common_range<TSTreeCursorIterateChildren>);
 
 // Class to iterate over all descendants (pre-order) of a TSTreeCursor's current node.
 class TSTreeCursorIterateDescendants
@@ -630,6 +666,17 @@ std::string TSLanguage::name() const
 TSNode::TSNode(const ts::TSNode & node, std::string_view source)
     : node(node), source(source)
 {
+}
+
+TSNode::TSNode()
+{
+    node =
+    {
+        .context = {0, 0, 0, 0},
+        .id = nullptr,
+        .tree = nullptr,
+    };
+    source = "";
 }
 
 // Conversion operator: Get the underlying ts::TSNode.
@@ -967,6 +1014,7 @@ std::string_view TSNode::getSource() const
 
 std::string_view TSNode::textView() const
 {
+    if (isNull()) return "";
     return source.substr(startByte(), endByte() - startByte());
 }
 

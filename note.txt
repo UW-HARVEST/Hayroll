@@ -152,3 +152,24 @@ merge the tree to the existing one (whose condition is now (condTree || condNewT
 Only if the tree still does not contain the file can we make sure it's skipped due to header guards
 
 valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all ./ASTBank_test
+
+Only after finding that a macro symbol is function-like, will the expander start looking for parameters (pairing parentheses) in the rest part of the line
+Doing that, it is ignoring any future expansions that may happen before the final parentheses
+
+"Tokens" should be totally flat
+    parse tokens
+    insert into deque
+    scan from beginning
+        if not id/defined: consume
+        if defined: consume
+        if id
+            if
+
+macro function args are expanded before subsitution
+substitution = an expansion with the original symbol table + "ArgumentSymbol"-defined args
+
+[[[undef A] undef F] symbolTable]
+
+only those tokens that hit ExpandedSymbol would be marked "no further expansion"
+The final expansion result should not have any "no further expansion" identifiers, because they can't be symbolized
+(They can, but -D-ing them would not affect the expression's final value)
