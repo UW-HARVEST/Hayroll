@@ -19,65 +19,157 @@ int main(int argc, char **argv)
 
     SymbolTablePtr symbolTable = SymbolTable::make();
 
-    auto tmpDir = TempDir();
-    auto tmpPath = tmpDir.getPath();
+    TempDir tmpDir;
+    std::filesystem::path tmpPath = tmpDir.getPath();
 
-    auto srcPath = tmpPath / "test.c";
+    // List[(List[(defOrUndef)], List[(bench, expected)]]
+    std::vector<std::tuple
+    <
+        std::vector<std::string>,
+        std::vector<std::pair<std::string, std::string>>
+    >> testbenches =
+    {
+        {
+            {},
+            {
+                { "A", "A" },
+                { "defined(A)", "defined ( A )" },
+                { "!A", "! A" },
+                { "!defined(A)", "! defined ( A )" },
+            }
+        },
+        {
+            {
+                "#define A"
+            },
+            {
+                { "A", "" },
+                { "defined(A)", "1" },
+                { "!A", "!" },
+                { "!defined(A)", "! 1" },
+            }
+        },
+        {
+            {
+                "#define A 1"
+            },
+            {
+                { "A", "1" },
+                { "defined(A)", "1" },
+                { "!A", "! 1" },
+                { "!defined(A)", "! 1" },
+            }
+        },
+        {
+            {
+                "#undef A"
+            },
+            {
+                { "A", "0" },
+                { "defined(A)", "0" },
+                { "!A", "! 0" },
+                { "!defined(A)", "! 0" },
+            }
+        },
+        {
+            {
+                { "#define A defined A" },
+            },
+            {
+                { "A", "1" },
+                { "defined(A)", "1" },
+                { "!A", "! 1" },
+                { "!defined(A)", "! 1" },
+            }
+        },
+        {
+            {
+                "#define A 3",
+                "#define F(x) ((x) + 1)"
+            },
+            {
+                { "F(1)", "( ( 1 ) + 1 )" },
+                { "F(F(A))", "( ( ( ( 3 ) + 1 ) ) + 1 )" },
+                { "F(F(F(2)))", "( ( ( ( ( ( 2 ) + 1 ) ) + 1 ) ) + 1 )" },
+                { "F(B) + 1", "( ( B ) + 1 ) + 1" },
+                { "F((x ? x : x))", "( ( ( x ? x : x ) ) + 1 )" },
+            }
+        },
+        {
+            {
+                "#define F(x) x",
+                "#define Y 1 + F"
+            },
+            {
+                { "Y(2)", "1 + 2" },
+            }
+        },
+        {
+            {
+                "#define F(x) (x + x)",
+                "#define Y F("
+            },
+            {
+                { "Y 1)", "( 1 + 1 )" },
+                { "Y 1) + Y 2)", "( 1 + 1 ) + ( 2 + 2 )" },
+            }
+        },
+        {
+            {
+                "#define F(x) (x + x)",
+                "#define Y F(",
+                "#define Z F"
+            },
+            {
+                { "T Y Z (1))", "T ( ( 1 + 1 ) + ( 1 + 1 ) )" },
+            }
+        },
+        {
+            {
+                "#define G(a, b) a + b",
+                "#define F(x) x(1"
+            },
+            {
+                { "F(G), 2)", "1 + 2" }
+            }
+        },
+        {
+            {
+                "#define D defined",
+                "#define A D A"
+            },
+            {
+                { "A", "1" },
+                { "defined(A)", "1" },
+                { "!A", "! 1" },
+                { "!defined(A)", "! 1" },
+            }
+        }
+    };
+
+    // i-th #if -> expected
+    std::vector<std::string_view> testbenchesRef;
+
+    std::string srcString;
+    for (const auto & [defs, benches] : testbenches)
+    {
+        for (const auto & def : defs)
+        {
+            srcString += def + "\n";
+        }
+        for (const auto & [bench, expected] : benches)
+        {
+            srcString += "#if ";
+            srcString += bench + "\n";
+            srcString += "#endif\n";
+            testbenchesRef.push_back(expected);
+        }
+    }
+
+    std::filesystem::path srcPath = tmpPath / "test.c";
     std::ofstream srcFile(srcPath);
     // Use raw string literals to avoid escaping
-    srcFile << 
-    R"(
-        #define A 1
-        #if A
-        #endif
-        #if defined(A)
-        #endif
-        #undef A
-        #if A
-        #endif
-        #if defined(A)
-        #endif
-        #if B
-        #endif
-        #define A defined A
-        #if A
-        #endif
-        #define F(x) ((x) + 1)
-        #if F(1)
-        #endif
-        #if F(F(F(1)))
-        #endif
-        #if F(B) + 1
-        #endif
-        #if F((x ? x : x))
-        #endif
-        #define E
-        #if E
-        #endif
-        #define F(x) x
-        #define Y 1 + F
-        #if Y(1)
-        #endif
-        #define F(x) ((x) + 1)
-        #define Y F(
-        #if Y 1)
-        #endif
-        #if Y 1) + Y 2)
-        #endif
-        #define F(x) ((x) + 1)
-        #define Y F(
-        #define Z F
-        #if T Y Z (1))
-        #endif
-        #define G(a, b) a + b
-        #define F(x) x(1
-        #if F(G) , 2)
-        #endif
-        #define D defined
-        #define A D A
-        #if A
-        #endif
-    )";
+    srcFile << srcString;
     srcFile.close();
     
     CPreproc lang = CPreproc();
@@ -89,6 +181,10 @@ int main(int argc, char **argv)
 
     const TSTree & tree = astBank.find(srcPath);
     TSNode root = tree.rootNode();
+
+    size_t trialId = 0;
+    bool allPassed = true;
+    bool lastWasIf = true;
     
     // There are only preproc_def, preproc_function_def, preproc_undef and preproc_if nodes
     // Seeing a def or undef, add to the symbol table
@@ -97,6 +193,16 @@ int main(int argc, char **argv)
     {
         assert(node.isSymbol(lang.preproc_def_s) || node.isSymbol(lang.preproc_function_def_s) || node.isSymbol(lang.preproc_undef_s) || node.isSymbol(lang.preproc_if_s));
         
+        if (node.isSymbol(lang.preproc_def_s) || node.isSymbol(lang.preproc_function_def_s) || node.isSymbol(lang.preproc_undef_s))
+        {
+            // Clear the symbol table if the last node was an if
+            if (lastWasIf)
+            {
+                symbolTable = SymbolTable::make();
+                lastWasIf = false;
+            }
+        }
+
         if (node.isSymbol(lang.preproc_def_s))
         {
             TSNode name = node.childByFieldId(lang.preproc_def_s.name_f);
@@ -133,16 +239,30 @@ int main(int argc, char **argv)
             TSNode condition = node.childByFieldId(lang.preproc_if_s.condition_f);
             assert(condition.isSymbol(lang.preproc_tokens_s));
             std::vector<TSNode> conditionTokens = lang.tokensToTokenVector(condition);
-            auto expanded = expander.expandPreprocTokens(conditionTokens, symbolTable);
-            std::cout << condition.text() << " -> ";
+            std::vector<Hayroll::TSNode> expanded = expander.expandPreprocTokens(conditionTokens, symbolTable);
+            std::string expandedStr;
             for (const TSNode & token : expanded)
             {
-                std::cout << token.text() << " ";
+                expandedStr += token.text() + " ";
             }
-            std::cout << std::endl;
+            // Remove trailing space
+            if (!expandedStr.empty())
+            {
+                expandedStr.pop_back();
+            }
+            bool isEqual = expandedStr == testbenchesRef[trialId];
+            std::cout << fmt::format("{} expanded: {} -> {}\n", isEqual ? "OK" : "FAIL", condition.text(), expandedStr);
+
+            ++trialId;
+            if (!isEqual)
+            {
+                allPassed = false;
+            }
+
+            lastWasIf = true;
         }
         else assert(false);
     }
 
-    return 0;
+    return allPassed ? 0 : 1;
 }

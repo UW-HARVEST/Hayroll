@@ -290,8 +290,11 @@ public:
                     auto && [token1, shouldPopUndef1] = stack.back();
                     stack.pop_back();
 
-                    auto handleIdentifier = [this, &buffer, &symbolTable, token = std::move(token)](const TSNode & tokenX, bool shouldPopUndefX)
+                    auto handleIdentifier = 
+                    [this, &buffer, &symbolTable, token = std::move(token)]
+                    (const TSNode & tokenX, bool shouldPopUndefX, const std::optional<const TSNode *> leftParenthesis = std::nullopt) -> bool
                     {
+                        bool replaced = false;
                         std::string_view name = tokenX.textView();
                         std::optional<const Hayroll::Symbol *> symbol = symbolTable.lookup(name);
                         if (symbol.has_value())
@@ -306,15 +309,22 @@ public:
                                 buffer.push_back(constToken0);
                             }
                             else assert(false);
+                            replaced = true;
                         }
                         else
                         {
                             // Unknown symbol, leave as is, it will be turned into a symbolic value
                             buffer.push_back(token);
+                            if (leftParenthesis)
+                            {
+                                buffer.push_back(*leftParenthesis.value());
+                            }
                             buffer.push_back(tokenX);
+                            replaced = false;
                         }
                         // Use of symbol is done, pop the undef stack
                         if (shouldPopUndefX) symbolTable.pop();
+                        return replaced;
                     };
                     
                     if (token1.isSymbol(lang.identifier_s))
@@ -329,15 +339,15 @@ public:
                         if (stack.empty())
                         {
                             // Not expanded, leave as is
-                            buffer.push_back(token);
                         }
                         else
                         {
                             auto && [token2, shouldPopUndef2] = stack.back();
                             stack.pop_back();
+                            bool replaced = false;
                             if (token2.isSymbol(lang.identifier_s))
                             {
-                                handleIdentifier(token2, shouldPopUndef2);
+                                replaced = handleIdentifier(token2, shouldPopUndef2, &token1);
                             }
                             else
                             {
@@ -357,6 +367,8 @@ public:
                             {
                                 throw std::runtime_error(fmt::format("Unbalanced parenthesis in preproc_defined_literal"));
                             }
+                            // We don't need the ")" if the whole thing is replaced
+                            if (!replaced) buffer.push_back(token3);
                             if (shouldPopUndef3) symbolTable.pop();
                         }
                     }
