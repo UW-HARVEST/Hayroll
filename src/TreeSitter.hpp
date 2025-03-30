@@ -82,7 +82,7 @@ private:
 class TSNode
 {
 public:
-    TSNode(const ts::TSNode & node, std::string_view source);
+    TSNode(const ts::TSNode & node, const std::string * source);
     TSNode();
 
     operator ts::TSNode() const;
@@ -143,7 +143,7 @@ public:
 
     // Helper functions
     bool isSymbol(ts::TSSymbol symbol) const;
-    std::string_view getSource() const;
+    const std::string & getSource() const;
     std::string_view textView() const;
     std::string text() const;
     TSTreeCursor cursor() const;
@@ -152,7 +152,7 @@ public:
     size_t length() const;
 private:
     ts::TSNode node;
-    std::string_view source;
+    const std::string * source;
 
     void assertNonNull() const;
 };
@@ -182,9 +182,12 @@ public:
     void edit(const ts::TSInputEdit *edit);
     std::tuple<ts::TSRange, uint32_t> changedRanges(const ts::TSTree * oldTree) const;
     void printDotGraph(int fileDescriptor) const;
+
+    // Helper functions
+    const std::string & getSource() const;
 private:
     std::unique_ptr<ts::TSTree, decltype(&ts::ts_tree_delete)> tree;
-    std::unique_ptr<std::string> sourcePtr; // To make sure std::string_views in its nodes are valid after moving
+    std::unique_ptr<const std::string> sourcePtr; // To make sure std::string_views in its nodes are valid after moving
 };
 
 class TSParser
@@ -663,7 +666,7 @@ std::string TSLanguage::name() const
 // TSNode
 
 // Constructor for TSNode
-TSNode::TSNode(const ts::TSNode & node, std::string_view source)
+TSNode::TSNode(const ts::TSNode & node, const std::string * source)
     : node(node), source(source)
 {
 }
@@ -676,7 +679,7 @@ TSNode::TSNode()
         .id = nullptr,
         .tree = nullptr,
     };
-    source = "";
+    source = nullptr;
 }
 
 // Conversion operator: Get the underlying ts::TSNode.
@@ -1007,15 +1010,17 @@ bool TSNode::isSymbol(ts::TSSymbol symbol) const
     return symbol == this->symbol();
 }
 
-std::string_view TSNode::getSource() const
+const std::string & TSNode::getSource() const
 {
-    return source;
+    assertNonNull();
+    return *source;
 }
 
 std::string_view TSNode::textView() const
 {
     if (isNull()) return "";
-    return source.substr(startByte(), endByte() - startByte());
+    // SPDLOG_DEBUG("TSNode::textView getSource() {}", getSource());
+    return std::string_view(getSource()).substr(startByte(), length());
 }
 
 // Helper function: Get the text of the node from the source.
@@ -1072,7 +1077,7 @@ TSTree::TSTree(ts::TSTree *tree, std::string && source)
 }
 
 TSTree::TSTree()
-    : tree(nullptr, ts::ts_tree_delete), sourcePtr()
+    : tree(nullptr, ts::ts_tree_delete), sourcePtr(nullptr)
 {
 }
 
@@ -1097,13 +1102,13 @@ ts::TSTree * TSTree::get()
 // Get the root node of the syntax tree.
 TSNode TSTree::rootNode() const
 {
-    return { ts::ts_tree_root_node(*this), *sourcePtr };
+    return { ts::ts_tree_root_node(*this), sourcePtr.get() };
 }
 
 // Get the root node of the syntax tree, with its position shifted by the given offset.
 TSNode TSTree::rootNodeWithOffset(uint32_t offsetBytes, ts::TSPoint offsetExtent) const
 {
-    return { ts::ts_tree_root_node_with_offset(*this, offsetBytes, offsetExtent), *sourcePtr };
+    return { ts::ts_tree_root_node_with_offset(*this, offsetBytes, offsetExtent), sourcePtr.get() };
 }
 
 // Get the language that was used to parse the syntax tree.
@@ -1140,6 +1145,11 @@ void TSTree::printDotGraph(int fileDescriptor) const
     ts::ts_tree_print_dot_graph(*this, fileDescriptor);
 }
 
+const std::string & TSTree::getSource() const
+{
+    assert(tree);
+    return *sourcePtr;
+}
 
 // TSParser
 
@@ -1347,7 +1357,7 @@ void TSTreeCursor::resetTo(const TSTreeCursor & src)
 // Get the tree cursor's current node.
 TSNode TSTreeCursor::currentNode() const
 {
-    return { ts::ts_tree_cursor_current_node(*this), root.getSource() };
+    return { ts::ts_tree_cursor_current_node(*this), &root.getSource() };
 }
 
 // Get the field name of the tree cursor's current node.
@@ -1454,14 +1464,5 @@ TSTreeCursorIterateDescendants TSTreeCursor::iterateDescendants() const
 }
 
 } // namespace Hayroll
-
-// #define A 1
-
-// #define CCC A(1)
-
-
-// #if CCC
-// const int x = 1;
-// #endif
 
 #endif // HAYROLL_TREESITTER_HPP
