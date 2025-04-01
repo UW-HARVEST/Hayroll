@@ -11,6 +11,22 @@
 
 using namespace z3;
 
+void eval_val_expr() {
+    std::cout << "eval_val_expr\n";
+    context c;
+
+    expr val1 = c.int_val(1);
+    expr val2 = c.int_val(2);
+
+    // simply evaluate val1 + val2
+    expr sum = val1 + val2;
+    
+    expr simplified = sum.simplify();
+    assert(simplified.is_int());
+    int64_t result = simplified.get_numeral_int64();
+    std::cout << "result: " << result << "\n";
+}
+
 /**
    Demonstration of how Z3 can be used to prove validity of
    De Morgan's Duality Law: {e not(x and y) <-> (not x) or ( not y) }
@@ -113,7 +129,7 @@ void prove_example1() {
    This example demonstrates how to combine uninterpreted functions and arithmetic.
 */
 void prove_example2() {
-    std::cout << "prove_example1\n";
+    std::cout << "prove_example2\n";
     context c;
     expr x      = c.int_const("x");
     expr y      = c.int_const("y");

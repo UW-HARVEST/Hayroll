@@ -81,20 +81,6 @@ public:
         // Output buffer
         std::vector<TSNode> buffer;
 
-        // // Cache for the ownership of temporarily parsed trees
-        // // We need to make sure the tree is alive when we use its nodes
-        // std::vector<TSTree> treeOwnershipCache;
-
-        // // For debugging
-        // for (TSNode token : tokens.iterateChildren())
-        // {
-        //     SPDLOG_DEBUG("Token: {}", token.textView());
-        // }
-        // for (TSNode token : tokens.iterateChildren() | std::views::reverse)
-        // {
-        //     SPDLOG_DEBUG("Reversing token: {}", token.textView());
-        // }
-
         // Push the tokens into the stack in reverse order
         auto pushTokensAndUndef = [this, &stack, &symbolTable](const std::vector<TSNode> & tokens, std::string_view name = "")
         {
@@ -266,7 +252,6 @@ public:
                     else
                     {
                         // Print the symbol type
-                        // SPDLOG_DEBUG("Symbol type: {}", std::visit([](const auto & s) { return s.name; }, sym));
                         assert(false);
                     }
                 }
@@ -427,10 +412,7 @@ public:
                 {
                     // Found an argument, push its tokens into the buffer
                     const std::vector<TSNode> & arg = it->second;
-                    for (const TSNode & argToken : arg)
-                    {
-                        buffer.push_back(argToken);
-                    }
+                    buffer.insert(buffer.end(), arg.begin(), arg.end());
                 }
                 else
                 {
@@ -461,7 +443,7 @@ public:
     // Source must not be blank (\s*)
     std::tuple<TSTree, TSNode> parseIntoPreprocTokens(std::string_view source)
     {
-        std::string ifSource = "#if " + std::string(source) + "\n#endif\n";
+        std::string ifSource = fmt::format("#if {}\n#endif\n", source);
         TSTree tree = parser.parseString(std::move(ifSource));
         TSNode root = tree.rootNode(); // translation_unit
         TSNode tokens = root.firstChildForByte(0).childByFieldId(lang.preproc_if_s.condition_f);
@@ -474,10 +456,10 @@ public:
     // Source must not be blank (\s*)
     std::tuple<TSTree, TSNode> parseIntoExpression(std::string_view source)
     {
-        std::string evalSource = "#evalexpr " + std::string(source) + "\n#endevalexpr\n";
+        std::string evalSource = fmt::format("#eval {}\n#endeval\n", source);
         TSTree tree = parser.parseString(std::move(evalSource));
         TSNode root = tree.rootNode(); // translation_unit
-        TSNode expr = root.firstChildForByte(0).childByFieldId(lang.preproc_evalexpr_s.expr_f);
+        TSNode expr = root.firstChildForByte(0).childByFieldId(lang.preproc_eval_s.expr_f);
         return { std::move(tree), std::move(expr) };
     }
 

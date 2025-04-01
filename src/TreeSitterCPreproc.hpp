@@ -141,11 +141,8 @@ public:
         X(preproc_undef) \
             Y(name) \
         XX \
-        X(preproc_evalexpr) \
+        X(preproc_eval) \
             Y(expr) \
-        XX \
-        X(preproc_evalcall) \
-            Y(call) \
         XX \
         X(number_literal) XX \
         X(preproc_defined_literal) XX \

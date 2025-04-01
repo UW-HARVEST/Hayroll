@@ -19,6 +19,7 @@ const char * default_clang_exe = "clang";
 int main() {
 
     try {
+        eval_val_expr(); std::cout << "\n";
         demorgan(); std::cout << "\n";
         find_model_example1(); std::cout << "\n";
         prove_example1(); std::cout << "\n";

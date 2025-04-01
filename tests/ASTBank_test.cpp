@@ -23,7 +23,7 @@ int main(int argc, char **argv)
     std::ofstream srcFile(srcPath);
     srcFile
         << "#include <stdio.h>" << std::endl
-        << "#evalexpr 1 + 2 - 3 * 4 / 5 \n #endevalexpr" << std::endl;
+        << "#eval 1 + 2 - 3 * 4 / 5 \n #endeval" << std::endl;
     srcFile.close();
 
     IncludeTreePtr includeRoot = IncludeTree::make(0, srcPath);
@@ -73,9 +73,9 @@ int main(int argc, char **argv)
             {
                 std::cout << node.childByFieldId(lang.preproc_ifndef_s.name_f).text() << std::endl;
             }
-            if (node.isSymbol(lang.preproc_evalexpr_s))
+            if (node.isSymbol(lang.preproc_eval_s))
             {
-                TSNode expr = node.childByFieldId(lang.preproc_evalexpr_s.expr_f);
+                TSNode expr = node.childByFieldId(lang.preproc_eval_s.expr_f);
                 std::cout << expr.text() << std::endl;
                 
                 for (TSNode descendant : expr.iterateDescendants())
