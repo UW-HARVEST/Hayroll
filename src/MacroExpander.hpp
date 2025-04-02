@@ -90,9 +90,8 @@ public:
                 symbolTable.pushExpanded(name);
                 undefBit = true;
             }
-            for (auto it = tokens.rbegin(); it != tokens.rend(); ++it)
+            for (const auto & token : tokens | std::views::reverse)
             {
-                const TSNode & token = *it;
                 stack.emplace_back(token, undefBit);
                 undefBit = false;
             }
@@ -106,10 +105,8 @@ public:
                 symbolTable.pushExpanded(name);
                 undefBit = true;
             }
-            TSTreeCursorIterateChildren iterateChildren = tokens.iterateChildren();
-            for (auto it = iterateChildren.rbegin(); it != iterateChildren.rend(); ++it)
+            for (const auto & token : tokens.iterateChildren() | std::views::reverse)
             {
-                const TSNode & token = *it;
                 stack.emplace_back(token, undefBit);
                 undefBit = false;
             }
@@ -121,9 +118,8 @@ public:
         while (!stack.empty())
         {
             std::string stackStr;
-            for (auto it = stack.rbegin(); it != stack.rend(); ++it)
+            for (const auto & [token, shouldPopUndef] : stack | std::views::reverse)
             {
-                const TSNode & token = it->first;
                 stackStr += token.textView();
                 stackStr += " ";
             }

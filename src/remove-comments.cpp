@@ -53,9 +53,9 @@ protected:
     void EndSourceFileAction() override {
         SourceManager &SM = RewriterForFile->getSourceMgr();
         const auto FID = SM.getMainFileID();
-        const auto *Buffer = SM.getBufferOrNone(FID).getPointer();
+        const auto Buffer = SM.getBufferOrNone(FID).value();
         Lexer Lex(SM.getLocForStartOfFile(FID), CI->getLangOpts(),
-                Buffer->getBufferStart(), Buffer->getBufferStart(), Buffer->getBufferEnd());
+                Buffer.getBufferStart(), Buffer.getBufferStart(), Buffer.getBufferEnd());
         Lex.SetCommentRetentionState(true);
 
         CommentRewriter CR(*RewriterForFile);

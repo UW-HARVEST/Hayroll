@@ -283,6 +283,7 @@ private:
 
 // Class to iterate over children of a TSTreeCursor's current node.
 class TSTreeCursorIterateChildren
+    : public std::ranges::view_interface<TSTreeCursorIterateChildren>
 {
 public:
     // Nested iterator class
@@ -399,6 +400,7 @@ private:
     TSTreeCursor parentCursor;
 };
 static_assert(std::bidirectional_iterator<TSTreeCursorIterateChildren::Iterator>);
+static_assert(std::ranges::common_range<TSTreeCursorIterateChildren>);
 
 // Class to iterate over all descendants (pre-order) of a TSTreeCursor's current node.
 class TSTreeCursorIterateDescendants
