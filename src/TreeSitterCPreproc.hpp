@@ -145,6 +145,7 @@ public:
             Y(expr) \
         XX \
         X(number_literal) XX \
+        X(char_literal) XX \
         X(preproc_defined_literal) XX \
         X(identifier) XX \
 

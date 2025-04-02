@@ -271,6 +271,7 @@ add_executable(MacroExpander_test tests/MacroExpander_test.cpp)
 target_link_libraries(MacroExpander_test PRIVATE
     hayroll_exe_config
     external_exe_config
+    z3_config
     testing_config
     tree_sitter_config
 )

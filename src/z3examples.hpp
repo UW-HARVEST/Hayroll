@@ -7,7 +7,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-#include "z3++.h"
+#include <z3++.h>
 
 using namespace z3;
 

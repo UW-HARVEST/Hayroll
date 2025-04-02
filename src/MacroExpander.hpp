@@ -1,3 +1,6 @@
+#ifndef HAYROLL_MACROEXPANDER_HPP
+#define HAYROLL_MACROEXPANDER_HPP
+
 #include <string>
 #include <vector>
 #include <tuple>
@@ -5,6 +8,7 @@
 #include <ranges>
 #include <map>
 
+#include <z3++.h>
 #include <spdlog/spdlog.h>
 
 #include "TreeSitter.hpp"
@@ -12,17 +16,15 @@
 #include "Util.hpp"
 #include "SymbolTable.hpp"
 
-#ifndef HAYROLL_MACROEXPANDER_HPP
-#define HAYROLL_MACROEXPANDER_HPP
-
 namespace Hayroll
 {
 
 class MacroExpander
 {
 public:
-    MacroExpander(const CPreproc & lang)
-        : lang(lang), parser(lang)
+    MacroExpander(const CPreproc & lang, z3::context & ctx)
+        : lang(lang), parser(lang), ctx(ctx), 
+          constExpr0(ctx.int_val(0)), constExpr1(ctx.int_val(1))
     {
         // Initialize constant tokens
         auto && [tree0, token0] = parseIntoPreprocTokens("0");
@@ -434,6 +436,285 @@ public:
         return buffer;
     }
 
+    // Symbolize all identifiers in a preprocessor expression node
+    // The expression must have been expanded and parsed with parseIntoExpression
+    // This function will not lookup the symbol table, it assumes that known symbols are already replaced
+    z3::expr symbolizeExpression(const TSNode & node)
+    {
+        // All possible expression kinds
+        //     identifier,
+        //     call_expression
+        //     number_literal,
+        //     char_literal,
+        //     preproc_defined,
+        //     unary_expression
+        //     binary_expression
+        //     parenthesized_expression
+        //     conditional_expression
+
+        // | Symbolic Expr | Evaluation     |
+        // | defined A     | defA? 1 : 0    |
+        // | A             | defA? valA : 0 |
+
+        if (node.isSymbol(lang.identifier_s))
+        {
+            // Do not look up the symbol in the symbol table
+            // Any symbol at this time will be treated as a symbolic value
+            std::string_view name = node.textView();
+            std::string defName = fmt::format("def{}", name);
+            std::string valName = fmt::format("val{}", name);
+
+            z3::expr def = ctx.bool_const(defName.c_str());
+            z3::expr val = ctx.int_const(valName.c_str());
+
+            // Create the expression
+            z3::expr iteExpr = z3::ite(def, val, constExpr0);
+            SPDLOG_DEBUG("Symbolizing identifier {}: {}", name, iteExpr.to_string());
+            return iteExpr;
+        }
+        else if (node.isSymbol(lang.call_expression_s))
+        {
+            // There should be no call expression. It should have been expanded
+            throw std::runtime_error(fmt::format("Unexpected call expression while symbolizing expression {}", node.textView()));
+        }
+        else if (node.isSymbol(lang.number_literal_s))
+        {
+            // Number literal, just return its value
+            std::string spelling = node.text();
+            z3::expr val = ctx.int_val(spelling.c_str());
+            SPDLOG_DEBUG("Symbolizing number literal {}: {}", spelling, val.to_string());
+            return val;
+        }
+        else if (node.isSymbol(lang.char_literal_s))
+        {
+            throw std::runtime_error(fmt::format("Unexpected char literal while symbolizing expression {}", node.textView()));
+        }
+        else if (node.isSymbol(lang.preproc_defined_s))
+        {
+            // | Symbolic Expr | Evaluation     |
+            // | defined A     | defA? 1 : 0    |
+
+            TSNode idNode = node.childByFieldId(lang.preproc_defined_s.name_f);
+            assert(idNode.isSymbol(lang.identifier_s));
+            std::string_view name = idNode.textView();
+            std::string defName = fmt::format("def{}", name);
+
+            z3::expr def = ctx.bool_const(defName.c_str());
+            z3::expr defExpr = bool2int(def);
+            SPDLOG_DEBUG("Symbolizing preproc_defined {}: {}", name, defExpr.to_string());
+            return defExpr;
+        }
+        else if (node.isSymbol(lang.unary_expression_s))
+        {
+            // Z(!, not)
+            // Z(~, bnot)
+            // Z(-, neg)
+            // Z(+, pos)
+
+            TSNode opNode = node.childByFieldId(lang.unary_expression_s.operator_f);
+            TSNode argNode = node.childByFieldId(lang.unary_expression_s.argument_f);
+            z3::expr arg = symbolizeExpression(argNode);
+            if (opNode.textView() == lang.unary_expression_s.not_o)
+            {
+                z3::expr notExpr = bool2int(!int2bool(arg));
+                SPDLOG_DEBUG("Symbolizing unary expression {}: {}", node.textView(), notExpr.to_string());
+                return notExpr;
+            }
+            else if (opNode.textView() == lang.unary_expression_s.bnot_o)
+            {
+                // bitwise not
+                z3::expr bnotExpr = z3::bv2int(~z3::int2bv(BIT_WIDTH, arg), true);
+                SPDLOG_DEBUG("Symbolizing unary expression {}: {}", node.textView(), bnotExpr.to_string());
+                return bnotExpr;
+            }
+            else if (opNode.textView() == lang.unary_expression_s.neg_o)
+            {
+                z3::expr negExpr = -arg;
+                SPDLOG_DEBUG("Symbolizing unary expression {}: {}", node.textView(), negExpr.to_string());
+                return negExpr;
+            }
+            else if (opNode.textView() == lang.unary_expression_s.pos_o)
+            {
+                SPDLOG_DEBUG("Symbolizing unary expression {}: {}", node.textView(), arg.to_string());
+                return arg;
+            }
+            else assert(false);
+        }
+        else if (node.isSymbol(lang.binary_expression_s))
+        {
+            // Z(+, add)
+            // Z(-, sub)
+            // Z(*, mul)
+            // Z(/, div)
+            // Z(%, mod)
+            // Z(||, or)
+            // Z(&&, and)
+            // Z(|, bor)
+            // Z(^, bxor)
+            // Z(&, band)
+            // Z(==, eq)
+            // Z(!=, neq)
+            // Z(>, gt)
+            // Z(>=, ge)
+            // Z(<=, le)
+            // Z(<, lt)
+            // Z(<<, lsh)
+            // Z(>>, rsh)
+
+            TSNode opNode = node.childByFieldId(lang.binary_expression_s.operator_f);
+            TSNode leftNode = node.childByFieldId(lang.binary_expression_s.left_f);
+            TSNode rightNode = node.childByFieldId(lang.binary_expression_s.right_f);
+
+            z3::expr left = symbolizeExpression(leftNode);
+            z3::expr right = symbolizeExpression(rightNode);
+
+            if (opNode.textView() == lang.binary_expression_s.add_o)
+            {
+                z3::expr addExpr = left + right;
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), addExpr.to_string());
+                return addExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.sub_o)
+            {
+                z3::expr subExpr = left - right;
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), subExpr.to_string());
+                return subExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.mul_o)
+            {
+                z3::expr mulExpr = left * right;
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), mulExpr.to_string());
+                return mulExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.div_o)
+            {
+                z3::expr divExpr = left / right;
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), divExpr.to_string());
+                return divExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.mod_o)
+            {
+                z3::expr modExpr = left % right;
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), modExpr.to_string());
+                return modExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.or_o)
+            {
+                z3::expr orExpr = bool2int(int2bool(left) || int2bool(right));
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), orExpr.to_string());
+                return orExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.and_o)
+            {
+                z3::expr andExpr = bool2int(int2bool(left) && int2bool(right));
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), andExpr.to_string());
+                return andExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.bor_o)
+            {
+                z3::expr borExpr = z3::bv2int(z3::int2bv(BIT_WIDTH, left) | z3::int2bv(BIT_WIDTH, right), true);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), borExpr.to_string());
+                return borExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.bxor_o)
+            {
+                z3::expr bxorExpr = z3::bv2int(z3::int2bv(BIT_WIDTH, left) ^ z3::int2bv(BIT_WIDTH, right), true);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), bxorExpr.to_string());
+                return bxorExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.band_o)
+            {
+                z3::expr bandExpr = z3::bv2int(z3::int2bv(BIT_WIDTH, left) & z3::int2bv(BIT_WIDTH, right), true);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), bandExpr.to_string());
+                return bandExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.eq_o)
+            {
+                z3::expr eqExpr = bool2int(left == right);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), eqExpr.to_string());
+                return eqExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.neq_o)
+            {
+                z3::expr neqExpr = bool2int(left != right);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), neqExpr.to_string());
+                return neqExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.gt_o)
+            {
+                z3::expr gtExpr = bool2int(left > right);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), gtExpr.to_string());
+                return gtExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.ge_o)
+            {
+                z3::expr geExpr = bool2int(left >= right);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), geExpr.to_string());
+                return geExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.le_o)
+            {
+                z3::expr leExpr = bool2int(left <= right);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), leExpr.to_string());
+                return leExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.lt_o)
+            {
+                z3::expr ltExpr = bool2int(left < right);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), ltExpr.to_string());
+                return ltExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.lsh_o)
+            {
+                z3::expr lshExpr = z3::bv2int(z3::shl(z3::int2bv(BIT_WIDTH, left), z3::int2bv(BIT_WIDTH, right)), true);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), lshExpr.to_string());
+                return lshExpr;
+            }
+            else if (opNode.textView() == lang.binary_expression_s.rsh_o)
+            {
+                z3::expr rshExpr = z3::bv2int(z3::ashr(z3::int2bv(BIT_WIDTH, left), z3::int2bv(BIT_WIDTH, right)), true);
+                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), rshExpr.to_string());
+                return rshExpr;
+            }
+            else assert(false);
+        }
+        else if (node.isSymbol(lang.parenthesized_expression_s))
+        {
+            // Parenthesized expression, just return the inner expression
+            TSNode innerNode = node.childByFieldId(lang.parenthesized_expression_s.expr_f);
+            z3::expr innerExpr = symbolizeExpression(innerNode);
+            SPDLOG_DEBUG("Symbolizing parenthesized expression {}: {}", node.textView(), innerExpr.to_string());
+            return innerExpr;
+        }
+        else if (node.isSymbol(lang.conditional_expression_s))
+        {
+            TSNode condNode = node.childByFieldId(lang.conditional_expression_s.condition_f);
+            TSNode trueNode = node.childByFieldId(lang.conditional_expression_s.consequence_f);
+            TSNode falseNode = node.childByFieldId(lang.conditional_expression_s.alternative_f);
+
+            z3::expr condExpr = symbolizeExpression(condNode);
+            z3::expr trueExpr = symbolizeExpression(trueNode);
+            z3::expr falseExpr = symbolizeExpression(falseNode);
+
+            z3::expr condIteExpr = z3::ite(int2bool(condExpr), trueExpr, falseExpr);
+            SPDLOG_DEBUG("Symbolizing conditional expression {}: {}", node.textView(), condIteExpr.to_string());
+            return condIteExpr;
+        }
+        else assert(false);
+    }
+
+    z3::expr int2bool(const z3::expr & expr)
+    {
+        assert(expr.is_int());
+        return z3::ite(expr != 0, ctx.bool_val(true), ctx.bool_val(false));
+    }
+
+    z3::expr bool2int(const z3::expr & expr)
+    {
+        assert(expr.is_bool());
+        return z3::ite(expr, constExpr1, constExpr0);
+    }
+
     // Parse a string into preprocessor tokens
     // Returns (tree, tokens)
     // Source must not be blank (\s*)
@@ -463,10 +744,17 @@ private:
     const CPreproc & lang;
     TSParser parser;
 
+    z3::context & ctx;
+
     // Cache for the ownership of temporarily parsed trees
     std::vector<TSTree> treeOwnershipCache;
     TSNode constToken0;
     TSNode constToken1;
+
+    // The bit width of the symbolic values
+    const int BIT_WIDTH = 32;
+    z3::expr constExpr0;
+    z3::expr constExpr1;
 };
 
 } // namespace Hayroll

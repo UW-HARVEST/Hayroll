@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include <z3++.h>
 #include <spdlog/spdlog.h>
 
 #include "subprocess.hpp"
@@ -112,7 +113,7 @@ int main(int argc, char **argv)
             },
             {
                 { "Y 1)", "( 1 + 1 )" },
-                { "Y 1) + Y 2)", "( 1 + 1 ) + ( 2 + 2 )" },
+                { "Y 1) | Y 2)", "( 1 + 1 ) | ( 2 + 2 )" },
             },
         },
         {
@@ -192,7 +193,9 @@ int main(int argc, char **argv)
     ASTBank astBank(lang);
     astBank.addFile(srcPath);
 
-    MacroExpander expander(lang);
+    z3::context ctx;
+
+    MacroExpander expander(lang, ctx);
 
     const TSTree & tree = astBank.find(srcPath);
     TSNode root = tree.rootNode();
@@ -285,6 +288,29 @@ int main(int argc, char **argv)
             }
             bool pass = (!testbenchesRef[trialId] && isError) || (testbenchesRef[trialId] && expandedStr == testbenchesRef[trialId].value());
             std::cout << fmt::format("{} expanded: {} -> {}\n", pass ? "OK" : "FAIL", condition.text(), expandedStr);
+
+            // Try symbolizing if the expansion was successful
+            if (pass && !isError)
+            {
+                auto [exprTree, exprNode] = expander.parseIntoExpression(expandedStr);
+                if (!exprNode)
+                {
+                    std::cout << "Not symbolizing an empty expression" << std::endl;
+                }
+                else
+                {
+                    try
+                    {
+                        z3::expr expr = expander.symbolizeExpression(exprNode);
+                        expr = expr.simplify();
+                        std::cout << fmt::format("Symbolized: \n{}\n", expr.to_string()) << std::endl;
+                    }
+                    catch (const std::runtime_error & e)
+                    {
+                        std::cout << "Symbolization failed: " << e.what() << std::endl;
+                    }
+                }
+            }
 
             ++trialId;
             if (!pass)
