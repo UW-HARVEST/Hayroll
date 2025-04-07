@@ -120,27 +120,12 @@ add_library(hayroll_exe_config INTERFACE)
 target_compile_definitions(hayroll_exe_config INTERFACE
     HAYROLL_SEEDER_EXE="$<TARGET_FILE:seeder>"
     HAYROLL_PIONEER_EXE="$<TARGET_FILE:pioneer>"
-    HAYROLL_REMOVE_COMMENTS_EXE="$<TARGET_FILE:remove-comments>"
-    HAYROLL_REMOVE_NON_PREPROCESSOR_EXE="$<TARGET_FILE:remove-non-preprocessor>"
-    HAYROLL_MACRO_SKELETON_EXE="$<TARGET_FILE:macro-skeleton>"
 )
 
 add_library(external_exe_config INTERFACE)
 target_compile_definitions(external_exe_config INTERFACE
     AWK_EXE="${AWK_EXE}"
     CLANG_EXE="${CLANG_EXE}"
-)
-
-add_library(clang_tooling_config INTERFACE)
-target_link_libraries(clang_tooling_config INTERFACE
-    clangTooling
-    clangBasic
-    clangAST
-    clangLex
-    clangRewrite
-    clangFrontend
-    clangDriver
-    LLVMSupport
 )
 
 add_library(z3_config INTERFACE)
@@ -179,28 +164,6 @@ target_link_libraries(pioneer PRIVATE
     z3_config
     tree_sitter_config
 )
-
-add_executable(remove-comments src/remove-comments.cpp)
-target_link_libraries(remove-comments PRIVATE
-    hayroll_exe_config
-    external_exe_config
-    clang_tooling_config
-)
-
-add_executable(remove-non-preprocessor src/remove-non-preprocessor.cpp)
-target_link_libraries(remove-non-preprocessor PRIVATE
-    hayroll_exe_config
-    external_exe_config
-    clang_tooling_config
-)
-
-add_executable(macro-skeleton src/macro-skeleton.cpp)
-target_link_libraries(macro-skeleton PRIVATE
-    hayroll_exe_config
-    external_exe_config
-    clang_tooling_config
-)
-
 
 # Rust
 
