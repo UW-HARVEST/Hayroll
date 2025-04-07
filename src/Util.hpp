@@ -97,6 +97,10 @@ struct TransparentStringEqual
     {
         return lhs == rhs;
     }
+    bool operator()(std::string_view lhs, std::string_view rhs) const
+    {
+        return lhs == rhs;
+    }
 };
 
 } // namespace Hayroll

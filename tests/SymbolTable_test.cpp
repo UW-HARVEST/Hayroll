@@ -23,25 +23,9 @@ int main()
 
     spdlog::set_level(spdlog::level::debug);
 
-    // The SymbolTable API has changed from the original design
-    // This part of test is disabled
     SymbolTablePtr symbolTable = SymbolTable::make();
-    // symbolTable->define(ObjectSymbol{"x", "1"});
-    // symbolTable->define(FunctionSymbol{"f", {"x"}, "x + 1"});
-
-    // auto x = symbolTable->lookup("x");
-    // if (x.has_value())
-    // {
-    //     const Symbol & symbol = *x.value();
-    //     std::cout << std::visit([](const auto & s) { return s.name; }, symbol) << std::endl;
-    // }
-
-    // Parse the predefined macros
-
     IncludeResolver resolver(clang_exe_path, {});
-
     CPreproc lang = CPreproc();
-
     TSParser parser(lang);
 
     std::string predefinedMacros = resolver.getPredefinedMacros();
@@ -67,13 +51,12 @@ int main()
         assert(node.isNamed());
 
         TSNode nameNode = node.childByFieldId(lang.preproc_def_s.name_f);
-        TSNode valueNode = node.childByFieldId(lang.preproc_def_s.value_f);
 
         assert(!nameNode.isNull());
-        std::string name = nameNode.text();
+        std::string_view name = nameNode.textView();
 
         // valueNode can be an invalid node, but wo store it as-is
-        symbolTable->define(ObjectSymbol{name, valueNode});
+        symbolTable->define(ObjectSymbol{name, node});
     }
 
     std::cout << symbolTable->toString() << std::endl;

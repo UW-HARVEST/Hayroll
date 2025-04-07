@@ -225,8 +225,8 @@ int main(int argc, char **argv)
         {
             TSNode name = node.childByFieldId(lang.preproc_def_s.name_f);
             TSNode value = node.childByFieldId(lang.preproc_def_s.value_f); // May not exist
-            std::string nameStr = name.text();
-            symbolTable->define(ObjectSymbol{std::move(nameStr), value});
+            std::string_view nameStr = name.textView();
+            symbolTable->define(ObjectSymbol{nameStr, node, value});
             std::cout << node.text();
         }
         else if (node.isSymbol(lang.preproc_function_def_s))
@@ -235,20 +235,20 @@ int main(int argc, char **argv)
             TSNode params = node.childByFieldId(lang.preproc_function_def_s.parameters_f);
             assert(params.isSymbol(lang.preproc_params_s));
             TSNode body = node.childByFieldId(lang.preproc_function_def_s.value_f); // May not exist
-            std::string nameStr = name.text();
+            std::string_view nameStr = name.textView();
             std::vector<std::string> paramsStrs;
             for (TSNode param : params.iterateChildren())
             {
                 if (!param.isSymbol(lang.identifier_s)) continue;
                 paramsStrs.push_back(param.text());
             }
-            symbolTable->define(FunctionSymbol{std::move(nameStr), std::move(paramsStrs), body});
+            symbolTable->define(FunctionSymbol{nameStr, node, std::move(paramsStrs), body});
             std::cout << node.text();
         }
         else if (node.isSymbol(lang.preproc_undef_s))
         {
             TSNode name = node.childByFieldId(lang.preproc_undef_s.name_f);
-            std::string nameStr = name.text();
+            std::string_view nameStr = name.textView();
             symbolTable->define(UndefinedSymbol{nameStr});
             std::cout << node.text();
         }

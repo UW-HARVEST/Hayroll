@@ -27,7 +27,8 @@ using ConstSymbolTablePtr = std::shared_ptr<const SymbolTable>;
 class ObjectSymbol
 {
 public:
-    std::string name;
+    std::string_view name;
+    TSNode def; // preproc_define
     TSNode body; // preproc_tokens, can be a null node
 };
 
@@ -35,7 +36,8 @@ public:
 class FunctionSymbol
 {
 public:
-    std::string name;
+    std::string_view name;
+    TSNode def; // preproc_function_def
     std::vector<std::string> params;
     TSNode body; // preproc_tokens, can be a null node
 };
@@ -44,7 +46,7 @@ public:
 class UndefinedSymbol
 {
 public:
-    std::string name;
+    std::string_view name;
 };
 
 // Used for marking symbols that have been expanded, to avoid infinite recursion
@@ -53,7 +55,7 @@ public:
 class ExpandedSymbol
 {
 public:
-    std::string name;
+    std::string_view name;
 };
 
 using Symbol = std::variant<ObjectSymbol, FunctionSymbol, UndefinedSymbol, ExpandedSymbol>;
@@ -85,8 +87,8 @@ public:
     // The defined symbol can be a "UndefinedSymbol" or an "ExpandedSymbol" too
     void define(Symbol && symbol)
     {
-        std::string name = std::visit([](const auto & s) { return s.name; }, symbol);
-        symbols[name] = std::move(symbol);
+        std::string_view name = std::visit([](const auto & s) { return s.name; }, symbol);
+        symbols.insert({name, std::move(symbol)});
     }
 
     // Lookup a symbol in the current table and its parent tables
@@ -142,7 +144,7 @@ public:
     }
 
 private:
-    std::unordered_map<std::string, Symbol, TransparentStringHash, TransparentStringEqual> symbols;
+    std::unordered_map<std::string_view, Symbol, TransparentStringHash, TransparentStringEqual> symbols;
     ConstSymbolTablePtr parent;
 };
 
@@ -158,15 +160,15 @@ public:
         SPDLOG_DEBUG("Creating UndefStackSymbolTable");
     }
 
-    void pushExpanded(std::string_view name)
+    // Force using std::string_view to avoid implicit conversion from std::string.
+    // This is for reminding the user that the name is not owned by the symbol table,
+    // so the user is in charge of making sure it's alive.
+    template<typename std_string_view>
+    requires std::is_same_v<std_string_view, std::string_view>
+    void pushExpanded(std_string_view name)
     {
         // Actually we use ExpandedSymbol instead of UndefinedSymbol
-        undefStack.emplace_back(ExpandedSymbol{std::string(name)});
-    }
-
-    void pushExpanded(std::string && name)
-    {
-        undefStack.emplace_back(ExpandedSymbol{std::move(name)});
+        undefStack.emplace_back(ExpandedSymbol{name});
     }
 
     void pop()
