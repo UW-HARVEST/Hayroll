@@ -21,6 +21,10 @@ class CPreproc : public TSLanguage
 public:
     // X-macro that defines the symbols and fields of the tree-sitter-c_preproc language
     // In this way we don't need to use string literals in the code
+    // X: start of symbol (syntactic kind)
+    // XX: end of symbol
+    // Y: field
+    // Z: operator
     #define C_PREPROC_GRAMMAR \
         X(preproc_arg) XX \
         X(argument_list) \

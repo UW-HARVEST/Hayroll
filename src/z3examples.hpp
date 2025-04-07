@@ -1,5 +1,6 @@
 // Official Z3 examples
 // Put here for copilot to reference
+// https://github.com/Z3Prover/z3/blob/master/examples/c++/example.cpp
 
 #ifndef HAYROLL_Z3EXAMPLES_HPP
 #define HAYROLL_Z3EXAMPLES_HPP

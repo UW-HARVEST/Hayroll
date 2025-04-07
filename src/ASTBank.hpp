@@ -1,4 +1,4 @@
-// A data structure that holds a syntax tree and its source code
+// A data structure that owns ASTs parsed from sources
 // Supports finding trees by file path
 
 #ifndef HAYROLL_ASTBANK_HPP

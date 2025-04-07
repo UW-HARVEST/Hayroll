@@ -1,4 +1,5 @@
 // C++ wrapper for Tree-sitter C API
+// C API: https://github.com/tree-sitter/tree-sitter/blob/master/lib/include/tree_sitter/api.h
 
 #ifndef HAYROLL_TREESITTER_HPP
 #define HAYROLL_TREESITTER_HPP

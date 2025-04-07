@@ -134,13 +134,13 @@ impl HayrollRegion {
     fn get_code_region_no_deref(&self) -> CodeRegion {
         match self {
             HayrollRegion::Expr(seed) => {
-                let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
+                let if_expr = ancestor_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
                 CodeRegion::Expr(if_expr.into())
             }
             HayrollRegion::Span(seed_begin, seed_end) => {
-                let stmt_begin = parent_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
-                let stmt_end = parent_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
-                let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
+                let stmt_begin = ancestor_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
+                let stmt_end = ancestor_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
+                let stmt_list = ancestor_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
                 let elements = stmt_begin..=stmt_end;
                 CodeRegion::Span{parent: stmt_list, elements}
             }
@@ -154,7 +154,7 @@ impl HayrollRegion {
         let region = self.get_code_region_no_deref();
         if self.is_lvalue() {
             if let CodeRegion::Expr(if_expr) = region {
-                let star_expr = parent_until_kind_and_cond::<ast::PrefixExpr>(
+                let star_expr = ancestor_until_kind_and_cond::<ast::PrefixExpr>(
                     &if_expr, 
                     |prefix_expr| prefix_expr.op_kind().unwrap() == ast::UnaryOp::Deref
                 ).unwrap();
@@ -167,19 +167,21 @@ impl HayrollRegion {
         }
     }
 
-    // Peel the tag from the region, and return the body of the region
+    // Peel the tag from the region, and return the body of the region. 
+    // Delete the tags we inserted into the C source which later got translated to Rust.
+    // Since our tagging was done in a way that does not change the program behavior, peeling if off also keeps the semantics. 
     // For lvalue expr, the body includes the star PrefixExpr
     // Returns mutable node(s)
     fn peel_tag_keep_deref(&self) -> (CodeRegion, TreeMutator) {
         match self {
             HayrollRegion::Expr(seed) => {
-                let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
+                let if_expr = ancestor_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
                 let then_branch = if_expr.then_branch().unwrap();
                 // If this is lvalue, then there should be an address-of operator (RefExpr) in then_branch
                 // and also a star PrefixExpr in the parent of the if expression
                 // In that case, we should build a new Expr with the RefExpr's expr as the body
                 if self.is_lvalue() {
-                    let star_expr = parent_until_kind::<ast::PrefixExpr>(&if_expr).unwrap();
+                    let star_expr = ancestor_until_kind::<ast::PrefixExpr>(&if_expr).unwrap();
                     let mutator = TreeMutator::new(&star_expr.syntax().clone());
                     let star_expr = mutator.make_mut(&star_expr);
                     let if_expr = mutator.make_mut(&if_expr);
@@ -193,11 +195,11 @@ impl HayrollRegion {
                 }
             }
             HayrollRegion::Span(seed_begin, seed_end) => {
-                let stmt_begin = parent_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
+                let stmt_begin = ancestor_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
                 let stmt_begin_next: ast::Stmt = ast::Stmt::cast(stmt_begin.syntax().next_sibling().unwrap()).unwrap();
-                let stmt_end = parent_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
+                let stmt_end = ancestor_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
                 let stmt_end_prev = ast::Stmt::cast(stmt_end.syntax().prev_sibling().unwrap()).unwrap();
-                let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
+                let stmt_list = ancestor_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
                 let mutator = TreeMutator::new(&stmt_list.syntax().clone());
                 let stmt_list = mutator.make_mut(&stmt_list);
                 let stmt_begin_next = mutator.make_mut(&stmt_begin_next);
@@ -230,7 +232,7 @@ impl HayrollRegion {
         // rvalue: if{}else{*(0 as *mut T)} -> T
         match self {
             HayrollRegion::Expr(ref seed) => {
-                let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
+                let if_expr = ancestor_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
                 let else_branch = if_expr.else_branch().unwrap();
                 let else_block = if let ast::ElseBranch::Block(block) = else_branch {
                     block
@@ -280,7 +282,7 @@ impl CodeRegion {
         }
     }
 
-    // LUB: Least Upper Bound
+    // LUB: Least Upper Bound, a single syntax node that contains all the elements in the region
     fn lub(&self) -> SyntaxNode {
         match self {
             CodeRegion::Expr(expr) => expr.syntax().clone(),
@@ -313,6 +315,8 @@ impl CodeRegion {
         }
     }
 
+    // Returns a range of syntax elements that represent the code region.
+    // This is to provide a unified way of iterating over the code region, wehter it's a single expression or a span of statements.
     fn syntax_element_range(&self) -> RangeInclusive<SyntaxElement> {
         match self {
             CodeRegion::Expr(expr) => expr.syntax().syntax_element().clone()..=expr.syntax().syntax_element().clone(),
@@ -324,6 +328,8 @@ impl CodeRegion {
         }
     }
 
+    // Returns a vector of syntax elements that represent the code region.
+    // This is to provide a unified way of iterating over the code region, wehter it's a single expression or a span of statements.
     fn syntax_element_vec(&self) -> Vec<SyntaxElement> {
         match self {
             CodeRegion::Expr(expr) => vec![expr.syntax().syntax_element().clone()],
@@ -436,7 +442,7 @@ impl HayrollMacroInv {
         region
     }
 
-    // Returns mutable node
+    // Returns mutable ast::MacroRules node
     fn macro_rules(&self) -> ast::MacroRules {
         let macro_name = self.region.name();
         // arg format: ($x:expr) or ($x:stmt)
@@ -551,7 +557,7 @@ impl HayrollMacroInv {
     }
 }
 
-// HayrollMacroDB is a database of Hayroll macros collected from the source code
+// HayrollMacroDB is a database of HayrollMacroInv collected from the source code
 struct HayrollMacroDB{
     map: HashMap<String, Vec<HayrollMacroInv>>,
 }
@@ -578,7 +584,7 @@ impl HayrollMacroDB {
 }
 
 // Takes a node and returns the parent node until the parent node satisfies the condition
-fn parent_until(node: SyntaxNode, condition: fn(SyntaxNode) -> bool) -> Option<SyntaxNode> {
+fn ancestor_until(node: SyntaxNode, condition: fn(SyntaxNode) -> bool) -> Option<SyntaxNode> {
     let mut node = node;
     while !condition(node.clone()) {
         node = node.parent()?;
@@ -586,9 +592,9 @@ fn parent_until(node: SyntaxNode, condition: fn(SyntaxNode) -> bool) -> Option<S
     Some(node)
 }
 
-// Takes a node and returns the parent node until the parent node is of the given kind i.e. IfExpr
-// Also takes a predicate to check if the parent node satisfies the extra condition
-fn parent_until_kind_and_cond<T>(node: &impl ast::AstNode, condition: fn(&T) -> bool) -> Option<T>
+// Takes a node and keeps climbing up to the parent node until the node itself is of the given kind i.e. IfExpr
+// Also takes a predicate to check if the node satisfies the extra condition
+fn ancestor_until_kind_and_cond<T>(node: &impl ast::AstNode, condition: fn(&T) -> bool) -> Option<T>
 where
     T: ast::AstNode,
 {
@@ -599,18 +605,18 @@ where
     Some(T::cast(node)?)
 }
 
-// Takes a node and returns the parent node until the parent node is of the given kind i.e. IfExpr
-fn parent_until_kind<T>(node: &impl ast::AstNode) -> Option<T>
+// Takes a node and keeps climbing up to the parent node until the node itself is of the given kind i.e. IfExpr
+fn ancestor_until_kind<T>(node: &impl ast::AstNode) -> Option<T>
 where
     T: ast::AstNode,
 {
-    parent_until_kind_and_cond(node, |_| true)
+    ancestor_until_kind_and_cond(node, |_| true)
 }
 
 
 
 fn main() -> Result<()> {
-    // start a timer
+    // Record the start time
     let start = Instant::now();
 
     let args: Vec<String> = env::args().collect();

@@ -1,5 +1,4 @@
-// "Stack trace" representation of header inclusion
-// It is a tree because symbolic execution can branch out into multiple paths
+// Tree representation of the include hierarchy for a comilation unit.
 
 #ifndef HAYROLL_INCLUDETREE_HPP
 #define HAYROLL_INCLUDETREE_HPP
@@ -49,9 +48,9 @@ public:
         children[line] = make(line, path, shared_from_this());
     }
 
-    // Test if the given string path (spelt header name) is a suffix of the current path
-    // header could include the path to the file, or just the file name
-    // e.g. "z3++.h" or "z3/z3++.h" or "../z3/z3++.h"
+    // Test if the given string path (spelt header name) is a suffix of the current path.
+    // The arg "header" could include the path to the file, or just the file name.
+    // e.g. "z3++.h" or "z3/z3++.h" or "../z3/z3++.h".
     bool endsWith(const std::string_view header) const
     {
         return path.string().ends_with(header);

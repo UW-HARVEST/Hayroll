@@ -23,6 +23,7 @@ class SymbolTable;
 using SymbolTablePtr = std::shared_ptr<SymbolTable>;
 using ConstSymbolTablePtr = std::shared_ptr<const SymbolTable>;
 
+// Object-like macro symbols, e.g. #define HAYROLL 1
 class ObjectSymbol
 {
 public:
@@ -30,6 +31,7 @@ public:
     TSNode body; // preproc_tokens, can be a null node
 };
 
+// Function-like macro symbols, e.g. #define HAYROLL(x) x + 1
 class FunctionSymbol
 {
 public:
@@ -38,6 +40,7 @@ public:
     TSNode body; // preproc_tokens, can be a null node
 };
 
+// Undefined symbols, e.g. #undef HAYROLL
 class UndefinedSymbol
 {
 public:
@@ -56,7 +59,8 @@ public:
 using Symbol = std::variant<ObjectSymbol, FunctionSymbol, UndefinedSymbol, ExpandedSymbol>;
 
 
-// Tree-shaped symbol table
+// Chained hashmap symbol table that holds macro definitions.
+// Shares parents as an immutable data structure.
 class SymbolTable
     : public std::enable_shared_from_this<SymbolTable>
 {

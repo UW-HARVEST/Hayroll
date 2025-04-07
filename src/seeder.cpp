@@ -1,4 +1,10 @@
-// Reads the .cpp2c invocation summary file and generates the instrumentation task
+// Reads Maki's .cpp2c invocation summary file and generates the instrumentation task
+// You should first run Maki to get the .cpp2c file
+
+// Overall process: xxxInfo -> Tag -> InstrumentationTask -> awk command
+// xxxInfo: Direct mapping from Maki's .ccp2c format.
+// Tag: Selected info from xxxInfo to be inserted into C code.
+// InstrumentationTask: What to insert (serialized and escaped Tag) and where to insert, in a format that is easy to convert to awk commands.
 
 #include <iostream>
 #include <fstream>
@@ -53,7 +59,8 @@ std::string escapeString(std::string_view str)
     return result;
 }
 
-// Parse a location string in the format "path:line:col" into a tuple of (path, line, col)
+// Parse a location string in the format "path:line:col" into a tuple of (path, line, col).
+// Canonicalizes the filename.
 std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view loc)
 {
     std::string_view pathStr;
@@ -82,8 +89,9 @@ std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view
     return {path, line, col};
 }
 
-// Tag structure to hold the information about the instrumentation task
-// This maps to the JSON structure in the .cpp2c invocation summary file
+// Tag structure to hold the information about the instrumentation task.
+// This maps to the JSON structure in the .cpp2c invocation summary file.
+// They will be serialized into C strings and embedded into the C code.
 struct Tag
 {
     bool hayroll = true;
@@ -109,7 +117,7 @@ struct Tag
     }
 };
 
-// InstrumentationTask structure that can be transformed into an awk command
+// InstrumentationTask will be transformed into an awk command that performs insertion
 struct InstrumentationTask
 {
     std::string filename;
@@ -300,8 +308,8 @@ std::list<InstrumentationTask> genInstrumentationTasks
     return tasks;
 }
 
-// ArgInfo structure to hold the information about the arguments
-// This maps to the JSON structure in the .cpp2c invocation summary file
+// ArgInfo structure to hold the information about the arguments of a function-like macro
+// This maps to the JSON structure in Maki's .cpp2c invocation summary file
 struct ArgInfo
 {
     std::string Name;
@@ -337,7 +345,7 @@ struct ArgInfo
 };
 
 // MakiInvocationInfo structure to hold the information about the invocation
-// This maps to the JSON structure in the .cpp2c invocation summary file
+// This maps to the JSON structure in Maki's .cpp2c invocation summary file
 struct MakiInvocationInfo
 {
     // In accordance with the Maki macros.py
@@ -744,7 +752,8 @@ struct MakiInvocationInfo
     }
 };
 
-// Check if the invocation info is valid and should be kept
+// Check if the invocation info is valid and thus should be kept
+// Invalid cases: empty fields, invalid path, non-Expr/Stmt ASTKind
 bool keepInvocationInfo(const MakiInvocationInfo & invocation, const std::filesystem::path & projectRootDir)
 {
     if

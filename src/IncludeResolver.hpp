@@ -1,4 +1,5 @@
 // Resolves include paths using the given C compiler
+// Resolving means mapping the include name (e.g. stdio.h) to the actual file path (e.g. /usr/include/stdio.h)
 
 #ifndef HAYROLL_INCLUDERESOLVER_HPP
 #define HAYROLL_INCLUDERESOLVER_HPP
