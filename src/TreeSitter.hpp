@@ -189,6 +189,8 @@ public:
 private:
     std::unique_ptr<ts::TSTree, decltype(&ts::ts_tree_delete)> tree;
     std::unique_ptr<const std::string> sourcePtr; // To make sure std::string_views in its nodes are valid after moving
+
+    void assertNoError() const;
 };
 
 class TSParser
@@ -1064,11 +1066,17 @@ void TSNode::assertNonNull() const
 TSTree::TSTree(ts::TSTree * tree, std::string_view source)
     : tree(tree, ts::ts_tree_delete), sourcePtr(std::make_unique<std::string>(source)) // Copy and own
 {
+    #if DEBUG
+        assertNoError();
+    #endif
 }
 
 TSTree::TSTree(ts::TSTree *tree, std::string && source)
     : tree(tree, ts::ts_tree_delete), sourcePtr(std::make_unique<std::string>(std::move(source))) // Move and own
 {
+    #if DEBUG
+        assertNoError();
+    #endif
 }
 
 TSTree::TSTree()
@@ -1144,6 +1152,25 @@ const std::string & TSTree::getSource() const
 {
     assert(tree);
     return *sourcePtr;
+}
+
+// Make sure there is no ERROR node in this tree by doing a query for it.
+// This is quite expensive, so it should only be used in debug builds.
+void TSTree::assertNoError() const
+{
+    // Create a query for "(ERROR)". 
+    TSQuery query(language(), "(ERROR)");
+    // We did not write a wrapper for the TSQueryCursor yet, so we will use the C API directly.
+    ts::TSQueryCursor * cursor = ts::ts_query_cursor_new();
+    ts::ts_query_cursor_exec(cursor, query, rootNode());
+    ts::TSQueryMatch match;
+    if (ts::ts_query_cursor_next_match(cursor, &match))
+    {
+        ts::ts_query_cursor_delete(cursor);
+        std::cerr << boost::stacktrace::stacktrace() << std::endl;
+        throw std::runtime_error("Tree contains ERROR node");
+    }
+    ts::ts_query_cursor_delete(cursor);
 }
 
 // TSParser

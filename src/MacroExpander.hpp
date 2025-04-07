@@ -426,12 +426,14 @@ public:
         }
 
         // Print the expanded function-like macro for debugging
-        std::string expandedMacro;
-        for (const TSNode & token : buffer)
-        {
-            expandedMacro += token.text() + " ";
-        }
-        SPDLOG_DEBUG("Expanded function-like macro {}: {}", funcSymbol.name, expandedMacro);
+        #if DEBUG
+            std::string expandedMacro;
+            for (const TSNode & token : buffer)
+            {
+                expandedMacro += token.text() + " ";
+            }
+            SPDLOG_DEBUG("Expanded function-like macro {}: {}", funcSymbol.name, expandedMacro);
+        #endif
 
         return buffer;
     }
@@ -717,9 +719,9 @@ public:
 
     // Parse a string into preprocessor tokens
     // Returns (tree, tokens)
-    // Source must not be blank (\s*)
     std::tuple<TSTree, TSNode> parseIntoPreprocTokens(std::string_view source)
     {
+        if (source.empty()) return { TSTree(), TSNode() };
         std::string ifSource = fmt::format("#if {}\n#endif\n", source);
         TSTree tree = parser.parseString(std::move(ifSource));
         TSNode root = tree.rootNode(); // translation_unit
@@ -730,9 +732,10 @@ public:
 
     // Parse a string into a preprocessor expression
     // Returns (tree, expr)
-    // Source must not be blank (\s*)
     std::tuple<TSTree, TSNode> parseIntoExpression(std::string_view source)
     {
+        SPDLOG_DEBUG("Parsing expression \"{}\"", source);
+        if (source.empty()) return { TSTree(), TSNode() };
         std::string evalSource = fmt::format("#eval {}\n#endeval\n", source);
         TSTree tree = parser.parseString(std::move(evalSource));
         TSNode root = tree.rootNode(); // translation_unit

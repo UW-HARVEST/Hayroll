@@ -131,6 +131,9 @@ public:
         X(preproc_tokens) \
             Y(token) \
         XX \
+        X(c_tokens) \
+            Y(token) \
+        XX \
         X(parenthesized_expression) \
             Y(expr) \
         XX \

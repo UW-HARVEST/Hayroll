@@ -292,23 +292,23 @@ int main(int argc, char **argv)
             // Try symbolizing if the expansion was successful
             if (pass && !isError)
             {
-                auto [exprTree, exprNode] = expander.parseIntoExpression(expandedStr);
-                if (!exprNode)
+                try
                 {
-                    std::cout << "Not symbolizing an empty expression" << std::endl;
-                }
-                else
-                {
-                    try
+                    auto [exprTree, exprNode] = expander.parseIntoExpression(expandedStr);
+                    if (!exprNode)
+                    {
+                        std::cout << "Not symbolizing an empty expression" << std::endl;
+                    }
+                    else
                     {
                         z3::expr expr = expander.symbolizeExpression(exprNode);
                         expr = expr.simplify();
                         std::cout << fmt::format("Symbolized: \n{}\n", expr.to_string()) << std::endl;
                     }
-                    catch (const std::runtime_error & e)
-                    {
-                        std::cout << "Symbolization failed: " << e.what() << std::endl;
-                    }
+                }
+                catch (const std::runtime_error & e)
+                {
+                    std::cout << "Symbolization failed: " << e.what() << std::endl;
                 }
             }
 

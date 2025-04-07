@@ -14,10 +14,6 @@
 #include "TreeSitter.hpp"
 #include "TempDir.hpp"
 
-#ifndef HAYROLL_MACRO_SKELETON_EXE
-    #error "HAYROLL_MACRO_SKELETON_EXE must be defined"
-#endif
-
 namespace Hayroll
 {
 
@@ -32,7 +28,6 @@ public:
     // Add a file to the bank. The bank parses the file and stores the syntax tree.
     void addFile(const std::filesystem::path & path)
     {
-        // Read file into string
         std::ifstream file(path);
         if (!file.is_open())
         {
@@ -40,30 +35,9 @@ public:
         }
         std::string fullSrc = std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         file.close();
-
-        // Create a temporary directory and write the full source to a file
-        TempDir tmpDir;
-        auto tmpPath = tmpDir.getPath();
-        auto tmpSrcPath = tmpPath / "src.c";
-        std::ofstream tmpSrcFile(tmpSrcPath);
-        tmpSrcFile << fullSrc;
-        tmpSrcFile.close();
-
-        // Parse the macro skeleton from the source
-        std::vector<std::string> ccArgs = {HAYROLL_MACRO_SKELETON_EXE, tmpSrcPath};
-        subprocess::Popen proc
-        (
-            ccArgs,
-            subprocess::output{subprocess::PIPE},
-            subprocess::error{subprocess::PIPE}
-        );
-        auto [out, err] = proc.communicate();
-        std::string macroSkeleton = out.buf.data();
         
-        // Parse the macro skeleton into a tree
-        TSTree tree = parser.parseString(std::move(macroSkeleton));
+        TSTree tree = parser.parseString(std::move(fullSrc));
 
-        // Store the tree in the bank
         bank[path] = std::move(tree);
     }
 
