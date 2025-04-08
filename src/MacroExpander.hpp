@@ -214,7 +214,7 @@ public:
                                 if (parenDepth != 0)
                                 {
                                     // Error: unbalanced parenthesis
-                                    throw std::runtime_error(fmt::format("Unbalanced parenthesis in function-like macro {}", name));
+                                    throw std::runtime_error(std::format("Unbalanced parenthesis in function-like macro {}", name));
                                 }
 
                                 // Important note:
@@ -245,7 +245,7 @@ public:
                     {
                         if (shouldPopUndef) symbolTable.pop();
                         // Expanded macro, error
-                        throw std::runtime_error(fmt::format("Recursive expansion of macro {}", name));
+                        throw std::runtime_error(std::format("Recursive expansion of macro {}", name));
                     }
                     else
                     {
@@ -335,12 +335,12 @@ public:
                             else
                             {
                                 // Error: expected an identifier inside preproc_defined_literal
-                                throw std::runtime_error(fmt::format("Expected an identifier inside preproc_defined_literal"));
+                                throw std::runtime_error(std::format("Expected an identifier inside preproc_defined_literal"));
                             }
 
                             if (stack.empty())
                             {
-                                throw std::runtime_error(fmt::format("Unbalanced parenthesis in preproc_defined_literal"));
+                                throw std::runtime_error(std::format("Unbalanced parenthesis in preproc_defined_literal"));
                             }
 
                             auto && [token3, shouldPopUndef3] = stack.back();
@@ -348,7 +348,7 @@ public:
                             
                             if (token3.textView() != ")")
                             {
-                                throw std::runtime_error(fmt::format("Unbalanced parenthesis in preproc_defined_literal"));
+                                throw std::runtime_error(std::format("Unbalanced parenthesis in preproc_defined_literal"));
                             }
                             // We don't need the ")" if the whole thing is replaced
                             if (!replaced) buffer.push_back(token3);
@@ -358,7 +358,7 @@ public:
                     else
                     {
                         // Error: expected an identifier after preproc_defined_literal
-                        throw std::runtime_error(fmt::format("Expected an identifier after preproc_defined_literal"));
+                        throw std::runtime_error(std::format("Expected an identifier after preproc_defined_literal"));
                     }
                 }
             }
@@ -383,7 +383,7 @@ public:
         // Check if the number of arguments is correct
         if (args.size() != funcSymbol.params.size())
         {
-            throw std::runtime_error(fmt::format("Function-like macro {} called with {} arguments, expected {}", funcSymbol.name, args.size(), funcSymbol.params.size()));
+            throw std::runtime_error(std::format("Function-like macro {} called with {} arguments, expected {}", funcSymbol.name, args.size(), funcSymbol.params.size()));
         }
 
         // Expand the arguments w.r.t. the symbol table, and store them in a new symbol table
@@ -463,8 +463,8 @@ public:
             // Do not look up the symbol in the symbol table
             // Any symbol at this time will be treated as a symbolic value
             std::string_view name = node.textView();
-            std::string defName = fmt::format("def{}", name);
-            std::string valName = fmt::format("val{}", name);
+            std::string defName = std::format("def{}", name);
+            std::string valName = std::format("val{}", name);
 
             z3::expr def = ctx.bool_const(defName.c_str());
             z3::expr val = ctx.int_const(valName.c_str());
@@ -477,7 +477,7 @@ public:
         else if (node.isSymbol(lang.call_expression_s))
         {
             // There should be no call expression. It should have been expanded
-            throw std::runtime_error(fmt::format("Unexpected call expression while symbolizing expression {}", node.textView()));
+            throw std::runtime_error(std::format("Unexpected call expression while symbolizing expression {}", node.textView()));
         }
         else if (node.isSymbol(lang.number_literal_s))
         {
@@ -489,7 +489,7 @@ public:
         }
         else if (node.isSymbol(lang.char_literal_s))
         {
-            throw std::runtime_error(fmt::format("Unexpected char literal while symbolizing expression {}", node.textView()));
+            throw std::runtime_error(std::format("Unexpected char literal while symbolizing expression {}", node.textView()));
         }
         else if (node.isSymbol(lang.preproc_defined_s))
         {
@@ -499,7 +499,7 @@ public:
             TSNode idNode = node.childByFieldId(lang.preproc_defined_s.name_f);
             assert(idNode.isSymbol(lang.identifier_s));
             std::string_view name = idNode.textView();
-            std::string defName = fmt::format("def{}", name);
+            std::string defName = std::format("def{}", name);
 
             z3::expr def = ctx.bool_const(defName.c_str());
             z3::expr defExpr = bool2int(def);
@@ -722,7 +722,7 @@ public:
     std::tuple<TSTree, TSNode> parseIntoPreprocTokens(std::string_view source)
     {
         if (source.empty()) return { TSTree(), TSNode() };
-        std::string ifSource = fmt::format("#if {}\n#endif\n", source);
+        std::string ifSource = std::format("#if {}\n#endif\n", source);
         TSTree tree = parser.parseString(std::move(ifSource));
         TSNode root = tree.rootNode(); // translation_unit
         TSNode tokens = root.firstChildForByte(0).childByFieldId(lang.preproc_if_s.condition_f);
@@ -736,7 +736,7 @@ public:
     {
         SPDLOG_DEBUG("Parsing expression \"{}\"", source);
         if (source.empty()) return { TSTree(), TSNode() };
-        std::string evalSource = fmt::format("#eval {}\n#endeval\n", source);
+        std::string evalSource = std::format("#eval {}\n#endeval\n", source);
         TSTree tree = parser.parseString(std::move(evalSource));
         TSNode root = tree.rootNode(); // translation_unit
         TSNode expr = root.firstChildForByte(0).childByFieldId(lang.preproc_eval_s.expr_f);

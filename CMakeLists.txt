@@ -152,6 +152,16 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "13")
+        message(FATAL_ERROR "GCC version must be 13 or above. Current version: ${CMAKE_CXX_COMPILER_VERSION}")
+    endif()
+endif()
+# You may also use clang, but make sure you have libstdc++ 13 or above
+
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -gdwarf-2")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+
 include_directories(include)
 include_directories(src)
 

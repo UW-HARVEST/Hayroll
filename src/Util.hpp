@@ -1,7 +1,14 @@
 #ifndef HAYROLL_UTIL_HPP
 #define HAYROLL_UTIL_HPP
 
-#define DEBUG (SPDLOG_ACTIVE_LEVEL <= SPDLOG_LEVEL_DEBUG)
+#ifndef __GLIBCXX__
+#error "Not using libstdc++"
+#endif
+#if __GLIBCXX__ < 20220719
+#error "libstdc++ version is too old, require GCC 13 or above"
+#endif
+
+#define DEBUG (!NDEBUG)
 
 #include <string>
 #include <vector>

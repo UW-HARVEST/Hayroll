@@ -125,7 +125,7 @@ int main(int argc, char **argv)
 
     for (const State & state : endStates)
     {
-        std::cout << fmt::format("End state:\n{}\n", state.toString());
+        std::cout << std::format("End state:\n{}\n", state.toString());
     }
 
     return 0;

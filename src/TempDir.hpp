@@ -18,8 +18,8 @@ namespace Hayroll
 class TempDir
 {
 public:
-    TempDir()
-        : path(generateUniquePath()), pathPtr(&path, &deleteDir)
+    TempDir(bool autoDelete = true)
+        : path(generateUniquePath()), pathPtr(&path, autoDelete ? &deleteDir : &keepDir)
     {
         createDir();
     }
@@ -57,18 +57,21 @@ public:
         return path;
     }
 
-    explicit TempDir(const std::filesystem::path & parent) 
-        : path(parent / generateUniqueName()), pathPtr(&path, &deleteDir)
+    explicit TempDir(const std::filesystem::path & parent, bool autoDelete = true)
+        : path(parent / generateUniqueName()), pathPtr(&path, autoDelete ? &deleteDir : &keepDir)
     {
         createDir();
     }
 
     static void deleteDir(const std::filesystem::path * path)
     {
-        #if !DEBUG // Keep the temp dir in debug mode
-            std::error_code ec;
-            std::filesystem::remove_all(*path, ec);
-        #endif
+        std::error_code ec;
+        std::filesystem::remove_all(*path, ec);
+    }
+
+    static void keepDir(const std::filesystem::path * path)
+    {
+        // Do nothing, just keep the directory
     }
 
 private:

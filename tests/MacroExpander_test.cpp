@@ -1,6 +1,7 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <format>
 
 #include <z3++.h>
 #include <spdlog/spdlog.h>
@@ -287,7 +288,7 @@ int main(int argc, char **argv)
                 }
             }
             bool pass = (!testbenchesRef[trialId] && isError) || (testbenchesRef[trialId] && expandedStr == testbenchesRef[trialId].value());
-            std::cout << fmt::format("{} expanded: {} -> {}\n", pass ? "OK" : "FAIL", condition.text(), expandedStr);
+            std::cout << std::format("{} expanded: {} -> {}\n", pass ? "OK" : "FAIL", condition.text(), expandedStr);
 
             // Try symbolizing if the expansion was successful
             if (pass && !isError)
@@ -303,7 +304,7 @@ int main(int argc, char **argv)
                     {
                         z3::expr expr = expander.symbolizeExpression(exprNode);
                         expr = expr.simplify();
-                        std::cout << fmt::format("Symbolized: \n{}\n", expr.to_string()) << std::endl;
+                        std::cout << std::format("Symbolized: \n{}\n", expr.to_string()) << std::endl;
                     }
                 }
                 catch (const std::runtime_error & e)

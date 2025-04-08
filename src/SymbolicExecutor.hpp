@@ -7,6 +7,7 @@
 #include <variant>
 #include <filesystem>
 #include <ranges>
+#include <format>
 
 #include <z3++.h>
 #include <spdlog/spdlog.h>
@@ -67,13 +68,13 @@ struct State
 
     std::string programPointString() const
     {
-        if (!node) return fmt::format("{}:EOF", includeTree->path.string());
-        return fmt::format("{}:{}:{}", includeTree->path.string(), node.startPoint().row + 1, node.startPoint().column + 1);
+        if (!node) return std::format("{}:EOF", includeTree->path.string());
+        return std::format("{}:{}:{}", includeTree->path.string(), node.startPoint().row + 1, node.startPoint().column + 1);
     }
 
     std::string toString() const
     {
-        return fmt::format
+        return std::format
         (
             "State:\nincludeTree:\n{}node:\n{}\nsymbolTable:\n{}premise:\n{}",
             includeTree->toString(),
@@ -116,7 +117,7 @@ public:
 
     std::vector<State> executeTranslationUnit(State && startState)
     {
-        SPDLOG_DEBUG(fmt::format("Executing translation unit: {}", startState.programPointString()));
+        SPDLOG_DEBUG(std::format("Executing translation unit: {}", startState.programPointString()));
         assert(startState.node.isSymbol(lang.translation_unit_s));
         startState.node = startState.node.preorderNext();
         // All states shall meet at the end of the translation unit (invalid node).
@@ -139,7 +140,7 @@ public:
         // preproc_line
         // c_tokens
 
-        SPDLOG_DEBUG(fmt::format("Executing one node: {}", startState.programPointString()));
+        SPDLOG_DEBUG(std::format("Executing one node: {}", startState.programPointString()));
         
         const TSNode & node = startState.node;
         const TSSymbol symbol = node.symbol();
@@ -182,12 +183,12 @@ public:
         // all continuous define segments into a symbol table node to avoid repetitive parsing.
         // For now we just process them one by one.
 
-        SPDLOG_DEBUG(fmt::format("Executing continuous defines: {}", startState.programPointString()));
+        SPDLOG_DEBUG(std::format("Executing continuous defines: {}", startState.programPointString()));
 
         TSNode & node = startState.node;
         while (node.isSymbol(lang.preproc_def_s) || node.isSymbol(lang.preproc_function_def_s) || node.isSymbol(lang.preproc_undef_s))
         {
-            SPDLOG_DEBUG(fmt::format("Processing define: {}", node.textView()));
+            SPDLOG_DEBUG(std::format("Processing define: {}", node.textView()));
 
             if (node.isSymbol(lang.preproc_def_s))
             {
@@ -289,10 +290,10 @@ public:
     {
         // Print the program points of start states for debugging.
         #if DEBUG
-            SPDLOG_DEBUG(fmt::format("Executing in lock step:\n"));
+            SPDLOG_DEBUG(std::format("Executing in lock step:\n"));
             for (const State & state : startStates)
             {
-                SPDLOG_DEBUG(fmt::format("{}\n", state.programPointString()));
+                SPDLOG_DEBUG(std::format("{}\n", state.programPointString()));
             }
         #endif
 
@@ -301,7 +302,7 @@ public:
 
         while (!tasks.empty())
         {
-            SPDLOG_DEBUG(fmt::format("Tasks left: {}", tasks.size()));
+            SPDLOG_DEBUG(std::format("Tasks left: {}", tasks.size()));
             // Take one task from the queue (std::move). 
             State task = std::move(tasks.back());
             tasks.pop_back();
