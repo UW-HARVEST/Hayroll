@@ -29,8 +29,7 @@ namespace Hayroll
 // Stateful representation: symbol table + premise.
 struct State
 {
-    ConstIncludeTreePtr includeTree;
-    TSNode node;
+    ProgramPoint programPoint;
     SymbolTablePtr symbolTable;
     z3::expr premise;
 
@@ -39,15 +38,14 @@ struct State
     // The user is not supposed to even try to merge states with different include trees or nodes.
     std::optional<State> merge(const State & other) const
     {
-        assert(includeTree == other.includeTree);
-        assert(node == other.node);
+        assert(programPoint == other.programPoint);
 
         // It's okay to try to merge states with different symbol tables,
         // but they won't be merged eventually.
         if (symbolTable != other.symbolTable) return std::nullopt;
 
         z3::expr mergedPremise = premise || other.premise;
-        return State{includeTree, node, symbolTable, mergedPremise};
+        return State{programPoint, symbolTable, mergedPremise};
     }
 
     // Merges the other state into this one if they have the same symbol table.
@@ -55,8 +53,7 @@ struct State
     // The user is not supposed to even try to merge states with different include trees or nodes.
     bool mergeInplace(const State & other)
     {
-        assert(includeTree == other.includeTree);
-        assert(node == other.node);
+        assert(programPoint == other.programPoint);
 
         // It's okay to try to merge states with different symbol tables,
         // but they won't be merged eventually.
@@ -66,19 +63,12 @@ struct State
         return true;
     }
 
-    std::string programPointString() const
-    {
-        if (!node) return std::format("{}:EOF", includeTree->path.string());
-        return std::format("{}:{}:{}", includeTree->path.string(), node.startPoint().row + 1, node.startPoint().column + 1);
-    }
-
     std::string toString() const
     {
         return std::format
         (
-            "State:\nincludeTree:\n{}node:\n{}\nsymbolTable:\n{}premise:\n{}",
-            includeTree->toString(),
-            programPointString(),
+            "State:\nprogramPoint:\n{}\nsymbolTable:\n{}premise:\n{}",
+            programPoint.toStringFull(),
             symbolTable->toStringOneLayer(),
             premise.to_string()
         );
@@ -109,7 +99,7 @@ public:
         const TSTree & tree = astBank.find(srcPath);
         TSNode root = tree.rootNode();
         // The initial state is the root node of the tree.
-        State startState{includeTree, root, predefinedMacroSymbolTable->makeChild(), ctx.bool_val(true)};
+        State startState{{includeTree, root}, predefinedMacroSymbolTable->makeChild(), ctx.bool_val(true)};
         std::vector<State> endStates = executeTranslationUnit(std::move(startState));
         
         return endStates;
@@ -117,9 +107,9 @@ public:
 
     std::vector<State> executeTranslationUnit(State && startState)
     {
-        SPDLOG_DEBUG(std::format("Executing translation unit: {}", startState.programPointString()));
-        assert(startState.node.isSymbol(lang.translation_unit_s));
-        startState.node = startState.node.preorderNext();
+        SPDLOG_DEBUG(std::format("Executing translation unit: {}", startState.programPoint.toString()));
+        assert(startState.programPoint.node.isSymbol(lang.translation_unit_s));
+        startState.programPoint.node = startState.programPoint.node.preorderNext();
         // All states shall meet at the end of the translation unit (invalid node).
         return executeInLockStep({std::move(startState)}, TSNode{});
     }
@@ -140,9 +130,9 @@ public:
         // preproc_line
         // c_tokens
 
-        SPDLOG_DEBUG(std::format("Executing one node: {}", startState.programPointString()));
+        SPDLOG_DEBUG(std::format("Executing one node: {}", startState.programPoint.toString()));
         
-        const TSNode & node = startState.node;
+        const TSNode & node = startState.programPoint.node;
         const TSSymbol symbol = node.symbol();
         if (symbol == lang.preproc_if_s || symbol == lang.preproc_ifdef_s || symbol == lang.preproc_ifndef_s)
         {
@@ -183,9 +173,9 @@ public:
         // all continuous define segments into a symbol table node to avoid repetitive parsing.
         // For now we just process them one by one.
 
-        SPDLOG_DEBUG(std::format("Executing continuous defines: {}", startState.programPointString()));
+        SPDLOG_DEBUG(std::format("Executing continuous defines: {}", startState.programPoint.toString()));
 
-        TSNode & node = startState.node;
+        TSNode & node = startState.programPoint.node;
         while (node.isSymbol(lang.preproc_def_s) || node.isSymbol(lang.preproc_function_def_s) || node.isSymbol(lang.preproc_undef_s))
         {
             SPDLOG_DEBUG(std::format("Processing define: {}", node.textView()));
@@ -235,12 +225,12 @@ public:
     {
         // All possible node types:
         // c_tokens
-        assert(startState.node.isSymbol(lang.c_tokens_s));
+        assert(startState.programPoint.node.isSymbol(lang.c_tokens_s));
 
         // We should scan for possible macro expansions in identifiers.
         // The final output should contain information about which definitions were expanded.
         // For now, we just skip this node.
-        startState.node = startState.node.preorderSkip();
+        startState.programPoint.node = startState.programPoint.node.preorderSkip();
 
         return std::move(startState);
     }
@@ -253,7 +243,7 @@ public:
         // preproc_ifndef
 
         // Skip for now.
-        startState.node = startState.node.preorderSkip();
+        startState.programPoint.node = startState.programPoint.node.preorderSkip();
 
         return {std::move(startState)};
     }
@@ -265,21 +255,21 @@ public:
         // preproc_include_next
         
         // Skip for now.
-        startState.node = startState.node.preorderSkip();
+        startState.programPoint.node = startState.programPoint.node.preorderSkip();
 
         return {};
     }
 
     void executeError(State && startState)
     {
-        assert(startState.node.isSymbol(lang.preproc_error_s));
+        assert(startState.programPoint.node.isSymbol(lang.preproc_error_s));
     }
 
     State executeLine(State && startState)
     {
-        assert(startState.node.isSymbol(lang.preproc_line_s));
+        assert(startState.programPoint.node.isSymbol(lang.preproc_line_s));
         // Just skip this node.
-        startState.node = startState.node.preorderSkip();
+        startState.programPoint.node = startState.programPoint.node.preorderSkip();
         return std::move(startState);
     }
 
@@ -293,7 +283,7 @@ public:
             SPDLOG_DEBUG(std::format("Executing in lock step:\n"));
             for (const State & state : startStates)
             {
-                SPDLOG_DEBUG(std::format("{}\n", state.programPointString()));
+                SPDLOG_DEBUG(std::format("{}\n", state.programPoint.toString()));
             }
         #endif
 
@@ -309,7 +299,7 @@ public:
             for (State & taskDone : executeOne(std::move(task)))
             {
                 State taskDoneOwned = std::move(taskDone);
-                if (taskDoneOwned.node == joinPoint)
+                if (taskDoneOwned.programPoint.node == joinPoint)
                 {
                     blockedStates.push_back(std::move(taskDoneOwned));
                 }

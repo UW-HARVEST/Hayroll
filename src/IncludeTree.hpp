@@ -10,6 +10,8 @@
 #include <optional>
 #include <sstream>
 
+#include <TreeSitter.hpp>
+
 namespace Hayroll
 {
 
@@ -93,6 +95,29 @@ public:
             ss << child->toString(depth + 1);
         }
         return ss.str();
+    }
+};
+
+// A macro program point in the include tree. 
+// In cases where a file is included multiple times,
+// different inclusion instances contain different macro program points.
+struct ProgramPoint
+{
+    ConstIncludeTreePtr includeTree;
+    TSNode node;
+
+    bool operator==(const ProgramPoint & other) const = default;
+
+    std::string toString() const
+    {
+        if (!node) return std::format("{}:EOF", includeTree->path.string());
+        return std::format("{}:{}:{}", includeTree->path.string(), node.startPoint().row + 1, node.startPoint().column + 1);
+    }
+
+    std::string toStringFull() const
+    {
+        // Print the whole include tree
+        return std::format("{}\n{}\n", includeTree->toString(), toString());
     }
 };
 
