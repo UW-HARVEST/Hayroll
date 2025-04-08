@@ -242,3 +242,16 @@ add_test(
     NAME MacroExpander_test
     COMMAND MacroExpander_test
 )
+
+add_executable(SymbolicExecutor_test tests/SymbolicExecutor_test.cpp)
+target_link_libraries(SymbolicExecutor_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME SymbolicExecutor_test
+    COMMAND SymbolicExecutor_test
+)

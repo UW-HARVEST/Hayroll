@@ -26,7 +26,7 @@ public:
     }
 
     // Add a file to the bank. The bank parses the file and stores the syntax tree.
-    void addFile(const std::filesystem::path & path)
+    const TSTree & addFile(const std::filesystem::path & path)
     {
         std::ifstream file(path);
         if (!file.is_open())
@@ -37,8 +37,16 @@ public:
         file.close();
         
         TSTree tree = parser.parseString(std::move(fullSrc));
-
         bank[path] = std::move(tree);
+
+        return bank.at(path);
+    }
+
+    const TSTree & addTempString(std::string && src)
+    {
+        TSTree tree = parser.parseString(std::move(src));
+        tempTrees.push_back(std::move(tree));
+        return tempTrees.back();
     }
 
     // Find a tree in the bank by file path
@@ -50,6 +58,7 @@ public:
 private:
     TSParser parser;
     std::unordered_map<std::filesystem::path, TSTree> bank;
+    std::vector<TSTree> tempTrees;
 };
 
 } // namespace Hayroll

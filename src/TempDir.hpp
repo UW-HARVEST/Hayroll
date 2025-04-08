@@ -10,6 +10,8 @@
 #include <system_error>
 #include <memory>
 
+#include "Util.hpp"
+
 namespace Hayroll
 {
 
@@ -63,8 +65,10 @@ public:
 
     static void deleteDir(const std::filesystem::path * path)
     {
-        std::error_code ec;
-        std::filesystem::remove_all(*path, ec);
+        #if !DEBUG // Keep the temp dir in debug mode
+            std::error_code ec;
+            std::filesystem::remove_all(*path, ec);
+        #endif
     }
 
 private:

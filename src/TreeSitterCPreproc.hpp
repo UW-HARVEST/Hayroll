@@ -26,6 +26,7 @@ public:
     // Y: field
     // Z: operator
     #define C_PREPROC_GRAMMAR \
+        X(translation_unit) XX \
         X(preproc_arg) XX \
         X(argument_list) \
             Y(argument) \

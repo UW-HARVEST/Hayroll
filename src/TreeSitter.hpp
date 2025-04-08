@@ -151,6 +151,8 @@ public:
     TSTreeCursorIterateChildren iterateChildren() const;
     TSTreeCursorIterateDescendants iterateDescendants() const;
     size_t length() const;
+    TSNode preorderNext() const;
+    TSNode preorderSkip() const;
 private:
     ts::TSNode node;
     const std::string * source;
@@ -1048,15 +1050,38 @@ size_t TSNode::length() const
     return endByte() - startByte();
 }
 
+TSNode TSNode::preorderNext() const
+{
+    assertNonNull();
+    // Try to descend to the first child.
+    if (TSNode child = firstChildForByte(0)) return child;
+    // Otherwise, climb up to find a next sibling.
+    return preorderSkip();
+}
+
+TSNode TSNode::preorderSkip() const
+{
+    assertNonNull();
+    // Climb up to find a next sibling.
+    for (TSNode up = *this; up; up = up.parent())
+    {
+        if (TSNode next = up.nextSibling()) return next;
+    }
+    // If we reach the root node, return null.
+    return TSNode();
+}
+
 void TSNode::assertNonNull() const
 {
-    // Throw and print stack trace if the node is null.
-    if (isNull())
-    {
-        std::cout << boost::stacktrace::stacktrace() << std::endl;
-        std::cout << std::flush;
-        throw std::runtime_error("TSNode is null");
-    }
+    #if DEBUG
+        // Throw and print stack trace if the node is null.
+        if (isNull())
+        {
+            std::cout << boost::stacktrace::stacktrace() << std::endl;
+            std::cout << std::flush;
+            throw std::runtime_error("TSNode is null");
+        }
+    #endif
 }
 
 

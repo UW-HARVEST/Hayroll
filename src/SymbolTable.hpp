@@ -107,7 +107,7 @@ public:
         return std::nullopt;
     }
 
-    std::string toString() const
+    std::string toStringOneLayer() const
     {
         std::stringstream ss;
         for (const auto & [name, symbol] : symbols)
@@ -135,6 +135,13 @@ public:
             );
             ss << "\n";
         }
+        return ss.str();
+    }
+
+    std::string toString() const
+    {
+        std::stringstream ss;
+        ss << toStringOneLayer();
         ss << "----------------" << "\n";
         if (parent)
         {
