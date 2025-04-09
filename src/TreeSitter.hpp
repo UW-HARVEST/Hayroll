@@ -430,7 +430,7 @@ public:
         TSNode operator*() const
         {
             assert(cursor.has_value());
-            return cursor.value().currentNode();
+            return cursor->currentNode();
         }
 
         // Pre-increment: move to the next descendant in pre-order.
@@ -460,7 +460,7 @@ public:
             if (!cursor.has_value() && !other.cursor.has_value())
                 return true;
             if (cursor.has_value() && other.cursor.has_value())
-                return cursor.value().currentNode() == other.cursor.value().currentNode();
+                return cursor->currentNode() == other.cursor->currentNode();
             return false;
         }
 

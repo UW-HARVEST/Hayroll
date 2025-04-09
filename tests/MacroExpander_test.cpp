@@ -10,6 +10,7 @@
 
 #include "TempDir.hpp"
 #include "IncludeResolver.hpp"
+#include "IncludeTree.hpp"
 #include "ASTBank.hpp"
 #include "MacroExpander.hpp"
 
@@ -19,6 +20,7 @@ int main(int argc, char **argv)
 
     spdlog::set_level(spdlog::level::debug);
 
+    IncludeTreePtr includeTree = IncludeTree::make(0, "<PREDEFINED_MACROS>");
     SymbolTablePtr symbolTable = SymbolTable::make();
 
     TempDir tmpDir;
@@ -227,7 +229,7 @@ int main(int argc, char **argv)
             TSNode name = node.childByFieldId(lang.preproc_def_s.name_f);
             TSNode value = node.childByFieldId(lang.preproc_def_s.value_f); // May not exist
             std::string_view nameStr = name.textView();
-            symbolTable->define(ObjectSymbol{nameStr, node, value});
+            symbolTable->define(ObjectSymbol{nameStr, {includeTree, node}, value});
             std::cout << node.text();
         }
         else if (node.isSymbol(lang.preproc_function_def_s))
@@ -243,7 +245,7 @@ int main(int argc, char **argv)
                 if (!param.isSymbol(lang.identifier_s)) continue;
                 paramsStrs.push_back(param.text());
             }
-            symbolTable->define(FunctionSymbol{nameStr, node, std::move(paramsStrs), body});
+            symbolTable->define(FunctionSymbol{nameStr, {includeTree, node}, std::move(paramsStrs), body});
             std::cout << node.text();
         }
         else if (node.isSymbol(lang.preproc_undef_s))

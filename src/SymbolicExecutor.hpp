@@ -185,7 +185,7 @@ public:
                 TSNode name = node.childByFieldId(lang.preproc_def_s.name_f);
                 TSNode value = node.childByFieldId(lang.preproc_def_s.value_f); // May not exist
                 std::string_view nameStr = name.textView();
-                startState.symbolTable->define(ObjectSymbol{nameStr, node, value});
+                startState.symbolTable->define(ObjectSymbol{nameStr, startState.programPoint, value});
             }
             else if (node.isSymbol(lang.preproc_function_def_s))
             {
@@ -200,7 +200,7 @@ public:
                     if (!param.isSymbol(lang.identifier_s)) continue;
                     paramsStrs.push_back(param.text());
                 }
-                startState.symbolTable->define(FunctionSymbol{nameStr, node, std::move(paramsStrs), body});
+                startState.symbolTable->define(FunctionSymbol{nameStr, startState.programPoint, std::move(paramsStrs), body});
             }
             else if (node.isSymbol(lang.preproc_undef_s))
             {

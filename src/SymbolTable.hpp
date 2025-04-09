@@ -14,6 +14,7 @@
 #include <spdlog/spdlog.h>
 
 #include "TreeSitter.hpp"
+#include "IncludeTree.hpp"
 #include "Util.hpp"
 
 namespace Hayroll
@@ -28,7 +29,7 @@ class ObjectSymbol
 {
 public:
     std::string_view name;
-    TSNode def; // preproc_define
+    ProgramPoint def;
     TSNode body; // preproc_tokens, can be a null node
 };
 
@@ -37,7 +38,7 @@ class FunctionSymbol
 {
 public:
     std::string_view name;
-    TSNode def; // preproc_function_def
+    ProgramPoint def;
     std::vector<std::string> params;
     TSNode body; // preproc_tokens, can be a null node
 };

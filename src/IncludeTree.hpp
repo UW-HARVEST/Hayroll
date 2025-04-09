@@ -10,7 +10,7 @@
 #include <optional>
 #include <sstream>
 
-#include <TreeSitter.hpp>
+#include "TreeSitter.hpp"
 
 namespace Hayroll
 {
@@ -25,6 +25,7 @@ struct IncludeTree
 public:
     int line; // Line number of the include in its parent file
     std::filesystem::path path;
+    
     std::map<int, IncludeTreePtr> children; // Line number to IncludeTreePtr
     std::weak_ptr<IncludeTree> parent;
 
@@ -106,7 +107,7 @@ struct ProgramPoint
     ConstIncludeTreePtr includeTree;
     TSNode node;
 
-    bool operator==(const ProgramPoint & other) const = default;
+    bool operator<=>(const ProgramPoint & other) const = default;
 
     std::string toString() const
     {
