@@ -10,6 +10,7 @@
 #include <optional>
 #include <sstream>
 
+#include "Util.hpp"
 #include "TreeSitter.hpp"
 
 namespace Hayroll
@@ -23,7 +24,7 @@ struct IncludeTree
     : public std::enable_shared_from_this<IncludeTree>
 {
 public:
-    int line; // Line number of the include in its parent file
+uint32_t line; // Line number of the include in its parent file
     std::filesystem::path path;
     
     std::map<int, IncludeTreePtr> children; // Line number to IncludeTreePtr
@@ -33,7 +34,7 @@ public:
     // An IncludeTree object shall only be managed by a shared_ptr
     static IncludeTreePtr make
     (
-        int line,
+        uint32_t line,
         const std::filesystem::path & path,
         ConstIncludeTreePtr parent = nullptr
     )
@@ -46,7 +47,7 @@ public:
     }
 
     // Add a child IncludeTree object to the current one
-    void addChild(int line, const std::filesystem::path & path)
+    void addChild(uint32_t line, const std::filesystem::path & path)
     {
         children[line] = make(line, path, shared_from_this());
     }
@@ -119,6 +120,27 @@ struct ProgramPoint
     {
         // Print the whole include tree
         return std::format("{}\n{}\n", includeTree->toString(), toString());
+    }
+
+    ProgramPoint parent(std::optional<TSNode> includeNodeInParentFile = std::nullopt) const
+    {
+        // In the same file, just do parent for the TSNode.
+        if (TSNode parentNode = node.parent())
+        {
+            return ProgramPoint{includeTree, parentNode};
+        }
+        // In a different file, we need to find the parent include tree.
+        ConstIncludeTreePtr parentIncludeTree = includeTree->parent.lock();
+        assert(parentIncludeTree);
+        assert(includeNodeInParentFile.has_value());
+        // If we have a node in the parent file, we can use it to find the parent include tree.
+        return ProgramPoint{parentIncludeTree, includeNodeInParentFile.value()};
+    }
+
+    operator bool() const
+    {
+        // TSNode can be null (meaning EOF), but IncludeTree cannot.
+        return includeTree != nullptr;
     }
 
     struct Hasher
