@@ -60,7 +60,7 @@ int main(int argc, char **argv)
     }
 
     // Go from the last node to the root (excluding the root), printing the included files
-    for (auto it = includeNode; it; it = it->parent.lock())
+    for (ConstIncludeTreePtr it = includeNode; it; it = it->parent.lock())
     {
         std::cout << "Included file: " << it->path << std::endl;
         std::cout << std::flush;

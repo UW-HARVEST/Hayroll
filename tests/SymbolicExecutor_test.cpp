@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 
 #include "SymbolicExecutor.hpp"
+#include "PremiseTree.hpp"
 
 int main(int argc, char **argv)
 {

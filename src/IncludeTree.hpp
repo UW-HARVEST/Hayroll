@@ -27,7 +27,7 @@ public:
     std::filesystem::path path;
     
     std::map<int, IncludeTreePtr> children; // Line number to IncludeTreePtr
-    std::weak_ptr<IncludeTree> parent;
+    std::weak_ptr<const IncludeTree> parent;
 
     // Constructor
     // An IncludeTree object shall only be managed by a shared_ptr
@@ -35,7 +35,7 @@ public:
     (
         int line,
         const std::filesystem::path & path,
-        IncludeTreePtr parent = nullptr
+        ConstIncludeTreePtr parent = nullptr
     )
     {
         auto tree = std::make_shared<IncludeTree>();
@@ -120,6 +120,16 @@ struct ProgramPoint
         // Print the whole include tree
         return std::format("{}\n{}\n", includeTree->toString(), toString());
     }
+
+    struct Hasher
+    {
+        std::size_t operator()(const ProgramPoint & programPoint) const noexcept
+        {
+            std::size_t h1 = std::hash<decltype(programPoint.includeTree)>()(programPoint.includeTree);
+            std::size_t h2 = TSNode::Hasher{}(programPoint.node);
+            return h1 ^ (h2 << 1);
+        }
+    };
 };
 
 } // namespace Hayroll::IncludeTree

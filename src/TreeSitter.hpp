@@ -153,6 +153,11 @@ public:
     size_t length() const;
     TSNode preorderNext() const;
     TSNode preorderSkip() const;
+
+    struct Hasher
+    {
+        std::size_t operator()(const TSNode & node) const noexcept;
+    };
 private:
     ts::TSNode node;
     const std::string * source;
@@ -1069,6 +1074,18 @@ TSNode TSNode::preorderSkip() const
     }
     // If we reach the root node, return null.
     return TSNode();
+}
+
+std::size_t Hayroll::TSNode::Hasher::operator()(const TSNode & node) const noexcept
+{
+    std::size_t hash = 0;
+    for (uint32_t c : node.node.context)
+    {
+        hash ^= std::hash<uint32_t>()(c) << 1;
+    }
+    hash ^= std::hash<const void *>()(node.node.id) << 1;
+    hash ^= std::hash<const ts::TSTree *>()(node.node.tree) << 1;
+    return hash;
 }
 
 void TSNode::assertNonNull() const
