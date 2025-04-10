@@ -11,25 +11,15 @@ int main(int argc, char **argv)
 
     spdlog::set_level(spdlog::level::debug);
 
-    TempDir tmpDir;
+    TempDir tmpDir(false);
     std::filesystem::path tmpPath = tmpDir.getPath();
 
     std::string srcString = 
     R"(
-        #if A
-        #endif
-        #if defined(A)
-        #endif
-        #if !A
-        #endif
-        #if !defined(A)
-        #endif
         #define A
         #if A
         #endif
         #if defined(A)
-        #endif
-        #if !A
         #endif
         #if !defined(A)
         #endif
@@ -85,12 +75,26 @@ int main(int argc, char **argv)
         #define F(x) (x + x)
         #define Y F(
         #define Z F
-        #if T Y Z (1))
-        #endif
         #define G(a, b) a + b
         #define F(x) x(1
         #if F(G), 2)
         #endif
+
+        #if USER_A
+        SOME_C_CODE
+            #if !USER_A
+            SOME_UNREACHABLE_C_CODE
+            #else
+            SOME_OTHER_C_CODE
+            #endif
+        #else
+        SOME_OTHER_C_CODE
+        #endif
+
+        #if USER_B
+        #define SOMETHING THAT_BLOCKS_STATE_MERGING
+        #endif
+
         #define D defined
         #define A D A
         #if A
@@ -100,18 +104,6 @@ int main(int argc, char **argv)
         #if !A
         #endif
         #if !defined(A)
-        #endif
-        #define A A A
-        #define F(x) x
-        #define G(x) A
-        #define H(x) B
-        #if A
-        #endif
-        #if F(A)
-        #endif
-        #if G(1)
-        #endif
-        #if H(A)
         #endif
     )";
 
@@ -126,8 +118,10 @@ int main(int argc, char **argv)
 
     for (const State & state : endStates)
     {
-        std::cout << std::format("End state:\n{}\n", state.toString());
+        std::cout << std::format("End state:\n{}\n==============\n", state.toStringFull());
     }
+
+    std::cout << executor.scribe.borrowTree()->toString() << std::endl;
 
     return 0;
 }

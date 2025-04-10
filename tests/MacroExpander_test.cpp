@@ -229,7 +229,7 @@ int main(int argc, char **argv)
             TSNode name = node.childByFieldId(lang.preproc_def_s.name_f);
             TSNode value = node.childByFieldId(lang.preproc_def_s.value_f); // May not exist
             std::string_view nameStr = name.textView();
-            symbolTable->define(ObjectSymbol{nameStr, {includeTree, node}, value});
+            symbolTable = symbolTable->define(ObjectSymbol{nameStr, {includeTree, node}, value});
             std::cout << node.text();
         }
         else if (node.isSymbol(lang.preproc_function_def_s))
@@ -245,14 +245,14 @@ int main(int argc, char **argv)
                 if (!param.isSymbol(lang.identifier_s)) continue;
                 paramsStrs.push_back(param.text());
             }
-            symbolTable->define(FunctionSymbol{nameStr, {includeTree, node}, std::move(paramsStrs), body});
+            symbolTable = symbolTable->define(FunctionSymbol{nameStr, {includeTree, node}, std::move(paramsStrs), body});
             std::cout << node.text();
         }
         else if (node.isSymbol(lang.preproc_undef_s))
         {
             TSNode name = node.childByFieldId(lang.preproc_undef_s.name_f);
             std::string_view nameStr = name.textView();
-            symbolTable->define(UndefinedSymbol{nameStr});
+            symbolTable = symbolTable->define(UndefinedSymbol{nameStr});
             std::cout << node.text();
         }
         else if (node.isSymbol(lang.preproc_if_s))
@@ -304,8 +304,8 @@ int main(int argc, char **argv)
                     }
                     else
                     {
-                        z3::expr expr = expander.symbolizeExpression(exprNode);
-                        expr = expr.simplify();
+                        z3::expr expr = expander.int2bool(expander.symbolizeExpression(exprNode));
+                        expr = z3CtxtSolverSimplify(expr);
                         std::cout << std::format("Symbolized: \n{}\n", expr.to_string()) << std::endl;
                     }
                 }

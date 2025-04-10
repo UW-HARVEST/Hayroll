@@ -73,23 +73,37 @@ public:
     // A SymbolTable object shall only be managed by a shared_ptr
     static SymbolTablePtr make(ConstSymbolTablePtr parent = nullptr)
     {
-        SPDLOG_DEBUG("Creating symbol table");
         auto table = std::make_shared<SymbolTable>();
         table->parent = parent;
+        table->immutable = false;
         return table;
     }
 
-    SymbolTablePtr makeChild() const
+    // Make this symbol table immutable so any changes will create a new child table
+    // This is meant to be called when the execution reaches a branch
+    void makeImmutable()
     {
-        return make(shared_from_this());
+        SPDLOG_DEBUG("Making symbol table immutable");
+        immutable = true;
     }
 
-    // Define a symbol in the current table
-    // The defined symbol can be a "UndefinedSymbol" or an "ExpandedSymbol" too
-    void define(Symbol && symbol)
+    // Define a symbol in either the current table if it is mutable,
+    // or in a new child table if it is immutable.
+    // The defined symbol can be a "UndefinedSymbol" or an "ExpandedSymbol" too.
+    // The user must assign the SymbolTablePtr back to itself. 
+    SymbolTablePtr define(Symbol && symbol)
     {
-        std::string_view name = std::visit([](const auto & s) { return s.name; }, symbol);
-        symbols.insert({name, std::move(symbol)});
+        if (immutable)
+        {
+            SPDLOG_DEBUG("Defining symbol in immutable table, creating child");
+            return makeChild()->define(std::move(symbol));;
+        }
+        else
+        {
+            std::string_view name = std::visit([](const auto & s) { return s.name; }, symbol);
+            symbols.insert_or_assign(name, std::move(symbol));
+            return shared_from_this();
+        }
     }
 
     // Lookup a symbol in the current table and its parent tables
@@ -108,7 +122,7 @@ public:
         return std::nullopt;
     }
 
-    std::string toStringOneLayer() const
+    std::string toString() const
     {
         std::stringstream ss;
         for (const auto & [name, symbol] : symbols)
@@ -139,14 +153,14 @@ public:
         return ss.str();
     }
 
-    std::string toString() const
+    std::string toStringFull() const
     {
         std::stringstream ss;
-        ss << toStringOneLayer();
+        ss << toString();
         ss << "----------------" << "\n";
         if (parent)
         {
-            ss << parent->toString();
+            ss << parent->toStringFull();
         }
         return ss.str();
     }
@@ -154,6 +168,12 @@ public:
 private:
     std::unordered_map<std::string_view, Symbol, TransparentStringHash, TransparentStringEqual> symbols;
     ConstSymbolTablePtr parent;
+    bool immutable;
+
+    SymbolTablePtr makeChild() const
+    {
+        return make(shared_from_this());
+    }
 };
 
 // A top-level symbol table wrapper used for expanding macros

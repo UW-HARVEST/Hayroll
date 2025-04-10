@@ -197,6 +197,7 @@ add_executable(TempDir_test tests/TempDir_test.cpp)
 target_link_libraries(TempDir_test PRIVATE
     hayroll_exe_config
     external_exe_config
+    z3_config
     testing_config
 )
 add_test(
@@ -208,6 +209,7 @@ add_executable(IncludeTree_test tests/IncludeTree_test.cpp)
 target_link_libraries(IncludeTree_test PRIVATE
     hayroll_exe_config
     external_exe_config
+    z3_config
     testing_config
     tree_sitter_config
 )
@@ -220,6 +222,7 @@ add_executable(SymbolTable_test tests/SymbolTable_test.cpp)
 target_link_libraries(SymbolTable_test PRIVATE
     hayroll_exe_config
     external_exe_config
+    z3_config
     testing_config
     tree_sitter_config
 )
@@ -232,6 +235,7 @@ add_executable(ASTBank_test tests/ASTBank_test.cpp)
 target_link_libraries(ASTBank_test PRIVATE
     hayroll_exe_config
     external_exe_config
+    z3_config
     testing_config
     tree_sitter_config
 )

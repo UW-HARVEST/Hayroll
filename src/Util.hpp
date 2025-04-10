@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "z3++.h"
+
 namespace Hayroll
 {
 
@@ -109,6 +111,31 @@ struct TransparentStringEqual
         return lhs == rhs;
     }
 };
+
+// This only simplifies boolean expressions
+z3::expr z3CtxtSolverSimplify(const z3::expr & expr)
+{
+    z3::context & ctx = expr.ctx();
+    z3::tactic t = z3::tactic(ctx, "ctx-solver-simplify");
+    z3::goal g(ctx);
+    g.add(expr);
+    
+    z3::apply_result res = t(g);
+    
+    if (res.size() == 0) throw std::runtime_error("ctx-solver-simplify returned no result.");
+    SPDLOG_DEBUG("after apply_result");
+    return res[0].as_expr();
+}
+
+z3::check_result z3Check(const z3::expr & expr)
+{
+    z3::context & ctx = expr.ctx();
+    z3::solver solver(ctx);
+    solver.add(expr);
+    z3::check_result result = solver.check();
+    assert(result == z3::sat || result == z3::unsat);
+    return result;
+}
 
 } // namespace Hayroll
 

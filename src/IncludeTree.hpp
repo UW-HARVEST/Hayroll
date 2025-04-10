@@ -113,7 +113,15 @@ struct ProgramPoint
     std::string toString() const
     {
         if (!node) return std::format("{}:EOF", includeTree->path.string());
-        return std::format("{}:{}:{}", includeTree->path.string(), node.startPoint().row + 1, node.startPoint().column + 1);
+        return std::format
+        (
+            "{}:{}:{}~{}:{}",
+            includeTree->path.string(),
+            node.startPoint().row + 1,
+            node.startPoint().column + 1,
+            node.endPoint().row + 1,
+            node.endPoint().column + 1
+        );
     }
 
     std::string toStringFull() const
@@ -135,6 +143,16 @@ struct ProgramPoint
         assert(includeNodeInParentFile.has_value());
         // If we have a node in the parent file, we can use it to find the parent include tree.
         return ProgramPoint{parentIncludeTree, includeNodeInParentFile.value()};
+    }
+
+    ProgramPoint nextSibling() const
+    {
+        return ProgramPoint{includeTree, node.nextSibling()};
+    }
+
+    ProgramPoint firstChild() const
+    {
+        return ProgramPoint{includeTree, node.firstChildForByte(0)};
     }
 
     operator bool() const

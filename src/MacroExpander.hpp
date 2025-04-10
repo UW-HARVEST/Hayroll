@@ -36,6 +36,26 @@ public:
         constToken1 = token1;
     }
 
+    // All-in-one function to expand and symbolize a preprocessor token stream
+    z3::expr expandAndSymbolizeToBoolExpr(const TSNode & node, const SymbolTablePtr & symbolTable)
+    {
+        assert(node.isSymbol(lang.preproc_tokens_s));
+        // Expand the node into a string
+        std::vector<TSNode> expandedTokens = expandPreprocTokens(lang.tokensToTokenVector(node), symbolTable);
+        StringBuilder expandedStrBuilder;
+        for (const TSNode & token : expandedTokens)
+        {
+            expandedStrBuilder.append(token.textView());
+            expandedStrBuilder.append(" ");
+        }
+        std::string expandedStr = expandedStrBuilder.str();
+        // Parse the string into an expression
+        auto [exprTree, exprNode] = parseIntoExpression(expandedStr);
+        if (!exprNode) return ctx.bool_val(false);
+        // Symbolize the expression
+        return int2bool(symbolizeExpression(exprNode));
+    }
+
     std::vector<TSNode> expandPreprocTokens(const std::vector<TSNode> & tokens, const ConstSymbolTablePtr & baseSymbolTable)
     {
         // We process the flat token stream using a stack

@@ -42,11 +42,11 @@ public:
         return bank.at(path);
     }
 
-    const TSTree & addTempString(std::string && src)
+    const TSTree & addAnonymousSource(std::string && src)
     {
         TSTree tree = parser.parseString(std::move(src));
-        tempTrees.push_back(std::move(tree));
-        return tempTrees.back();
+        anonymousSources.push_back(std::move(tree));
+        return anonymousSources.back();
     }
 
     // Find a tree in the bank by file path
@@ -58,7 +58,7 @@ public:
 private:
     TSParser parser;
     std::unordered_map<std::filesystem::path, TSTree> bank;
-    std::vector<TSTree> tempTrees;
+    std::vector<TSTree> anonymousSources;
 };
 
 } // namespace Hayroll

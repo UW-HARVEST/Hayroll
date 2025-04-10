@@ -76,7 +76,12 @@ struct PremiseTree
 
     std::string toString() const
     {
-        std::string str = programPoint.toString() + "\n" + premise.to_string();
+        std::string str = std::format
+        (
+            "{} {}",
+            programPoint.toString(),
+            premise.to_string()
+        );
         for (const PremiseTreePtr & child : children)
         {
             str += "\n" + child->toString();
@@ -85,19 +90,22 @@ struct PremiseTree
     }
 };
 
-// A helper class that takes down info during symbolic execution and builds the premise tree.
+// A helper class that takes down info during symbolic execution to build the premise tree.
 class PremiseTreeScribe
 {
 public:
-    PremiseTreeScribe(z3::context & ctx, const ProgramPoint & programPoint)
-        : ctx(ctx), tree(PremiseTree::make(programPoint, ctx.bool_val(true)))
+    PremiseTreeScribe() = default;
+
+    PremiseTreeScribe(const ProgramPoint & programPoint, const z3::expr & premise)
+        : tree(PremiseTree::make(programPoint, premise)), map()
     {
+        map.insert_or_assign(programPoint, tree.get());
     }
 
-    // If a premise tree node for the given program point already exists, conjunct the premise with the current premise. 
+    // If a premise tree node for the given program point already exists, disjunct the premise with the existing one.
     // Otherwise, create a new premise tree node and add the premise to it, automatically finding the parent node.
-    // If the parent node is in a different file, includeNodeInParentFile must be provided.
-    void addPremiseOrCreateChild
+    // When the parent node is in a different file, includeNodeInParentFile must be provided.
+    PremiseTree * addPremiseOrCreateChild
     (
         const ProgramPoint & programPoint,
         const z3::expr & premise,
@@ -107,8 +115,9 @@ public:
         if (auto it = map.find(programPoint); it != map.end())
         {
             PremiseTree * treeNode = it->second;
-            treeNode->premise = treeNode->premise && premise;
-            return;
+            treeNode->premise = z3CtxtSolverSimplify(treeNode->premise || premise);
+            // treeNode->premise = treeNode->premise || premise;
+            return treeNode;
         }
         // Keep goint to parent until such program point has a corresponding premise tree node.
         ProgramPoint ancestor = programPoint.parent(includeNodeInParentFile);
@@ -126,7 +135,9 @@ public:
         }
 
         PremiseTree * newTree = parent->addChild(programPoint, premise);
-        map.insert({programPoint, newTree});
+        map.insert_or_assign(programPoint, newTree);
+
+        return newTree;
     }
 
     PremiseTreePtr takeTree()
@@ -142,8 +153,6 @@ public:
     }
 
 private:
-    z3::context & ctx;
-
     PremiseTreePtr tree;
     // A mapping from the program point to the premise tree node.
     // It does not need ownership so it's using raw pointers.

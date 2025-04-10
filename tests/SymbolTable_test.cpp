@@ -57,7 +57,7 @@ int main()
         std::string_view name = nameNode.textView();
 
         // valueNode can be an invalid node, but wo store it as-is
-        symbolTable->define(ObjectSymbol{name, {includeTree, node}});
+        symbolTable = symbolTable->define(ObjectSymbol{name, {includeTree, node}});
     }
 
     std::cout << symbolTable->toString() << std::endl;
