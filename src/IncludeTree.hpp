@@ -108,8 +108,6 @@ struct ProgramPoint
     ConstIncludeTreePtr includeTree;
     TSNode node;
 
-    bool operator<=>(const ProgramPoint & other) const = default;
-
     std::string toString() const
     {
         if (!node) return std::format("{}:EOF", includeTree->path.string());
@@ -159,6 +157,11 @@ struct ProgramPoint
     {
         // TSNode can be null (meaning EOF), but IncludeTree cannot.
         return includeTree != nullptr;
+    }
+
+    bool operator==(const ProgramPoint & other) const
+    {
+        return includeTree == other.includeTree && node == other.node;
     }
 
     struct Hasher

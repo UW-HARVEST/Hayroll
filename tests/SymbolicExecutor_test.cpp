@@ -68,5 +68,9 @@ int main(int argc, char **argv)
 
     std::cout << executor.scribe.borrowTree()->toString() << std::endl;
 
+    executor.scribe.borrowTree()->refine();
+    std::cout << "Refined premise tree:\n";
+    std::cout << executor.scribe.borrowTree()->toString() << std::endl;
+
     return 0;
 }

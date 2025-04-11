@@ -54,7 +54,6 @@ struct State
         if (symbolTable != other.symbolTable) return false;
 
         premise = combinedSimplify(premise || other.premise);
-        // premise = premise || other.premise;
         return true;
     }
 
@@ -457,6 +456,8 @@ public:
                 stateOwned.programPoint = stateOwned.programPoint.firstChild();
                 // This may return a null node if task.programPoint is a translation_unit and the file is empty. It's okay.
                 tasks.emplace_back(body, std::move(stateOwned));
+                // Initialize this premise tree node before executing any of its children so they can find this parent.
+                scribe.addPremiseOrCreateChild(body, ctx.bool_val(false));
             }
             else
             {

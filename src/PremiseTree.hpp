@@ -74,19 +74,37 @@ struct PremiseTree
     {
     }
 
-    std::string toString() const
+    std::string toString(size_t depth = 0) const
     {
         std::string str = std::format
         (
-            "{} {}",
+            "{}{} {}",
+            std::string(depth * 4, ' '),
             programPoint.toString(),
             premise.to_string()
         );
         for (const PremiseTreePtr & child : children)
         {
-            str += "\n" + child->toString();
+            str += "\n" + child->toString(depth + 1);
         }
         return str;
+    }
+
+    // Conujnct the premises of descendants with the current one.
+    // Sort children by their program point.
+    void refine()
+    {
+        // Sort children by their program point.
+        std::sort(children.begin(), children.end(), [](const PremiseTreePtr & a, const PremiseTreePtr & b)
+        {
+            return a->programPoint.node.startByte() < b->programPoint.node.startByte();
+        });
+
+        for (const PremiseTreePtr & child : children)
+        {
+            child->premise = combinedSimplify(premise && child->premise);
+            child->refine();
+        }
     }
 };
 
@@ -121,7 +139,8 @@ public:
         {
             PremiseTree * treeNode = it->second;
             treeNode->premise = combinedSimplify(treeNode->premise || premise);
-            // treeNode->premise = treeNode->premise || premise;
+            SPDLOG_DEBUG(std::format("Found existing premise tree node: {}", treeNode->toString()));
+            SPDLOG_DEBUG(std::format("New premise: {}", treeNode->premise.to_string()));
             return treeNode;
         }
         // Keep goint to parent until such program point has a corresponding premise tree node.
@@ -135,12 +154,16 @@ public:
                 break;
             }
             // If we reach the root node, we can't find a parent.
-            ancestor = ancestor.parent();
+            ancestor = ancestor.parent(includeNodeInParentFile);
             assert(ancestor);
         }
 
         PremiseTree * newTree = parent->addChild(programPoint, premise);
         map.insert_or_assign(programPoint, newTree);
+
+        SPDLOG_DEBUG(std::format("Created new premise tree node: {}", newTree->toString()));
+        SPDLOG_DEBUG(std::format("Parent premise tree node: {}", parent->toString()));
+        SPDLOG_DEBUG(std::format("New premise: {}", newTree->premise.to_string()));
 
         return newTree;
     }
