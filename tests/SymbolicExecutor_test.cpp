@@ -16,94 +16,28 @@ int main(int argc, char **argv)
 
     std::string srcString = 
     R"(
-        #define A
-        #if A
-        #endif
-        #if defined(A)
-        #endif
-        #if !defined(A)
-        #endif
-        #define A 1
-        #if A
-        #endif
-        #if defined(A)
-        #endif
-        #if !A
-        #endif
-        #if !defined(A)
-        #endif
-        #undef A
-        #if A
-        #endif
-        #if defined(A)
-        #endif
-        #if !A
-        #endif
-        #if !defined(A)
-        #endif
-        #define A defined A
-        #if A
-        #endif
-        #if defined(A)
-        #endif
-        #if !A
-        #endif
-        #if !defined(A)
-        #endif
-        #define A 3
-        #define F(x) ((x) + 1)
-        #if F(1)
-        #endif
-        #if F(F(A))
-        #endif
-        #if F(F(F(2)))
-        #endif
-        #if F(B) + 1
-        #endif
-        #if F((x ? x : x))
-        #endif
-        #define F(x) x
-        #define Y 1 + F
-        #if Y(2)
-        #endif
-        #define F(x) (x + x)
-        #define Y F(
-        #if Y 1)
-        #endif
-        #if Y 1) | Y 2)
-        #endif
-        #define F(x) (x + x)
-        #define Y F(
-        #define Z F
-        #define G(a, b) a + b
-        #define F(x) x(1
-        #if F(G), 2)
-        #endif
-
-        #if USER_A
-        SOME_C_CODE
-            #if !USER_A
-            SOME_UNREACHABLE_C_CODE
-            #else
-            SOME_OTHER_C_CODE
-            #endif
+        #ifdef __UINT32_MAX__
+            MUST_REACH
         #else
-        SOME_OTHER_C_CODE
+            MUST_NOT_REACH
         #endif
 
-        #if USER_B
-        #define SOMETHING THAT_BLOCKS_STATE_MERGING
-        #endif
+        #ifndef USER_A
+            MAY_REACH(true, !defUSER_A)
+            
+            #if USER_D > USER_A // USER_D > 0
+            #define SOMETHING THAT_BLOCKS_STATE_MERGING
+            MAY_REACH(defUSER_A, valUSER_D > 0)
+            #endif
 
-        #define D defined
-        #define A D A
-        #if A
-        #endif
-        #if defined(A)
-        #endif
-        #if !A
-        #endif
-        #if !defined(A)
+        #elifndef USER_B
+            MAY_REACH(defUSER_A, !defUSER_B)
+        #elifdef USER_C
+            MAY_REACH(defUSER_A && defUSER_B, defUSER_C)
+        #elif defined USER_A && defined USER_B && !defined USER_C
+            MAY_REACH(defUSER_A && defUSER_B && !defUSER_C, true)
+        #else
+            MUST_NOT_REACH
         #endif
     )";
 

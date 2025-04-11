@@ -53,7 +53,7 @@ struct State
         // but they won't be merged eventually.
         if (symbolTable != other.symbolTable) return false;
 
-        premise = z3CtxtSolverSimplify(premise || other.premise);
+        premise = combinedSimplify(premise || other.premise);
         // premise = premise || other.premise;
         return true;
     }
@@ -280,31 +280,69 @@ public:
             return {std::move(startState)};
         }
 
-        if (node.isSymbol(lang.preproc_if_s))
+        if
+        (
+            node.isSymbol(lang.preproc_if_s)
+            || node.isSymbol(lang.preproc_ifdef_s)
+            || node.isSymbol(lang.preproc_ifndef_s)
+            || node.isSymbol(lang.preproc_elif_s)
+            || node.isSymbol(lang.preproc_elifdef_s)
+            || node.isSymbol(lang.preproc_elifndef_s)
+        )
         {
-            TSNode condition = node.childByFieldId(lang.preproc_if_s.condition_f);
-            assert(condition.isSymbol(lang.preproc_tokens_s));
+            std::vector<TSNode> tokenList;
+            MacroExpander::Prepend prepend = MacroExpander::Prepend::None;
+            // #if and #elif have field "condition".
+            if (node.isSymbol(lang.preproc_if_s) || node.isSymbol(lang.preproc_elif_s))
+            {
+                TSNode tokens = node.childByFieldId(lang.preproc_if_s.condition_f);
+                assert(tokens.isSymbol(lang.preproc_tokens_s));
+                tokenList = lang.tokensToTokenVector(tokens);
+            }
+            // #xxxdefxxx series have field "name"
+            else if 
+            (
+                node.isSymbol(lang.preproc_ifdef_s)
+                || node.isSymbol(lang.preproc_ifndef_s)
+                || node.isSymbol(lang.preproc_elifdef_s)
+                || node.isSymbol(lang.preproc_elifndef_s)
+            )
+            {
+                TSNode name = node.childByFieldId(lang.preproc_ifdef_s.name_f);
+                assert(name.isSymbol(lang.identifier_s));
+                tokenList.push_back(name);
+                // 
+                if (node.isSymbol(lang.preproc_ifdef_s) || node.isSymbol(lang.preproc_elifdef_s))
+                {
+                    prepend = MacroExpander::Prepend::Defined;
+                }
+                else if (node.isSymbol(lang.preproc_ifndef_s) || node.isSymbol(lang.preproc_elifndef_s))
+                {
+                    prepend = MacroExpander::Prepend::NotDefined;
+                }
+            }
+            else assert(false);
+
             TSNode body = node.childByFieldId(lang.preproc_if_s.body_f); // May or may not have body.
             TSNode alternative = node.childByFieldId(lang.preproc_if_s.alternative_f); // May or may not have alternative.
 
-            z3::expr ifPremise = macroExpander.expandAndSymbolizeToBoolExpr(condition, symbolTable);
+            z3::expr ifPremise = macroExpander.symbolizeToBoolExpr(std::move(tokenList), symbolTable, prepend);
             // z3::expr fullIfPremise = ifPremise && premise;
-            z3::expr fullIfPremise = z3CtxtSolverSimplify(ifPremise && premise);
+            z3::expr fullIfPremise = combinedSimplify(ifPremise && premise);
             z3::expr elsePremise = !ifPremise;
             // z3::expr fullElsePremise = elsePremise && premise;
-            z3::expr fullElsePremise = z3CtxtSolverSimplify(elsePremise && premise);
-
-            if (body)
-            {
-                assert(body.isSymbol(lang.block_items_s));
-                scribe.addPremiseOrCreateChild(ProgramPoint{includeTree, body}, fullIfPremise);
-            }
+            z3::expr fullElsePremise = combinedSimplify(elsePremise && premise);
 
             bool fullIfPremiseIsSat = z3Check(fullIfPremise) == z3::sat;
             bool fullElsePremiseIsSat = z3Check(fullElsePremise) == z3::sat;
 
             if (fullIfPremiseIsSat && fullElsePremiseIsSat) // Both branch possible
             {
+                if (body) // Only create a PremiseTree node if there is a MAY body (no need to take down MUST or MUST NOT branches).
+                {
+                    scribe.addPremiseOrCreateChild(ProgramPoint{includeTree, body}, fullIfPremise);
+                }
+
                 auto [thenState, elseState] = startState.split();
                 thenState.premise = fullIfPremise;
                 thenState.programPoint.node = body; // Can be null, which means to skip the body.
@@ -331,26 +369,6 @@ public:
                 return collectIfBodies(std::move(elseState));
             }
             else assert(false);
-        }
-        else if (node.isSymbol(lang.preproc_ifdef_s))
-        {
-            assert(false); // Not implemented yet.
-        }
-        else if (node.isSymbol(lang.preproc_ifndef_s))
-        {
-            assert(false); // Not implemented yet.
-        }
-        else if (node.isSymbol(lang.preproc_elif_s))
-        {
-            assert(false); // Not implemented yet.
-        }
-        else if (node.isSymbol(lang.preproc_elifdef_s))
-        {
-            assert(false); // Not implemented yet.
-        }
-        else if (node.isSymbol(lang.preproc_elifndef_s))
-        {
-            assert(false); // Not implemented yet.
         }
         else if (node.isSymbol(lang.preproc_else_s))
         {

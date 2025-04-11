@@ -27,21 +27,52 @@ public:
           constExpr0(ctx.int_val(0)), constExpr1(ctx.int_val(1))
     {
         // Initialize constant tokens
-        auto && [tree0, token0] = parseIntoPreprocTokens("0");
-        treeOwnershipCache.emplace_back(std::move(tree0));
-        constToken0 = token0;
-
-        auto && [tree1, token1] = parseIntoPreprocTokens("1");
-        treeOwnershipCache.emplace_back(std::move(tree1));
-        constToken1 = token1;
+        auto && [tree, tokens] = parseIntoPreprocTokens("0 1 ! defined");
+        assert(tokens.isSymbol(lang.preproc_tokens_s));
+        tempTokensTree = std::move(tree);
+        std::vector<TSNode> tokenNodes = lang.tokensToTokenVector(tokens);
+        constToken0 = tokenNodes[0];
+        constToken1 = tokenNodes[1];
+        constTokenNot = tokenNodes[2];
+        constTokenDefined = tokenNodes[3];
     }
 
-    // All-in-one function to expand and symbolize a preprocessor token stream
-    z3::expr expandAndSymbolizeToBoolExpr(const TSNode & node, const SymbolTablePtr & symbolTable)
+    enum class Prepend
     {
-        assert(node.isSymbol(lang.preproc_tokens_s));
-        // Expand the node into a string
-        std::vector<TSNode> expandedTokens = expandPreprocTokens(lang.tokensToTokenVector(node), symbolTable);
+        None,
+        Defined,
+        NotDefined
+    };
+    z3::expr symbolizeToBoolExpr
+    (
+        std::vector<TSNode> && tokens,
+        const ConstSymbolTablePtr & symbolTable = nullptr,
+        Prepend prepend = Prepend::None
+    )
+    {
+        switch (prepend)
+        {
+            case Prepend::None:
+                break;
+            case Prepend::Defined:
+                tokens.insert(tokens.begin(), constTokenDefined);
+                break;
+            case Prepend::NotDefined:
+                tokens.insert(tokens.begin(), constTokenDefined);
+                tokens.insert(tokens.begin(), constTokenNot);
+                break;
+        }
+        std::vector<TSNode> expandedTokens = expandPreprocTokens(tokens, symbolTable);
+        switch (prepend)
+        {
+            case Prepend::None:
+                break;
+            case Prepend::Defined:
+                break;
+            case Prepend::NotDefined:
+                break;
+        }
+
         StringBuilder expandedStrBuilder;
         for (const TSNode & token : expandedTokens)
         {
@@ -770,9 +801,11 @@ private:
     z3::context & ctx;
 
     // Cache for the ownership of temporarily parsed trees
-    std::vector<TSTree> treeOwnershipCache;
+    TSTree tempTokensTree;
     TSNode constToken0;
     TSNode constToken1;
+    TSNode constTokenNot;
+    TSNode constTokenDefined;
 
     // The bit width of the symbolic values
     const int BIT_WIDTH = 32;

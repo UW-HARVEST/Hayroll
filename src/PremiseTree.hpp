@@ -115,7 +115,7 @@ public:
         if (auto it = map.find(programPoint); it != map.end())
         {
             PremiseTree * treeNode = it->second;
-            treeNode->premise = z3CtxtSolverSimplify(treeNode->premise || premise);
+            treeNode->premise = combinedSimplify(treeNode->premise || premise);
             // treeNode->premise = treeNode->premise || premise;
             return treeNode;
         }

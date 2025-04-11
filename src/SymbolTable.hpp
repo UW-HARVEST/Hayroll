@@ -124,6 +124,7 @@ public:
 
     std::string toString() const
     {
+        if (!parent) return "<PREDEFINED_MACROS>\n";
         std::stringstream ss;
         for (const auto & [name, symbol] : symbols)
         {

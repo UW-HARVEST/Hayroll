@@ -112,17 +112,20 @@ struct TransparentStringEqual
     }
 };
 
-// This only simplifies boolean expressions
-z3::expr z3CtxtSolverSimplify(const z3::expr & expr)
+z3::expr combinedSimplify(const z3::expr & expr)
 {
     z3::context & ctx = expr.ctx();
-    z3::tactic t = z3::tactic(ctx, "ctx-solver-simplify");
+    z3::tactic t =
+        // z3::tactic(ctx, "ctx-solver-simplify") &
+        z3::tactic(ctx, "cofactor-term-ite") &
+        z3::tactic(ctx, "ctx-solver-simplify")
+    ;
     z3::goal g(ctx);
     g.add(expr);
     
     z3::apply_result res = t(g);
     
-    if (res.size() == 0) throw std::runtime_error("ctx-solver-simplify returned no result.");
+    assert(res.size() != 0);
     SPDLOG_DEBUG("after apply_result");
     return res[0].as_expr();
 }
