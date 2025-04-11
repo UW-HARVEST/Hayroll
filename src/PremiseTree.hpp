@@ -94,10 +94,13 @@ struct PremiseTree
 class PremiseTreeScribe
 {
 public:
-    PremiseTreeScribe() = default;
+    PremiseTreeScribe()
+        : tree(nullptr), map(), init(false)
+    {
+    }
 
     PremiseTreeScribe(const ProgramPoint & programPoint, const z3::expr & premise)
-        : tree(PremiseTree::make(programPoint, premise)), map()
+        : tree(PremiseTree::make(programPoint, premise)), map(), init(true)
     {
         map.insert_or_assign(programPoint, tree.get());
     }
@@ -112,6 +115,8 @@ public:
         std::optional<TSNode> includeNodeInParentFile = std::nullopt
     )
     {
+        if (!init) return nullptr;
+        SPDLOG_DEBUG(std::format("Scribe adding premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string()));
         if (auto it = map.find(programPoint); it != map.end())
         {
             PremiseTree * treeNode = it->second;
@@ -157,6 +162,7 @@ private:
     // A mapping from the program point to the premise tree node.
     // It does not need ownership so it's using raw pointers.
     std::unordered_map<ProgramPoint, PremiseTree *, ProgramPoint::Hasher> map;
+    bool init;
 };
 
 } // namespace Hayroll

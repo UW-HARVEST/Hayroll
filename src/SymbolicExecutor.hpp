@@ -108,7 +108,11 @@ public:
         predefinedMacroSymbolTable->makeImmutable(); // Just for debug clarity
         // The initial state is the root node of the tree.
         State startState{{includeTree, root}, predefinedMacroSymbolTable, ctx.bool_val(true)};
-        scribe = PremiseTreeScribe(startState.programPoint, startState.premise);
+        // Start the premise tree with a false premise.
+        // Only when a state reaches the end of the translation unit without being killed by an #error,
+        // should the premise tree of the translation unit disjunct with the premise of that surviving state.
+        // Not satisfying the root premise means the program would not compile with this set of flags. 
+        scribe = PremiseTreeScribe(startState.programPoint, ctx.bool_val(false));
         std::vector<State> endStates = executeTranslationUnit(std::move(startState));
         
         return endStates;
@@ -253,6 +257,8 @@ public:
         const auto & [programPoint, symbolTable, premise] = startState;
         const auto & [includeTree, node] = programPoint;
         assert(node.isSymbol(lang.preproc_if_s) || node.isSymbol(lang.preproc_ifdef_s) || node.isSymbol(lang.preproc_ifndef_s));
+
+        SPDLOG_DEBUG(std::format("Executing conditional: {}", startState.programPoint.toString()));
         
         TSNode joinPoint = node.nextSibling(); // Take this node out before startState is moved.
         std::vector<State> states = collectIfBodies(std::move(startState));
@@ -327,44 +333,37 @@ public:
             TSNode alternative = node.childByFieldId(lang.preproc_if_s.alternative_f); // May or may not have alternative.
 
             z3::expr ifPremise = macroExpander.symbolizeToBoolExpr(std::move(tokenList), symbolTable, prepend);
-            // z3::expr fullIfPremise = ifPremise && premise;
-            z3::expr fullIfPremise = combinedSimplify(ifPremise && premise);
+            z3::expr enterIfPremise = combinedSimplify(premise && ifPremise);
             z3::expr elsePremise = !ifPremise;
-            // z3::expr fullElsePremise = elsePremise && premise;
-            z3::expr fullElsePremise = combinedSimplify(elsePremise && premise);
+            z3::expr enterElsePremise = combinedSimplify(premise && elsePremise);
 
-            bool fullIfPremiseIsSat = z3Check(fullIfPremise) == z3::sat;
-            bool fullElsePremiseIsSat = z3Check(fullElsePremise) == z3::sat;
+            bool enterIfPremiseIsSat = z3Check(enterIfPremise) == z3::sat;
+            bool enterElsePremiseIsSat = z3Check(enterElsePremise) == z3::sat;
 
-            if (fullIfPremiseIsSat && fullElsePremiseIsSat) // Both branch possible
+            if (enterIfPremiseIsSat && enterElsePremiseIsSat) // Both branch possible
             {
-                if (body) // Only create a PremiseTree node if there is a MAY body (no need to take down MUST or MUST NOT branches).
-                {
-                    scribe.addPremiseOrCreateChild(ProgramPoint{includeTree, body}, fullIfPremise);
-                }
-
-                auto [thenState, elseState] = startState.split();
-                thenState.premise = fullIfPremise;
+                auto && [thenState, elseState] = startState.split();
+                thenState.premise = enterIfPremise;
                 thenState.programPoint.node = body; // Can be null, which means to skip the body.
-                elseState.premise = fullElsePremise;
+                elseState.premise = enterElsePremise;
                 elseState.programPoint.node = alternative; // Can be null, which means to skip the alternative.
                 std::vector<State> result = collectIfBodies(std::move(elseState));
                 result.push_back(std::move(thenState));
                 return result;
             }
-            else if (fullIfPremiseIsSat) // Only then branch possible
+            else if (enterIfPremiseIsSat) // Only then branch possible
             {
                 // No need to split, just execute the then branch.
                 State thenState = std::move(startState);
-                thenState.premise = fullIfPremise;
+                thenState.premise = enterIfPremise;
                 thenState.programPoint.node = body; // Can be null, which means to skip the body.
                 return {std::move(thenState)};
             }
-            else if (fullElsePremiseIsSat) // Only else branch possible
+            else if (enterElsePremiseIsSat) // Only else branch possible
             {
                 // No need to split, just execute the else branch.
                 State elseState = std::move(startState);
-                elseState.premise = fullElsePremise;
+                elseState.premise = enterElsePremise;
                 elseState.programPoint.node = alternative; // Can be null, which means to skip the alternative.
                 return collectIfBodies(std::move(elseState));
             }
@@ -377,7 +376,6 @@ public:
             {
                 assert(body.isSymbol(lang.block_items_s));
                 startState.programPoint.node = body;
-                scribe.addPremiseOrCreateChild(ProgramPoint{includeTree, body}, startState.premise);
                 return {std::move(startState)};
             }
             else
@@ -406,6 +404,7 @@ public:
     void executeError(State && startState)
     {
         assert(startState.programPoint.node.isSymbol(lang.preproc_error_s));
+        SPDLOG_DEBUG(std::format("Executing error, deleting state: {}", startState.toString()));
     }
 
     State executeLine(State && startState)
@@ -433,13 +432,37 @@ public:
             SPDLOG_DEBUG(std::format("Join point: {}", joinProgramPoint.toString()));
         #endif
 
-        std::vector<State> tasks = std::move(startStates);
+        std::vector<std::tuple<ProgramPoint, State>> tasks; // (block_items/translation_unit body, state)
+        
         std::vector<State> blockedStates;
 
-        for (State & task : tasks)
+        for (State & state : startStates)
         {
-            assert(!task.programPoint.node || task.programPoint.node.isSymbol(lang.block_items_s) || task.programPoint.node.isSymbol(lang.translation_unit_s));
-            if (task.programPoint.node) task.programPoint = task.programPoint.firstChild(); // This may return a null node. That is okay.
+            State stateOwned = std::move(state);
+            assert
+            (
+                !stateOwned.programPoint.node
+                || stateOwned.programPoint.node.isSymbol(lang.block_items_s)
+                || stateOwned.programPoint.node.isSymbol(lang.translation_unit_s)
+            );
+            if (stateOwned.programPoint.node)
+            {
+                // The branch has a body.
+                ProgramPoint body = stateOwned.programPoint;
+                assert
+                (
+                    body.node.isSymbol(lang.block_items_s)
+                    || body.node.isSymbol(lang.translation_unit_s)
+                );
+                stateOwned.programPoint = stateOwned.programPoint.firstChild();
+                // This may return a null node if task.programPoint is a translation_unit and the file is empty. It's okay.
+                tasks.emplace_back(body, std::move(stateOwned));
+            }
+            else
+            {
+                // This branch does not have a body. Process as if it directly made its way to the join point.
+                blockedStates.push_back(std::move(stateOwned));
+            }
             // task.programPoint.node itself may be null, that means the entire #if is bypassed.
         }
 
@@ -447,22 +470,31 @@ public:
         {
             SPDLOG_DEBUG(std::format("Tasks left: {}", tasks.size()));
             // Take one task from the queue (std::move). 
-            State task = std::move(tasks.back());
+            auto [body, state] = std::move(tasks.back()); // Do not use auto && here, or there will be memory corruption.
             tasks.pop_back();
-            if (!task.programPoint.node)
+            if (!state.programPoint.node)
             {
-                // This means we reached the end of the block_items or translation_unit.
-                // We need to set the node to the join point.
-                task.programPoint.node = joinPoint;
-                blockedStates.push_back(std::move(task));
+                // This means it successfully reached the end of the block_items or translation_unit (not being killed by #error).
+                // We need to call the scribe to add its premise to the block_items or translation_unit and set the node to the join point.
+                scribe.addPremiseOrCreateChild(body, state.premise);
+                blockedStates.push_back(std::move(state));
                 continue;
             }
 
-            for (State & taskDone : executeOne(std::move(task)))
+            for (State & taskDone : executeOne(std::move(state)))
             {
-                tasks.push_back(std::move(taskDone));
+                tasks.emplace_back(body, std::move(taskDone));
             }
         }
+
+        #if DEBUG
+            SPDLOG_DEBUG(std::format("Blocked states ({}):", blockedStates.size()));
+            SPDLOG_DEBUG(std::format("Join point: {}", joinProgramPoint.toString()));
+            for (const State & state : blockedStates)
+            {
+                SPDLOG_DEBUG(std::format("{}", state.toString()));
+            }
+        #endif
 
         // Before merging, sort all blocked states by their symbol table pointer value.
         // This way we can do a one pass merge.
@@ -471,17 +503,10 @@ public:
             return a.symbolTable < b.symbolTable;
         });
 
-        #if DEBUG
-            SPDLOG_DEBUG(std::format("Blocked states ({}):", blockedStates.size()));
-            for (const State & state : blockedStates)
-            {
-                SPDLOG_DEBUG(std::format("{}", state.toString()));
-            }
-        #endif
-
         std::vector<State> mergedStates;
         for (State & blockedState : blockedStates)
         {
+            blockedState.programPoint.node = joinPoint;
             State blockedStateOwned = std::move(blockedState);
             if (mergedStates.empty() || !mergedStates.back().mergeInplace(blockedStateOwned))
             {
@@ -491,6 +516,7 @@ public:
 
         #if DEBUG
             SPDLOG_DEBUG(std::format("Merged states ({}):", mergedStates.size()));
+            SPDLOG_DEBUG(std::format("Join point: {}", joinProgramPoint.toString()));
             for (const State & state : mergedStates)
             {
                 SPDLOG_DEBUG(std::format("{}", state.toString()));

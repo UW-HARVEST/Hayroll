@@ -24,12 +24,10 @@ int main(int argc, char **argv)
 
         #ifndef USER_A
             MAY_REACH(true, !defUSER_A)
-            
             #if USER_D > USER_A // USER_D > 0
-            #define SOMETHING THAT_BLOCKS_STATE_MERGING
-            MAY_REACH(defUSER_A, valUSER_D > 0)
+                #define SOMETHING THAT_BLOCKS_STATE_MERGING
+                MAY_REACH(defUSER_A, valUSER_D > 0)
             #endif
-
         #elifndef USER_B
             MAY_REACH(defUSER_A, !defUSER_B)
         #elifdef USER_C
@@ -39,6 +37,19 @@ int main(int argc, char **argv)
         #else
             MUST_NOT_REACH
         #endif
+
+        #if 1
+            MUST_REACH // Even though states splitted, every thread will reach this point
+        #endif
+
+        #ifdef USER_A
+            #error
+        #endif
+
+        #if 2
+            MAY_REACH(!defUSER_A, true)
+        #endif
+
     )";
 
     std::filesystem::path srcPath = tmpPath / "test.c";
