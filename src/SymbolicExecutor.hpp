@@ -10,6 +10,7 @@
 #include <format>
 
 #include <z3++.h>
+
 #include <spdlog/spdlog.h>
 
 #include "Util.hpp"
@@ -18,6 +19,7 @@
 #include "SymbolTable.hpp"
 #include "IncludeResolver.hpp"
 #include "IncludeTree.hpp"
+#include "ProgramPoint.hpp"
 #include "MacroExpander.hpp"
 #include "ASTBank.hpp"
 #include "PremiseTree.hpp"
@@ -143,6 +145,7 @@ public:
         // preproc_error
         // preproc_line
         // c_tokens
+        // preproc_call
 
         SPDLOG_DEBUG(std::format("Executing one node: {}", startState.programPoint.toString()));
         
@@ -172,6 +175,12 @@ public:
         else if (symbol == lang.c_tokens_s)
         {
             return {executeCTokens(std::move(startState))};
+        }
+        else if (symbol == lang.preproc_call_s)
+        {
+            // Unknown preprocessor directive. Skip. 
+            startState.programPoint = startState.programPoint.nextSibling();
+            return {std::move(startState)};
         }
         else assert(false);
     }
@@ -316,7 +325,6 @@ public:
                 TSNode name = node.childByFieldId(lang.preproc_ifdef_s.name_f);
                 assert(name.isSymbol(lang.identifier_s));
                 tokenList.push_back(name);
-                // 
                 if (node.isSymbol(lang.preproc_ifdef_s) || node.isSymbol(lang.preproc_elifdef_s))
                 {
                     prepend = MacroExpander::Prepend::Defined;
@@ -353,7 +361,7 @@ public:
             else if (enterIfPremiseIsSat) // Only then branch possible
             {
                 // No need to split, just execute the then branch.
-                State thenState = std::move(startState);
+                State && thenState = std::move(startState);
                 thenState.premise = enterIfPremise;
                 thenState.programPoint.node = body; // Can be null, which means to skip the body.
                 return {std::move(thenState)};
@@ -361,7 +369,7 @@ public:
             else if (enterElsePremiseIsSat) // Only else branch possible
             {
                 // No need to split, just execute the else branch.
-                State elseState = std::move(startState);
+                State && elseState = std::move(startState);
                 elseState.premise = enterElsePremise;
                 elseState.programPoint.node = alternative; // Can be null, which means to skip the alternative.
                 return collectIfBodies(std::move(elseState));

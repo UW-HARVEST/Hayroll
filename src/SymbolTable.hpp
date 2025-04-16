@@ -15,6 +15,7 @@
 
 #include "TreeSitter.hpp"
 #include "IncludeTree.hpp"
+#include "ProgramPoint.hpp"
 #include "Util.hpp"
 
 namespace Hayroll

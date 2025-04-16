@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "z3++.h"
+#include <z3++.h>
 
 namespace Hayroll
 {

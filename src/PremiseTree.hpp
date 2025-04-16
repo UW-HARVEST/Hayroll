@@ -5,9 +5,9 @@
 #include <variant>
 #include <unordered_map>
 
-#include <spdlog/spdlog.h>
+#include <z3++.h>
 
-#include "z3++.h"
+#include <spdlog/spdlog.h>
 
 #include "Util.hpp"
 #include "IncludeTree.hpp"

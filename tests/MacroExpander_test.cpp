@@ -4,6 +4,7 @@
 #include <format>
 
 #include <z3++.h>
+
 #include <spdlog/spdlog.h>
 
 #include "subprocess.hpp"
