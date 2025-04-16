@@ -157,6 +157,13 @@ public:
         X(char_literal) XX \
         X(preproc_defined_literal) XX \
         X(identifier) XX \
+        X(string_literal) \
+            Y(content) \
+        XX \
+        X(system_lib_string) \
+            Y(content) \
+        XX \
+        X(string_content) XX \
 
     #define X(sym) , sym##_s({ .str = #sym, .tsSymbol = symbolForName(#sym, true)
     #define Y(fld) , .fld##_f = { .str = #fld, .tsFieldId = fieldIdForName(#fld) }

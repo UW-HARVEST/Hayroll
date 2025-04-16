@@ -32,7 +32,7 @@ public:
     std::filesystem::path resolveInclude
     (
         bool isSystemInclude,
-        const std::string & includeName,
+        std::string_view includeName,
         const std::vector<std::filesystem::path> & parentPaths // Accepted in leave-first order
     ) const
     {

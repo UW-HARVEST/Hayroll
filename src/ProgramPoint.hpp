@@ -17,7 +17,7 @@ namespace Hayroll
 // different inclusion instances contain different macro program points.
 struct ProgramPoint
 {
-    ConstIncludeTreePtr includeTree;
+    IncludeTreePtr includeTree;
     TSNode node;
 
     std::string toString() const
@@ -25,19 +25,20 @@ struct ProgramPoint
         if (!node) return std::format("{}:EOF", includeTree->path.string());
         return std::format
         (
-            "{}:{}:{}~{}:{}",
+            "{}:{}:{}~{}:{} {}",
             includeTree->path.string(),
             node.startPoint().row + 1,
             node.startPoint().column + 1,
             node.endPoint().row + 1,
-            node.endPoint().column + 1
+            node.endPoint().column + 1,
+            node.type()
         );
     }
 
     std::string toStringFull() const
     {
         // Print the whole include tree
-        return std::format("{}\n{}\n", includeTree->toString(), toString());
+        return std::format("{}\n{}\n", includeTree->stacktrace(), toString());
     }
 
     ProgramPoint parent(std::optional<TSNode> includeNodeInParentFile = std::nullopt) const
@@ -48,11 +49,11 @@ struct ProgramPoint
             return ProgramPoint{includeTree, parentNode};
         }
         // In a different file, we need to find the parent include tree.
-        ConstIncludeTreePtr parentIncludeTree = includeTree->parent.lock();
+        IncludeTreePtr parentIncludeTree = includeTree->parent.lock();
         assert(parentIncludeTree);
-        assert(includeNodeInParentFile.has_value());
+        assert(includeNodeInParentFile);
         // If we have a node in the parent file, we can use it to find the parent include tree.
-        return ProgramPoint{parentIncludeTree, includeNodeInParentFile.value()};
+        return ProgramPoint{parentIncludeTree, *includeNodeInParentFile};
     }
 
     ProgramPoint nextSibling() const

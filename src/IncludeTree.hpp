@@ -29,7 +29,7 @@ public:
     std::filesystem::path path;
     
     std::map<int, IncludeTreePtr> children; // Line number to IncludeTreePtr
-    std::weak_ptr<const IncludeTree> parent;
+    std::weak_ptr<IncludeTree> parent;
 
     // Constructor
     // An IncludeTree object shall only be managed by a shared_ptr
@@ -37,7 +37,7 @@ public:
     (
         uint32_t line,
         const std::filesystem::path & path,
-        ConstIncludeTreePtr parent = nullptr
+        IncludeTreePtr parent = nullptr
     )
     {
         auto tree = std::make_shared<IncludeTree>();
@@ -48,9 +48,10 @@ public:
     }
 
     // Add a child IncludeTree object to the current one
-    void addChild(uint32_t line, const std::filesystem::path & path)
+    IncludeTreePtr addChild(uint32_t line, const std::filesystem::path & path)
     {
         children[line] = make(line, path, shared_from_this());
+        return children[line];
     }
 
     // Test if the given string path (spelt header name) is a suffix of the current path.
@@ -89,6 +90,7 @@ public:
         return dirs;
     }
 
+    // Print the entire subtree
     std::string toString(size_t depth = 0) const
     {
         std::stringstream ss;
@@ -112,19 +114,34 @@ public:
         return ss.str();
     }
 
+    // Print all the way up to the root
+    std::string stacktrace() const
+    {
+        std::stringstream ss;
+        uint32_t prevLine = 0;
+        ConstIncludeTreePtr node = shared_from_this();
+        while (node)
+        {
+            ss << node->path.string() << ":" << prevLine << "\n";
+            prevLine = node->line;
+            node = node->parent.lock();
+        }
+        return ss.str();
+    }
+
     struct Iterator
     {
     public:
         using difference_type = std::ptrdiff_t;
-        using value_type = ConstIncludeTreePtr;
+        using value_type = IncludeTreePtr;
         using iterator_concept = std::forward_iterator_tag;
 
         Iterator() : currentNode(nullptr), atEnd(true) {}
 
-        explicit Iterator(ConstIncludeTreePtr node, bool atEnd = false)
+        explicit Iterator(IncludeTreePtr node, bool atEnd = false)
             : currentNode(std::move(node)), atEnd(atEnd) {}
 
-        ConstIncludeTreePtr operator*() const
+        IncludeTreePtr operator*() const
         {
             assert(!atEnd);
             return currentNode;
@@ -139,7 +156,7 @@ public:
             }
             else
             {
-                ConstIncludeTreePtr parent = currentNode->parent.lock();
+                IncludeTreePtr parent = currentNode->parent.lock();
                 while (parent)
                 {
                     auto it = parent->children.find(currentNode->line);
@@ -172,16 +189,16 @@ public:
         }
 
     private:
-        ConstIncludeTreePtr currentNode;
+        IncludeTreePtr currentNode;
         bool atEnd;
     };
 
-    Iterator begin() const
+    Iterator begin()
     {
         return Iterator(shared_from_this());
     }
 
-    Iterator end() const
+    Iterator end()
     {
         return Iterator(nullptr, true);
     }

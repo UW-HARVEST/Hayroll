@@ -17,13 +17,24 @@ int main(int argc, char **argv)
     TempDir tmpDir(false);
     std::filesystem::path tmpPath = tmpDir.getPath();
 
-    std::string srcString = 
+    auto saveSource = [&tmpPath](const std::string & source, const std::string & filename) -> std::filesystem::path
+    {
+        std::filesystem::path srcPath = tmpPath / filename;
+        std::ofstream srcFile(srcPath);
+        srcFile << source;
+        srcFile.close();
+        return srcPath;
+    };
+
+    std::string testSrcString = 
     R"(
         #ifdef __UINT32_MAX__
             #check !defined USER_E
         #else
             #check 0
         #endif
+
+        #include "inc.h" // #undef CODE_F
 
         #ifndef USER_A
             #check !defined USER_E && !defined USER_A
@@ -33,6 +44,8 @@ int main(int argc, char **argv)
             #endif
         #elifndef USER_B
             #check !defined USER_E && defined USER_A && !defined USER_B
+        #elifdef CODE_F
+            #check 0
         #elifdef USER_C
             #check !defined USER_E && defined USER_A && defined USER_B && defined USER_C
         #elif defined USER_A && defined USER_B && !defined USER_C
@@ -44,6 +57,7 @@ int main(int argc, char **argv)
         #if 1
             #check !defined USER_E
             // Even though states splitted, every thread will reach this point
+            #define CODE_F
         #endif
 
         #ifdef USER_E
@@ -51,21 +65,23 @@ int main(int argc, char **argv)
             #error
         #endif
 
-        #if 2
+        #if defined CODE_F
             #check !defined USER_E
         #endif
     )";
+    std::filesystem::path entryPath = saveSource(testSrcString, "test.c");
 
-    std::filesystem::path srcPath = tmpPath / "test.c";
-    std::ofstream srcFile(srcPath);
-    // Use raw string literals to avoid escaping
-    srcFile << srcString;
-    srcFile.close();
+    std::string incSrcString =
+    R"(
+        #check !defined USER_E
+        #undef CODE_F
+    )";
+    saveSource(incSrcString, "inc.h");
 
-    SymbolicExecutor executor(srcPath);
+    SymbolicExecutor executor(entryPath);
     std::vector<State> endStates = executor.run();
     PremiseTree * premiseTree = executor.scribe.borrowTree();
-    ConstIncludeTreePtr includeTree = executor.includeTree;
+    IncludeTreePtr includeTree = executor.includeTree;
     const CPreproc & lang = executor.lang;
 
     for (const State & state : endStates)
@@ -81,7 +97,7 @@ int main(int argc, char **argv)
     std::cout << premiseTree->toString() << std::endl;
 
     // Checking: every premise carried by a #check line should imply the premise of the smallest premise tree node it is in.
-    for (const ConstIncludeTreePtr includeTreeNode : *includeTree)
+    for (const IncludeTreePtr includeTreeNode : *includeTree)
     {
         TSNode astRoot = executor.astBank.find(includeTreeNode->path).rootNode();
         for (const TSNode & node : astRoot.iterateDescendants())

@@ -119,12 +119,13 @@ public:
         return endStates;
     }
 
-    std::vector<State> executeTranslationUnit(State && startState)
+    std::vector<State> executeTranslationUnit(State && startState, std::optional<ProgramPoint> joinPoint = std::nullopt)
     {
         SPDLOG_DEBUG(std::format("Executing translation unit: {}", startState.programPoint.toString()));
         assert(startState.programPoint.node.isSymbol(lang.translation_unit_s));
         // All states shall meet at the end of the translation unit (invalid node).
-        return executeInLockStep({std::move(startState)}, TSNode{});
+        if (!joinPoint) joinPoint = startState.programPoint.nextSibling();
+        return executeInLockStep({std::move(startState)}, *joinPoint);
     }
 
     // Execute a single node or a segment of continuous #define nodes.
@@ -263,12 +264,12 @@ public:
         // preproc_ifdef
         // preproc_ifndef
         const auto & [programPoint, symbolTable, premise] = startState;
-        const auto & [includeTree, node] = programPoint;
+        const auto [includeTree, node] = programPoint;
         assert(node.isSymbol(lang.preproc_if_s) || node.isSymbol(lang.preproc_ifdef_s) || node.isSymbol(lang.preproc_ifndef_s));
 
         SPDLOG_DEBUG(std::format("Executing conditional: {}", startState.programPoint.toString()));
         
-        TSNode joinPoint = node.nextSibling(); // Take this node out before startState is moved.
+        ProgramPoint joinPoint = programPoint.nextSibling();
         std::vector<State> states = collectIfBodies(std::move(startState));
         return executeInLockStep(std::move(states), joinPoint);
     }
@@ -286,7 +287,7 @@ public:
         // preproc_else
 
         const auto & [programPoint, symbolTable, premise] = startState;
-        const auto & [includeTree, node] = programPoint;
+        const auto [includeTree, node] = programPoint;
 
         if (!node)
         {
@@ -349,6 +350,12 @@ public:
 
             if (enterIfPremiseIsSat && enterElsePremiseIsSat) // Both branch possible
             {
+                // Call the scribe to create a new premise node for the body, in case no state gets out of the if.
+                if (body)
+                {
+                    scribe.addPremiseOrCreateChild({includeTree, body}, ctx.bool_val(false));
+                }
+
                 auto && [thenState, elseState] = startState.split();
                 thenState.premise = enterIfPremise;
                 thenState.programPoint.node = body; // Can be null, which means to skip the body.
@@ -413,9 +420,39 @@ public:
         // All possible node types:
         // preproc_include
         // preproc_include_next
+
+        const auto & [programPoint, symbolTable, premise] = startState;
+        const auto [includeTree, node] = programPoint;
+
+        ProgramPoint joinPoint = startState.programPoint.nextSibling();
         
-        // Skip for now.
-        startState.programPoint = startState.programPoint.nextSibling();
+        if (node.isSymbol(lang.preproc_include_s))
+        {
+            TSNode pathNode = node.childByFieldId(lang.preproc_include_s.path_f);
+            assert(pathNode.isSymbol(lang.string_literal_s) || pathNode.isSymbol(lang.system_lib_string_s));
+            bool isSystemInclude = pathNode.isSymbol(lang.system_lib_string_s);
+            TSNode stringContentNode = pathNode.childByFieldId(lang.string_literal_s.content_f); // Both types have this field.
+            assert(stringContentNode.isSymbol(lang.string_content_s));
+            std::string_view pathStr = stringContentNode.textView();
+
+            std::filesystem::path includePath = includeResolver.resolveInclude(isSystemInclude, pathStr, includeTree->getAncestorDirs());
+            if (includePath.empty()) return {}; // Include not found, process as error.
+            // Include found, add it to the AST bank and create a new state for it.
+            const TSTree & tree = astBank.addFile(includePath);
+            TSNode root = tree.rootNode();
+            startState.programPoint = {includeTree->addChild(node.startPoint().row + 1, includePath), root};
+            // Print the startState for debugging.
+            SPDLOG_DEBUG(std::format("Executing include: {}", startState.programPoint.toStringFull()));
+            // Init the premise tree node with a false premise.
+            // Here we provide an extra parameter: the include node in the parent file.
+            // We do it here because later in executeInLockStep it's harder to find that node.
+            scribe.addPremiseOrCreateChild(startState.programPoint, ctx.bool_val(false), node);
+            return executeTranslationUnit(std::move(startState), joinPoint);
+        }
+        // else if (node.isSymbol(lang.preproc_include_next_s)) // Skip for now
+        // {
+        // }
+        else assert(false);
 
         return {};
     }
@@ -438,7 +475,7 @@ public:
     // This function will execute all items in the block_items or translation_unit in lock step,
     // and then set the node of the result states to joinPoint.
     // When all states reach the joinPoint, they will be merged if possible.
-    std::vector<State> executeInLockStep(std::vector<State> && startStates, const TSNode & joinPoint)
+    std::vector<State> executeInLockStep(std::vector<State> && startStates, const ProgramPoint & joinPoint)
     {
         // Print the program points of start states for debugging.
         #if DEBUG
@@ -447,8 +484,7 @@ public:
             {
                 SPDLOG_DEBUG(std::format("{}", state.programPoint.toString()));
             }
-            ProgramPoint joinProgramPoint = {startStates[0].programPoint.includeTree, joinPoint};
-            SPDLOG_DEBUG(std::format("Join point: {}", joinProgramPoint.toString()));
+            SPDLOG_DEBUG(std::format("Join point: {}", joinPoint.toString()));
         #endif
 
         std::vector<std::tuple<ProgramPoint, State>> tasks; // (block_items/translation_unit body, state)
@@ -510,7 +546,7 @@ public:
 
         #if DEBUG
             SPDLOG_DEBUG(std::format("Blocked states ({}):", blockedStates.size()));
-            SPDLOG_DEBUG(std::format("Join point: {}", joinProgramPoint.toString()));
+            SPDLOG_DEBUG(std::format("Join point: {}", joinPoint.toString()));
             for (const State & state : blockedStates)
             {
                 SPDLOG_DEBUG(std::format("{}", state.toString()));
@@ -527,7 +563,7 @@ public:
         std::vector<State> mergedStates;
         for (State & blockedState : blockedStates)
         {
-            blockedState.programPoint.node = joinPoint;
+            blockedState.programPoint = joinPoint;
             State blockedStateOwned = std::move(blockedState);
             if (mergedStates.empty() || !mergedStates.back().mergeInplace(blockedStateOwned))
             {
@@ -537,7 +573,7 @@ public:
 
         #if DEBUG
             SPDLOG_DEBUG(std::format("Merged states ({}):", mergedStates.size()));
-            SPDLOG_DEBUG(std::format("Join point: {}", joinProgramPoint.toString()));
+            SPDLOG_DEBUG(std::format("Join point: {}", joinPoint.toString()));
             for (const State & state : mergedStates)
             {
                 SPDLOG_DEBUG(std::format("{}", state.toString()));
