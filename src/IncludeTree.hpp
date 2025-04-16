@@ -21,7 +21,8 @@ using IncludeTreePtr = std::shared_ptr<IncludeTree>;
 using ConstIncludeTreePtr = std::shared_ptr<const IncludeTree>;
 
 struct IncludeTree
-    : public std::enable_shared_from_this<IncludeTree>, public std::ranges::view_interface<IncludeTree>
+    : public std::enable_shared_from_this<IncludeTree>,
+      public std::ranges::view_interface<IncludeTree>
 {
 public:
     uint32_t line; // Line number of the include in its parent file
@@ -116,7 +117,7 @@ public:
     public:
         using difference_type = std::ptrdiff_t;
         using value_type = ConstIncludeTreePtr;
-        using iterator_category = std::input_iterator_tag;
+        using iterator_concept = std::forward_iterator_tag;
 
         Iterator() : currentNode(nullptr), atEnd(true) {}
 
@@ -165,7 +166,8 @@ public:
 
         bool operator==(const Iterator &other) const
         {
-            if (atEnd == other.atEnd) return true;
+            if (atEnd && other.atEnd) return true;
+            if (atEnd != other.atEnd) return false;
             return currentNode == other.currentNode;
         }
 
@@ -184,8 +186,8 @@ public:
         return Iterator(nullptr, true);
     }
 };
-static_assert(std::input_iterator<IncludeTree::Iterator>);
-static_assert(std::ranges::input_range<IncludeTree>);
+static_assert(std::forward_iterator<IncludeTree::Iterator>);
+static_assert(std::ranges::forward_range<IncludeTree>);
 
 } // namespace Hayroll::IncludeTree
 

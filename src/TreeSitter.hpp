@@ -302,7 +302,7 @@ public:
     public:
         using difference_type = std::ptrdiff_t;
         using value_type = TSNode;
-        using iterator_category = std::bidirectional_iterator_tag;
+        using iterator_concept = std::bidirectional_iterator_tag;
 
         Iterator() : cursor(std::nullopt), atEnd(true) {}
 
@@ -410,10 +410,11 @@ private:
     TSTreeCursor parentCursor;
 };
 static_assert(std::bidirectional_iterator<TSTreeCursorIterateChildren::Iterator>);
-static_assert(std::ranges::common_range<TSTreeCursorIterateChildren>);
+static_assert(std::ranges::bidirectional_range<TSTreeCursorIterateChildren>);
 
 // Class to iterate over all descendants (pre-order) of a TSTreeCursor's current node.
 class TSTreeCursorIterateDescendants
+    : public std::ranges::view_interface<TSTreeCursorIterateChildren>
 {
 public:
     // Nested iterator class.
@@ -422,7 +423,7 @@ public:
     public:
         using difference_type = std::ptrdiff_t;
         using value_type = TSNode;
-        using iterator_category = std::input_iterator_tag;
+        using iterator_concept = std::forward_iterator_tag;
 
         // Default constructor (end iterator).
         Iterator() : cursor(std::nullopt) {}
@@ -503,6 +504,8 @@ public:
 private:
     TSTreeCursor parentCursor;
 };
+static_assert(std::forward_iterator<TSTreeCursorIterateDescendants::Iterator>);
+static_assert(std::ranges::forward_range<TSTreeCursorIterateDescendants>);
 
 // ==== Implementations ====
 
