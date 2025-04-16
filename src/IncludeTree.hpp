@@ -21,7 +21,7 @@ using IncludeTreePtr = std::shared_ptr<IncludeTree>;
 using ConstIncludeTreePtr = std::shared_ptr<const IncludeTree>;
 
 struct IncludeTree
-    : public std::enable_shared_from_this<IncludeTree>
+    : public std::enable_shared_from_this<IncludeTree>, public std::ranges::view_interface<IncludeTree>
 {
 public:
     uint32_t line; // Line number of the include in its parent file
@@ -58,6 +58,18 @@ public:
     bool endsWith(const std::string_view header) const
     {
         return path.string().ends_with(header);
+    }
+
+    bool isAncestorOf(const ConstIncludeTreePtr & child) const
+    {
+        // Check if the child is in the current tree
+        if (child == shared_from_this()) return true;
+        // Check if the child is in the parent tree
+        if (ConstIncludeTreePtr parent = child->parent.lock())
+        {
+            return parent->isAncestorOf(shared_from_this());
+        }
+        return false;
     }
 
     // Get a vector of ancestor directories
@@ -98,7 +110,82 @@ public:
         }
         return ss.str();
     }
+
+    struct Iterator
+    {
+    public:
+        using difference_type = std::ptrdiff_t;
+        using value_type = ConstIncludeTreePtr;
+        using iterator_category = std::input_iterator_tag;
+
+        Iterator() : currentNode(nullptr), atEnd(true) {}
+
+        explicit Iterator(ConstIncludeTreePtr node, bool atEnd = false)
+            : currentNode(std::move(node)), atEnd(atEnd) {}
+
+        ConstIncludeTreePtr operator*() const
+        {
+            assert(!atEnd);
+            return currentNode;
+        }
+
+        Iterator & operator++()
+        {
+            assert(!atEnd);
+            if (!currentNode->children.empty())
+            {
+                currentNode = currentNode->children.begin()->second;
+            }
+            else
+            {
+                ConstIncludeTreePtr parent = currentNode->parent.lock();
+                while (parent)
+                {
+                    auto it = parent->children.find(currentNode->line);
+                    ++it;
+                    if (it != parent->children.end())
+                    {
+                        currentNode = it->second;
+                        return *this;
+                    }
+                    currentNode = parent;
+                    parent = parent->parent.lock();
+                }
+                atEnd = true;
+            }
+            return *this;
+        }
+
+        Iterator operator++(int)
+        {
+            Iterator copy = *this;
+            ++(*this);
+            return copy;
+        }
+
+        bool operator==(const Iterator &other) const
+        {
+            if (atEnd == other.atEnd) return true;
+            return currentNode == other.currentNode;
+        }
+
+    private:
+        ConstIncludeTreePtr currentNode;
+        bool atEnd;
+    };
+
+    Iterator begin() const
+    {
+        return Iterator(shared_from_this());
+    }
+
+    Iterator end() const
+    {
+        return Iterator(nullptr, true);
+    }
 };
+static_assert(std::input_iterator<IncludeTree::Iterator>);
+static_assert(std::ranges::input_range<IncludeTree>);
 
 } // namespace Hayroll::IncludeTree
 

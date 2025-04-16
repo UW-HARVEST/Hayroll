@@ -360,6 +360,12 @@ public:
             }
             else if (enterIfPremiseIsSat) // Only then branch possible
             {
+                // Call the scribe to mark the entire alternative as unreachable.
+                if (alternative)
+                {
+                    scribe.addPremiseOrCreateChild({includeTree, alternative}, ctx.bool_val(false));
+                }
+
                 // No need to split, just execute the then branch.
                 State && thenState = std::move(startState);
                 thenState.premise = enterIfPremise;
@@ -368,6 +374,12 @@ public:
             }
             else if (enterElsePremiseIsSat) // Only else branch possible
             {
+                // Call the scribe to mark the then body as unreachable.
+                if (body)
+                {
+                    scribe.addPremiseOrCreateChild({includeTree, body}, ctx.bool_val(false));
+                }
+
                 // No need to split, just execute the else branch.
                 State && elseState = std::move(startState);
                 elseState.premise = enterElsePremise;

@@ -106,6 +106,20 @@ struct PremiseTree
             child->refine();
         }
     }
+
+    // Find the smallest premise tree node that contains the target program point.
+    const PremiseTree * findEnclosingNode(const ProgramPoint & target) const
+    {
+        assert(programPoint.contains(target));
+        for (const PremiseTreePtr & child : children)
+        {
+            if (child->programPoint.contains(target))
+            {
+                return child->findEnclosingNode(target);
+            }
+        }
+        return this;
+    }
 };
 
 // A helper class that takes down info during symbolic execution to build the premise tree.

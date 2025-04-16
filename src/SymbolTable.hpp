@@ -220,7 +220,8 @@ public:
             return &*it;
         }
         // Check the parent symbol table
-        return symbolTable->lookup(name);
+        if (symbolTable) return symbolTable->lookup(name);
+        return std::nullopt;
     }
 
 private:

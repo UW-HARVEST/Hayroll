@@ -64,15 +64,6 @@ public:
                 break;
         }
         std::vector<TSNode> expandedTokens = expandPreprocTokens(tokens, symbolTable);
-        switch (prepend)
-        {
-            case Prepend::None:
-                break;
-            case Prepend::Defined:
-                break;
-            case Prepend::NotDefined:
-                break;
-        }
 
         StringBuilder expandedStrBuilder;
         for (const TSNode & token : expandedTokens)

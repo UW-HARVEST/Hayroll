@@ -76,6 +76,19 @@ struct ProgramPoint
         return includeTree == other.includeTree && node == other.node;
     }
 
+    bool contains(const ProgramPoint & other) const
+    {
+        if (includeTree == other.includeTree)
+        {
+            return node.startByte() <= other.node.startByte() && node.endByte() >= other.node.endByte();
+        }
+        else if (includeTree->isAncestorOf(other.includeTree))
+        {
+            return true;
+        }
+        return false;
+    }
+
     struct Hasher
     {
         std::size_t operator()(const ProgramPoint & programPoint) const noexcept
@@ -87,6 +100,6 @@ struct ProgramPoint
     };
 };
 
-}; // namespace Hayroll
+} // namespace Hayroll
 
 #endif // HAYROLL_PROGRAMPOINT_HPP
