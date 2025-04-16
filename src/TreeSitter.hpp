@@ -1203,19 +1203,11 @@ const std::string & TSTree::getSource() const
 // This is quite expensive, so it should only be used in debug builds.
 void TSTree::assertNoError() const
 {
-    // Create a query for "(ERROR)". 
-    TSQuery query(language(), "(ERROR)");
-    // We did not write a wrapper for the TSQueryCursor yet, so we will use the C API directly.
-    ts::TSQueryCursor * cursor = ts::ts_query_cursor_new();
-    ts::ts_query_cursor_exec(cursor, query, rootNode());
-    ts::TSQueryMatch match;
-    if (ts::ts_query_cursor_next_match(cursor, &match))
+    if (rootNode().hasError())
     {
-        ts::ts_query_cursor_delete(cursor);
         std::cerr << boost::stacktrace::stacktrace() << std::endl;
         throw std::runtime_error("Tree contains ERROR node");
     }
-    ts::ts_query_cursor_delete(cursor);
 }
 
 // TSParser

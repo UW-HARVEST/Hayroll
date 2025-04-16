@@ -168,12 +168,8 @@ public:
                 stackStr += token.textView();
                 stackStr += " ";
             }
-            SPDLOG_DEBUG("Stack: {}", stackStr);
-
             auto [token, shouldPopUndef] = stack.back();
             stack.pop_back();
-
-            SPDLOG_DEBUG("Inspecting token {}", token.textView());
 
             if (token.isSymbol(lang.identifier_s))
             {
@@ -196,7 +192,6 @@ public:
                         // Object-like macro, push its tokens into the stack
                         const ObjectSymbol & objSymbol = std::get<ObjectSymbol>(sym);
                         const TSNode & body = objSymbol.body;
-                        SPDLOG_DEBUG("Expanding object-like macro {}, body: {}", name, body.textView());
                         if (body) pushTokensNodeAndUndef(body, name);
                         // else do nothing, the macro is empty
                     }
@@ -439,8 +434,6 @@ public:
         // Make sure all arg names are unique
         assert(argTable.size() == args.size());
 
-        SPDLOG_DEBUG("Expanding function-like macro {} with body {}", funcSymbol.name, funcSymbol.body.textView());
-        
         std::vector<TSNode> buffer;
         // Expand the function-like macro body
         for (const TSNode & token : funcSymbol.body.iterateChildren())
@@ -475,7 +468,6 @@ public:
             {
                 expandedMacro += token.text() + " ";
             }
-            SPDLOG_DEBUG("Expanded function-like macro {}: {}", funcSymbol.name, expandedMacro);
         #endif
 
         return buffer;
@@ -514,7 +506,6 @@ public:
 
             // Create the expression
             z3::expr iteExpr = z3::ite(def, val, constExpr0);
-            SPDLOG_DEBUG("Symbolizing identifier {}: {}", name, iteExpr.to_string());
             return iteExpr;
         }
         else if (node.isSymbol(lang.call_expression_s))
@@ -527,7 +518,6 @@ public:
             // Number literal, just return its value
             std::string spelling = node.text();
             z3::expr val = ctx.int_val(spelling.c_str());
-            SPDLOG_DEBUG("Symbolizing number literal {}: {}", spelling, val.to_string());
             return val;
         }
         else if (node.isSymbol(lang.char_literal_s))
@@ -546,7 +536,6 @@ public:
 
             z3::expr def = ctx.bool_const(defName.c_str());
             z3::expr defExpr = bool2int(def);
-            SPDLOG_DEBUG("Symbolizing preproc_defined {}: {}", name, defExpr.to_string());
             return defExpr;
         }
         else if (node.isSymbol(lang.unary_expression_s))
@@ -562,25 +551,21 @@ public:
             if (opNode.textView() == lang.unary_expression_s.not_o)
             {
                 z3::expr notExpr = bool2int(!int2bool(arg));
-                SPDLOG_DEBUG("Symbolizing unary expression {}: {}", node.textView(), notExpr.to_string());
                 return notExpr;
             }
             else if (opNode.textView() == lang.unary_expression_s.bnot_o)
             {
                 // bitwise not
                 z3::expr bnotExpr = z3::bv2int(~z3::int2bv(BIT_WIDTH, arg), true);
-                SPDLOG_DEBUG("Symbolizing unary expression {}: {}", node.textView(), bnotExpr.to_string());
                 return bnotExpr;
             }
             else if (opNode.textView() == lang.unary_expression_s.neg_o)
             {
                 z3::expr negExpr = -arg;
-                SPDLOG_DEBUG("Symbolizing unary expression {}: {}", node.textView(), negExpr.to_string());
                 return negExpr;
             }
             else if (opNode.textView() == lang.unary_expression_s.pos_o)
             {
-                SPDLOG_DEBUG("Symbolizing unary expression {}: {}", node.textView(), arg.to_string());
                 return arg;
             }
             else assert(false);
@@ -616,109 +601,91 @@ public:
             if (opNode.textView() == lang.binary_expression_s.add_o)
             {
                 z3::expr addExpr = left + right;
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), addExpr.to_string());
                 return addExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.sub_o)
             {
                 z3::expr subExpr = left - right;
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), subExpr.to_string());
                 return subExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.mul_o)
             {
                 z3::expr mulExpr = left * right;
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), mulExpr.to_string());
                 return mulExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.div_o)
             {
                 z3::expr divExpr = left / right;
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), divExpr.to_string());
                 return divExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.mod_o)
             {
                 z3::expr modExpr = left % right;
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), modExpr.to_string());
                 return modExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.or_o)
             {
                 z3::expr orExpr = bool2int(int2bool(left) || int2bool(right));
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), orExpr.to_string());
                 return orExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.and_o)
             {
                 z3::expr andExpr = bool2int(int2bool(left) && int2bool(right));
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), andExpr.to_string());
                 return andExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.bor_o)
             {
                 z3::expr borExpr = z3::bv2int(z3::int2bv(BIT_WIDTH, left) | z3::int2bv(BIT_WIDTH, right), true);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), borExpr.to_string());
                 return borExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.bxor_o)
             {
                 z3::expr bxorExpr = z3::bv2int(z3::int2bv(BIT_WIDTH, left) ^ z3::int2bv(BIT_WIDTH, right), true);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), bxorExpr.to_string());
                 return bxorExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.band_o)
             {
                 z3::expr bandExpr = z3::bv2int(z3::int2bv(BIT_WIDTH, left) & z3::int2bv(BIT_WIDTH, right), true);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), bandExpr.to_string());
                 return bandExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.eq_o)
             {
                 z3::expr eqExpr = bool2int(left == right);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), eqExpr.to_string());
                 return eqExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.neq_o)
             {
                 z3::expr neqExpr = bool2int(left != right);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), neqExpr.to_string());
                 return neqExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.gt_o)
             {
                 z3::expr gtExpr = bool2int(left > right);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), gtExpr.to_string());
                 return gtExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.ge_o)
             {
                 z3::expr geExpr = bool2int(left >= right);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), geExpr.to_string());
                 return geExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.le_o)
             {
                 z3::expr leExpr = bool2int(left <= right);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), leExpr.to_string());
                 return leExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.lt_o)
             {
                 z3::expr ltExpr = bool2int(left < right);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), ltExpr.to_string());
                 return ltExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.lsh_o)
             {
                 z3::expr lshExpr = z3::bv2int(z3::shl(z3::int2bv(BIT_WIDTH, left), z3::int2bv(BIT_WIDTH, right)), true);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), lshExpr.to_string());
                 return lshExpr;
             }
             else if (opNode.textView() == lang.binary_expression_s.rsh_o)
             {
                 z3::expr rshExpr = z3::bv2int(z3::ashr(z3::int2bv(BIT_WIDTH, left), z3::int2bv(BIT_WIDTH, right)), true);
-                SPDLOG_DEBUG("Symbolizing binary expression {}: {}", node.textView(), rshExpr.to_string());
                 return rshExpr;
             }
             else assert(false);
@@ -728,7 +695,6 @@ public:
             // Parenthesized expression, just return the inner expression
             TSNode innerNode = node.childByFieldId(lang.parenthesized_expression_s.expr_f);
             z3::expr innerExpr = symbolizeExpression(innerNode);
-            SPDLOG_DEBUG("Symbolizing parenthesized expression {}: {}", node.textView(), innerExpr.to_string());
             return innerExpr;
         }
         else if (node.isSymbol(lang.conditional_expression_s))
@@ -742,7 +708,6 @@ public:
             z3::expr falseExpr = symbolizeExpression(falseNode);
 
             z3::expr condIteExpr = z3::ite(int2bool(condExpr), trueExpr, falseExpr);
-            SPDLOG_DEBUG("Symbolizing conditional expression {}: {}", node.textView(), condIteExpr.to_string());
             return condIteExpr;
         }
         else assert(false);
@@ -777,7 +742,6 @@ public:
     // Returns (tree, expr)
     std::tuple<TSTree, TSNode> parseIntoExpression(std::string_view source)
     {
-        SPDLOG_DEBUG("Parsing expression \"{}\"", source);
         if (source.empty()) return { TSTree(), TSNode() };
         std::string evalSource = std::format("#eval {}\n#endeval\n", source);
         TSTree tree = parser.parseString(std::move(evalSource));

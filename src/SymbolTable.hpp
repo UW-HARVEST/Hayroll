@@ -145,8 +145,8 @@ public:
                         }
                         ss << ") -> " << s.body.text();
                     },
-                    [&ss](const UndefinedSymbol & s) { ss << "undefined"; },
-                    [&ss](const ExpandedSymbol & s) { ss << "expanded"; }
+                    [&ss](const UndefinedSymbol & s) { ss << s.name << " -> <UNDEFINED>"; },
+                    [&ss](const ExpandedSymbol & s) { ss << s.name << " -> <EXPANDED>"; }
                 },
                 symbol
             );
@@ -186,9 +186,7 @@ class UndefStackSymbolTable
 public:
     UndefStackSymbolTable(const ConstSymbolTablePtr & symbolTable)
         : symbolTable(symbolTable)
-    {
-        SPDLOG_DEBUG("Creating UndefStackSymbolTable");
-    }
+    { }
 
     // Force using std::string_view to avoid implicit conversion from std::string.
     // This is for reminding the user that the name is not owned by the symbol table,
