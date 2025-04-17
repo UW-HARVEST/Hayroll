@@ -123,10 +123,10 @@ public:
         return std::nullopt;
     }
 
-    std::string toString() const
+    std::string toString(int maxEntries = 10) const
     {
-        if (!parent) return "<PREDEFINED_MACROS>\n";
         std::stringstream ss;
+        int count = 0;
         for (const auto & [name, symbol] : symbols)
         {
             std::visit
@@ -151,6 +151,12 @@ public:
                 symbol
             );
             ss << "\n";
+            count++;
+            if (count >= maxEntries)
+            {
+                ss << "...\n";
+                break;
+            }
         }
         return ss.str();
     }

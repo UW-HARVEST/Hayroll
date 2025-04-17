@@ -27,8 +27,9 @@ struct IncludeTree
 public:
     uint32_t line; // Line number of the include in its parent file
     std::filesystem::path path;
+    bool isSystemInclude = false; // True if the include is a system include, i.e., concretely executed and not in the astBank
     
-    std::map<int, IncludeTreePtr> children; // Line number to IncludeTreePtr
+    std::map<int, IncludeTreePtr> children; // Line number -> IncludeTreePtr
     std::weak_ptr<IncludeTree> parent;
 
     // Constructor
@@ -37,20 +38,23 @@ public:
     (
         uint32_t line,
         const std::filesystem::path & path,
-        IncludeTreePtr parent = nullptr
+        IncludeTreePtr parent = nullptr,
+        bool isSystemInclude = false
     )
     {
         auto tree = std::make_shared<IncludeTree>();
         tree->line = line;
         tree->path = path;
         tree->parent = parent;
+        tree->isSystemInclude = isSystemInclude;
         return tree;
     }
 
     // Add a child IncludeTree object to the current one
-    IncludeTreePtr addChild(uint32_t line, const std::filesystem::path & path)
+    // Do not use canonicalized path, as the ".."s may be part of the include name in source code
+    IncludeTreePtr addChild(uint32_t line, const std::filesystem::path & path, bool isSystemInclude = false)
     {
-        children[line] = make(line, path, shared_from_this());
+        children[line] = make(line, path, shared_from_this(), isSystemInclude);
         return children[line];
     }
 

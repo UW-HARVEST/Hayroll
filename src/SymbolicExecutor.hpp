@@ -85,10 +85,22 @@ struct State
 class SymbolicExecutor
 {
 public:
-    SymbolicExecutor(std::filesystem::path srcPath)
-        : lang(CPreproc()), ctx(z3::context()), srcPath(srcPath), includeResolver(CLANG_EXE, {}),
-          astBank(lang), macroExpander(lang, ctx), includeTree(IncludeTree::make(0, srcPath)),
-          scribe() // Init scribe later
+    const CPreproc lang;
+    z3::context ctx;
+    std::filesystem::path srcPath;
+    std::filesystem::path projPath; // Any #include not under projPath will be concretely executed.
+    IncludeResolver includeResolver;
+    ASTBank astBank;
+    MacroExpander macroExpander;
+    IncludeTreePtr includeTree;
+    PremiseTreeScribe scribe;
+
+    SymbolicExecutor(std::filesystem::path srcPath, std::filesystem::path projPath)
+        : lang(CPreproc()), ctx(z3::context()), srcPath(std::filesystem::canonical(srcPath)),
+          projPath(std::filesystem::canonical(projPath)), includeResolver(CLANG_EXE, {}),
+          astBank(lang), macroExpander(lang, ctx),
+          includeTree(IncludeTree::make(0, std::filesystem::canonical(srcPath))),
+          scribe() // Init scribe after we have parsed predefined macros
     {
         astBank.addFile(srcPath);
     }
@@ -207,8 +219,6 @@ public:
             node = node.nextSibling()
         )
         {
-            SPDLOG_DEBUG(std::format("Executing define: {}", node.textView()));
-
             if (node.isSymbol(lang.preproc_def_s))
             {
                 TSNode name = node.childByFieldId(lang.preproc_def_s.name_f);
@@ -437,17 +447,35 @@ public:
 
             std::filesystem::path includePath = includeResolver.resolveInclude(isSystemInclude, pathStr, includeTree->getAncestorDirs());
             if (includePath.empty()) return {}; // Include not found, process as error.
-            // Include found, add it to the AST bank and create a new state for it.
-            const TSTree & tree = astBank.addFile(includePath);
-            TSNode root = tree.rootNode();
-            startState.programPoint = {includeTree->addChild(node.startPoint().row + 1, includePath), root};
-            // Print the startState for debugging.
-            SPDLOG_DEBUG(std::format("Executing include: {}", startState.programPoint.toStringFull()));
-            // Init the premise tree node with a false premise.
-            // Here we provide an extra parameter: the include node in the parent file.
-            // We do it here because later in executeInLockStep it's harder to find that node.
-            scribe.addPremiseOrCreateChild(startState.programPoint, ctx.bool_val(false), node);
-            return executeTranslationUnit(std::move(startState), joinPoint);
+            else if (includePath.string().starts_with(projPath.string())) // Header is in project path, execute symbolically. 
+            {
+                // Include found, add it to the AST bank and create a new state for it.
+                const TSTree & tree = astBank.addFile(includePath);
+                TSNode root = tree.rootNode();
+                startState.programPoint = {includeTree->addChild(node.startPoint().row + 1, includePath), root};
+                // Print the startState for debugging.
+                SPDLOG_DEBUG(std::format("Executing include symbolically: {}", startState.programPoint.toString()));
+                // Init the premise tree node with a false premise.
+                scribe.addPremiseOrCreateChild(startState.programPoint, ctx.bool_val(false), node);
+                return executeTranslationUnit(std::move(startState), joinPoint);
+            }
+            else // Header is outsde of project path, execute concretely.
+            {
+                std::string concretelyExecuted = includeResolver.getConcretelyExecutedMacros(includePath);
+                // Include found, add it to the AST bank and create a new state for it.
+                const TSTree & concretelyExecutedTree = astBank.addAnonymousSource(std::move(concretelyExecuted));
+                TSNode root = concretelyExecutedTree.rootNode();
+                TSNode fistChild = root.firstChildForByte(0);
+                assert(fistChild.isSymbol(lang.preproc_def_s) || fistChild.isSymbol(lang.preproc_function_def_s) || fistChild.isSymbol(lang.preproc_undef_s));
+                startState.programPoint = {includeTree->addChild(node.startPoint().row + 1, includePath, true), fistChild};
+                // Print the startState for debugging.
+                SPDLOG_DEBUG(std::format("Executing include concretely: {}", startState.programPoint.toString()));
+                // No scribe needed for concrete execution
+                // We need to set the node to the join point, so it will be merged with the other states.
+                startState = executeContinuousDefines(std::move(startState));
+                startState.programPoint = std::move(joinPoint);
+                return {std::move(startState)};
+            }
         }
         // else if (node.isSymbol(lang.preproc_include_next_s)) // Skip for now
         // {
@@ -512,8 +540,6 @@ public:
                 stateOwned.programPoint = stateOwned.programPoint.firstChild();
                 // This may return a null node if task.programPoint is a translation_unit and the file is empty. It's okay.
                 tasks.emplace_back(body, std::move(stateOwned));
-                // Initialize this premise tree node before executing any of its children so they can find this parent.
-                scribe.addPremiseOrCreateChild(body, ctx.bool_val(false));
             }
             else
             {
@@ -582,16 +608,6 @@ public:
         
         return mergedStates;
     }
-    
-public:
-    const CPreproc lang;
-    z3::context ctx;
-    std::filesystem::path srcPath;
-    IncludeResolver includeResolver;
-    ASTBank astBank;
-    MacroExpander macroExpander;
-    IncludeTreePtr includeTree;
-    PremiseTreeScribe scribe;
 };
 
 } // namespace Hayroll

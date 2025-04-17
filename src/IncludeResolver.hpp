@@ -120,6 +120,20 @@ public:
         return out.buf.data();
     }
 
+    std::string getConcretelyExecutedMacros(const std::string & includePath) const
+    {
+        // cc -dM -E {includePath}
+        std::vector<std::string> ccArgs = {ccExePath, "-dM", "-E", includePath};
+        subprocess::Popen proc
+        (
+            ccArgs,
+            subprocess::output{subprocess::PIPE},
+            subprocess::error{subprocess::PIPE}
+        );
+        auto [out, err] = proc.communicate();
+        return out.buf.data();
+    }
+
 private:
     std::string ccExePath;
     std::vector<std::filesystem::path> includePaths;

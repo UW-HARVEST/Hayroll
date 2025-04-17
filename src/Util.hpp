@@ -12,6 +12,7 @@
 
 #include <string>
 #include <vector>
+#include <filesystem>
 
 #include <z3++.h>
 

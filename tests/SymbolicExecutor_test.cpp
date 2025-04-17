@@ -36,6 +36,15 @@ int main(int argc, char **argv)
 
         #include "inc.h" // #undef CODE_F
 
+        #undef __WORDSIZE
+        #if __WORDSIZE == 0
+            #check !defined USER_E
+        #endif
+        #include <math.h>
+        #if __WORDSIZE >= 32
+            #check !defined USER_E
+        #endif
+
         #ifndef USER_A
             #check !defined USER_E && !defined USER_A
             #if USER_D > USER_A // USER_D > 0
@@ -65,9 +74,6 @@ int main(int argc, char **argv)
             #error
         #endif
 
-        #if defined CODE_F
-            #check !defined USER_E
-        #endif
     )";
     std::filesystem::path entryPath = saveSource(testSrcString, "test.c");
 
@@ -78,7 +84,7 @@ int main(int argc, char **argv)
     )";
     saveSource(incSrcString, "inc.h");
 
-    SymbolicExecutor executor(entryPath);
+    SymbolicExecutor executor(entryPath, tmpPath);
     std::vector<State> endStates = executor.run();
     PremiseTree * premiseTree = executor.scribe.borrowTree();
     IncludeTreePtr includeTree = executor.includeTree;
@@ -99,6 +105,7 @@ int main(int argc, char **argv)
     // Checking: every premise carried by a #check line should imply the premise of the smallest premise tree node it is in.
     for (const IncludeTreePtr includeTreeNode : *includeTree)
     {
+        if (includeTreeNode->isSystemInclude) continue;
         TSNode astRoot = executor.astBank.find(includeTreeNode->path).rootNode();
         for (const TSNode & node : astRoot.iterateDescendants())
         {
