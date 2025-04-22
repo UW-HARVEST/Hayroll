@@ -699,8 +699,9 @@ TSNode::operator ts::TSNode() const
 // Get the node's type as a null-terminated string.
 std::string TSNode::type() const
 {
-    assertNonNull();
-    return ts::ts_node_type(*this);
+    const char * t = ts::ts_node_type(*this);
+    if (t == nullptr) return std::string();
+    return t;
 }
 
 // Get the node's type as a numerical id.
@@ -891,14 +892,14 @@ bool TSNode::eq(const ts::TSNode & other) const
 // Check if two nodes are identical.
 bool TSNode::operator==(const TSNode & other) const
 {
-    return ts::ts_node_eq(*this, other);
+    return ts::ts_node_eq(*this, other) || !(*this) && !other;
 }
 
 // Check if the node is null.
 // Functions like ts_node_child and ts_node_next_sibling will return a null node to indicate that no such node was found.
 bool TSNode::isNull() const
 {
-    return ts::ts_node_is_null(*this);
+    return ts::ts_node_is_null(*this) || source == nullptr;
 }
 
 TSNode::operator bool() const

@@ -36,6 +36,10 @@ struct State
     SymbolTablePtr symbolTable;
     z3::expr premise;
 
+    // Splits the state into two states.
+    // The program point stays the same.
+    // The symbol table is shared between the two states, but made immutable,
+    // so if any one of the states modifies it, it will create a new layer.
     std::tuple<State, State> split() const
     {
         symbolTable->makeImmutable();
@@ -55,8 +59,15 @@ struct State
         // but they won't be merged eventually.
         if (symbolTable != other.symbolTable) return false;
 
-        premise = combinedSimplify(premise || other.premise);
+        premise = premise || other.premise;
         return true;
+    }
+
+    void simplify()
+    {
+        SPDLOG_DEBUG(std::format("Simplifying merged state premise: {}", premise.to_string()));
+        premise = simplifyOrOfAnd(premise);
+        SPDLOG_DEBUG(std::format("Simplified merged state premise: {}", premise.to_string()));
     }
 
     std::string toString() const
@@ -95,9 +106,9 @@ public:
     IncludeTreePtr includeTree;
     PremiseTreeScribe scribe;
 
-    SymbolicExecutor(std::filesystem::path srcPath, std::filesystem::path projPath)
+    SymbolicExecutor(std::filesystem::path srcPath, std::filesystem::path projPath, const std::vector<std::filesystem::path> & includePaths = {})
         : lang(CPreproc()), ctx(z3::context()), srcPath(std::filesystem::canonical(srcPath)),
-          projPath(std::filesystem::canonical(projPath)), includeResolver(CLANG_EXE, {}),
+          projPath(std::filesystem::canonical(projPath)), includeResolver(CLANG_EXE, includePaths),
           astBank(lang), macroExpander(lang, ctx),
           includeTree(IncludeTree::make(0, std::filesystem::canonical(srcPath))),
           scribe() // Init scribe after we have parsed predefined macros
@@ -178,8 +189,7 @@ public:
         }
         else if (symbol == lang.preproc_error_s)
         {
-            executeError(std::move(startState));
-            return {};
+            return {executeError(std::move(startState))};
         }
         else if (symbol == lang.preproc_line_s)
         {
@@ -351,9 +361,9 @@ public:
             TSNode alternative = node.childByFieldId(lang.preproc_if_s.alternative_f); // May or may not have alternative.
 
             z3::expr ifPremise = macroExpander.symbolizeToBoolExpr(std::move(tokenList), symbolTable, prepend);
-            z3::expr enterIfPremise = combinedSimplify(premise && ifPremise);
+            z3::expr enterIfPremise = premise && ifPremise;
             z3::expr elsePremise = !ifPremise;
-            z3::expr enterElsePremise = combinedSimplify(premise && elsePremise);
+            z3::expr enterElsePremise = premise && elsePremise;
 
             bool enterIfPremiseIsSat = z3Check(enterIfPremise) == z3::sat;
             bool enterElsePremiseIsSat = z3Check(enterElsePremise) == z3::sat;
@@ -485,10 +495,15 @@ public:
         return {};
     }
 
-    void executeError(State && startState)
+    State executeError(State && startState)
     {
+        // Bug: we are allowing error states to continue for convinience of merging premises for inner nodes.
+        // As a makeup, we should exclude this case from the premise tree root.
         assert(startState.programPoint.node.isSymbol(lang.preproc_error_s));
-        SPDLOG_DEBUG(std::format("Executing error, deleting state: {}", startState.toString()));
+        SPDLOG_DEBUG(std::format("Executing error, keeping state: {}", startState.toString()));
+        // Just skip this node.
+        startState.programPoint = startState.programPoint.nextSibling();
+        return std::move(startState);
     }
 
     State executeLine(State && startState)
@@ -595,6 +610,11 @@ public:
             {
                 mergedStates.push_back(std::move(blockedStateOwned));
             }
+        }
+
+        for (State & mergedState : mergedStates)
+        {
+            mergedState.simplify();
         }
 
         #if DEBUG

@@ -95,14 +95,17 @@ struct PremiseTree
     void refine()
     {
         // Sort children by their program point.
+        // Bug: the two premises may be in different files, and the order of the premises may not be correct.
         std::sort(children.begin(), children.end(), [](const PremiseTreePtr & a, const PremiseTreePtr & b)
         {
             return a->programPoint.node.startByte() < b->programPoint.node.startByte();
         });
 
+        premise = simplifyOrOfAnd(premise);
+
         for (const PremiseTreePtr & child : children)
         {
-            child->premise = combinedSimplify(premise && child->premise);
+            // child->premise = premise && child->premise;
             child->refine();
         }
     }
@@ -152,8 +155,7 @@ public:
         if (auto it = map.find(programPoint); it != map.end())
         {
             PremiseTree * treeNode = it->second;
-            treeNode->premise = combinedSimplify(treeNode->premise || premise);
-            SPDLOG_DEBUG(std::format("Found existing premise tree node: {}", treeNode->toString()));
+            treeNode->premise = treeNode->premise || premise;
             SPDLOG_DEBUG(std::format("New premise: {}", treeNode->premise.to_string()));
             return treeNode;
         }

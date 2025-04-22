@@ -14,6 +14,10 @@ int main(int argc, char **argv)
 
     spdlog::set_level(spdlog::level::debug);
 
+    // Disable let bindings in printing
+    z3::set_param("pp.min_alias_size", 1000000);
+    z3::set_param("pp.max_depth", 1000000);
+
     TempDir tmpDir(false);
     std::filesystem::path tmpPath = tmpDir.getPath();
 
@@ -117,7 +121,7 @@ int main(int argc, char **argv)
                 assert(writtenPremiseNode.isSymbol(lang.preproc_tokens_s));
                 std::vector<TSNode> writtenPremiseTokens = lang.tokensToTokenVector(writtenPremiseNode);
                 z3::expr writtenPremise = executor.macroExpander.symbolizeToBoolExpr(std::move(writtenPremiseTokens));
-                writtenPremise = combinedSimplify(writtenPremise);
+                writtenPremise = simplifyOrOfAnd(writtenPremise);
                 z3::expr premise = premiseTreeNode->premise;
                 z3::expr writtenPremiseImpliesPremise = z3::implies(writtenPremise, premise);
                 z3::solver s(executor.ctx);
