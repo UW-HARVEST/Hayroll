@@ -173,3 +173,47 @@ substitution = an expansion with the original symbol table + "ArgumentSymbol"-de
 only those tokens that hit ExpandedSymbol would be marked "no further expansion"
 The final expansion result should not have any "no further expansion" identifiers, because they can't be symbolized
 (They can, but -D-ing them would not affect the expression's final value)
+
+(declare-const A Bool)
+(declare-const B Bool)
+(declare-const C Bool)
+(declare-const D Bool)
+(assert (or 
+    (and A
+         B
+         C
+         D)
+    (and A
+         B
+         C
+         (not D))
+    (and A
+         B
+         (not C)
+         D)
+    (and A
+         B
+         (not C)
+         (not D))
+    (and A
+         (not B)
+         C
+         D)
+    (and A
+         (not B)
+         C
+         (not D))
+    (and A
+         (not B)
+         (not C)
+         D)
+    (and A
+         (not B)
+         (not C)
+         (not D))
+))
+(apply aig)
+(apply nnf)
+(apply simplify)
+
+/home/hurrypeng/libmcs/libm/include/internal_config.h:30:5~31:1
