@@ -387,6 +387,7 @@ public:
             }
             else if (enterIfPremiseIsSat) // Only then branch possible
             {
+                // Bug: even if the current explored state does not enter the else branch, other states may enter it.
                 // Call the scribe to mark the entire alternative as unreachable.
                 if (alternative)
                 {
