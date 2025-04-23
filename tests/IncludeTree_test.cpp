@@ -41,7 +41,7 @@ int main(int argc, char **argv)
             "#endif\n";
     srcFile.close();
 
-    auto root = IncludeTree::make(0, srcPath);
+    auto root = IncludeTree::make(TSNode{}, srcPath);
     auto node = root;
 
     // (isSystemInclude, includeName)
@@ -70,8 +70,8 @@ int main(int argc, char **argv)
         }
         auto includePath = resolver.resolveInclude(isSystemInclude, includeName, ancestorDirs);
         std::cout << "Resolved include path: " << includePath << std::endl;
-        node->addChild(0, includePath);
-        node = node->children[0];
+        node->addChild(TSNode{}, includePath);
+        node = node->children[TSNode{}];
     }
 
     std::cout << root->toString() << std::endl;

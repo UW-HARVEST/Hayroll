@@ -90,17 +90,9 @@ struct PremiseTree
         return str;
     }
 
-    // Conujnct the premises of descendants with the current one.
-    // Sort children by their program point.
+    // Simplify premises of all descendants.
     void refine()
     {
-        // Sort children by their program point.
-        // Bug: the two premises may be in different files, and the order of the premises may not be correct.
-        std::sort(children.begin(), children.end(), [](const PremiseTreePtr & a, const PremiseTreePtr & b)
-        {
-            return a->programPoint.node.startByte() < b->programPoint.node.startByte();
-        });
-
         premise = simplifyOrOfAnd(premise);
 
         for (const PremiseTreePtr & child : children)
@@ -159,7 +151,7 @@ public:
             SPDLOG_DEBUG(std::format("New premise: {}", treeNode->premise.to_string()));
             return treeNode;
         }
-        // Keep goint to parent until such program point has a corresponding premise tree node.
+        // Keep going to parent until such program point has a corresponding premise tree node.
         ProgramPoint ancestor = programPoint.parent(includeNodeInParentFile);
         PremiseTree * parent = nullptr;
         while (true)

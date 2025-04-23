@@ -23,7 +23,7 @@ int main()
 
     spdlog::set_level(spdlog::level::debug);
 
-    IncludeTreePtr includeTree = IncludeTree::make(0, "<PREDEFINED_MACROS>");
+    IncludeTreePtr includeTree = IncludeTree::make(TSNode{}, "<PREDEFINED_MACROS>");
     SymbolTablePtr symbolTable = SymbolTable::make();
     IncludeResolver resolver(clang_exe_path, {});
     CPreproc lang = CPreproc();

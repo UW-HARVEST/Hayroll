@@ -83,7 +83,7 @@ struct ProgramPoint
         {
             return node.startByte() <= other.node.startByte() && node.endByte() >= other.node.endByte();
         }
-        else if (includeTree->isAncestorOf(other.includeTree))
+        if (other.includeTree->isContainedBy(node))
         {
             return true;
         }

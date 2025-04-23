@@ -25,25 +25,25 @@ struct IncludeTree
       public std::ranges::view_interface<IncludeTree>
 {
 public:
-    uint32_t line; // Line number of the include in its parent file
+    TSNode includeNode; // The node in the parent file AST that includes this file
     std::filesystem::path path;
     bool isSystemInclude = false; // True if the include is a system include, i.e., concretely executed and not in the astBank
     
-    std::map<int, IncludeTreePtr> children; // Line number -> IncludeTreePtr
+    std::map<TSNode, IncludeTreePtr> children; // Line number -> IncludeTreePtr
     std::weak_ptr<IncludeTree> parent;
 
     // Constructor
     // An IncludeTree object shall only be managed by a shared_ptr
     static IncludeTreePtr make
     (
-        uint32_t line,
+        const TSNode & includeNode,
         const std::filesystem::path & path,
         IncludeTreePtr parent = nullptr,
         bool isSystemInclude = false
     )
     {
         auto tree = std::make_shared<IncludeTree>();
-        tree->line = line;
+        tree->includeNode = includeNode;
         tree->path = path;
         tree->parent = parent;
         tree->isSystemInclude = isSystemInclude;
@@ -52,10 +52,10 @@ public:
 
     // Add a child IncludeTree object to the current one
     // Do not use canonicalized path, as the ".."s may be part of the include name in source code
-    IncludeTreePtr addChild(uint32_t line, const std::filesystem::path & path, bool isSystemInclude = false)
+    IncludeTreePtr addChild(TSNode includeNode, const std::filesystem::path & path, bool isSystemInclude = false)
     {
-        children[line] = make(line, path, shared_from_this(), isSystemInclude);
-        return children[line];
+        children[includeNode] = make(includeNode, path, shared_from_this(), isSystemInclude);
+        return children[includeNode];
     }
 
     // Test if the given string path (spelt header name) is a suffix of the current path.
@@ -74,6 +74,22 @@ public:
         if (ConstIncludeTreePtr parent = child->parent.lock())
         {
             return parent->isAncestorOf(shared_from_this());
+        }
+        return false;
+    }
+
+    bool isContainedBy(const TSNode & node) const
+    {
+        for (TSNode ancestorNode = includeNode; ancestorNode; ancestorNode = ancestorNode.parent())
+        {
+            if (ancestorNode == node)
+            {
+                return true;
+            }
+        }
+        if (ConstIncludeTreePtr parent = this->parent.lock())
+        {
+            return parent->isContainedBy(node);
         }
         return false;
     }
@@ -107,7 +123,22 @@ public:
         // parentPath:lineNumber -> path
         if (auto parent = this->parent.lock())
         {
-            ss << parent->path.string() << ":" << line << " -> ";
+            ss << parent->path.string() << ":";
+            if (includeNode)
+            {
+                ss << std::format
+                (
+                    "{}:{}",
+                    parent->path.string(),
+                    includeNode.startPoint().column + 1,
+                    includeNode.startPoint().row + 1
+                );
+            }
+            else
+            {
+                ss << "EOF";
+            }
+            ss << " -> ";
         }
         ss << path.string() << "\n";
 
@@ -122,12 +153,25 @@ public:
     std::string stacktrace() const
     {
         std::stringstream ss;
-        uint32_t prevLine = 0;
+        TSNode prevIncludeNode = includeNode;
         ConstIncludeTreePtr node = shared_from_this();
         while (node)
         {
-            ss << node->path.string() << ":" << prevLine << "\n";
-            prevLine = node->line;
+            ss << node->path.string() << ":";
+            if (prevIncludeNode)
+            {
+                ss << std::format
+                (
+                    "{}:{}",
+                    prevIncludeNode.startPoint().row + 1,
+                    prevIncludeNode.startPoint().column + 1
+                );
+            }
+            else
+            {
+                ss << "EOF";
+            }
+            prevIncludeNode = node->includeNode;
             node = node->parent.lock();
         }
         return ss.str();
@@ -163,7 +207,7 @@ public:
                 IncludeTreePtr parent = currentNode->parent.lock();
                 while (parent)
                 {
-                    auto it = parent->children.find(currentNode->line);
+                    auto it = parent->children.find(currentNode->includeNode);
                     ++it;
                     if (it != parent->children.end())
                     {

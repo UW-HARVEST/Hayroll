@@ -21,7 +21,7 @@ int main(int argc, char **argv)
 
     spdlog::set_level(spdlog::level::debug);
 
-    IncludeTreePtr includeTree = IncludeTree::make(0, "<PREDEFINED_MACROS>");
+    IncludeTreePtr includeTree = IncludeTree::make(TSNode{}, "<PREDEFINED_MACROS>");
     SymbolTablePtr symbolTable = SymbolTable::make();
 
     TempDir tmpDir;

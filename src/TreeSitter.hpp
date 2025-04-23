@@ -153,6 +153,7 @@ public:
     size_t length() const;
     TSNode preorderNext() const;
     TSNode preorderSkip() const;
+    std::partial_ordering operator<=>(const TSNode & other) const;
 
     struct Hasher
     {
@@ -1078,6 +1079,45 @@ TSNode TSNode::preorderSkip() const
     }
     // If we reach the root node, return null.
     return TSNode();
+}
+
+std::partial_ordering TSNode::operator<=>(const TSNode &other) const
+{
+    if (isNull() && other.isNull())
+    {
+        return std::partial_ordering::equivalent;
+    }
+    if (isNull())
+    {
+        return std::partial_ordering::less;
+    }
+    if (other.isNull())
+    {
+        return std::partial_ordering::greater;
+    }
+    if (getSource() != other.getSource()) // Must be the same tree
+    {
+        return std::partial_ordering::unordered;
+    }
+    // Compare start bytes
+    if (startByte() < other.startByte())
+    {
+        return std::partial_ordering::less;
+    }
+    if (startByte() > other.startByte())
+    {
+        return std::partial_ordering::greater;
+    }
+    // Compare end bytes. The larger end byte is considered less.
+    if (endByte() < other.endByte())
+    {
+        return std::partial_ordering::greater;
+    }
+    if (endByte() > other.endByte())
+    {
+        return std::partial_ordering::less;
+    }
+    return std::partial_ordering::equivalent;
 }
 
 std::size_t Hayroll::TSNode::Hasher::operator()(const TSNode & node) const noexcept

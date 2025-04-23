@@ -26,7 +26,7 @@ int main(int argc, char **argv)
         << "#eval 1 + 2 - 3 * 4 / 5 \n #endeval" << std::endl;
     srcFile.close();
 
-    IncludeTreePtr includeRoot = IncludeTree::make(0, srcPath);
+    IncludeTreePtr includeRoot = IncludeTree::make(TSNode{}, srcPath);
     IncludeTreePtr includeNode = includeRoot;
 
     // (isSystemInclude, includeName)
@@ -54,8 +54,8 @@ int main(int argc, char **argv)
         auto ancestorDirs = includeNode->getAncestorDirs();
         auto includePath = resolver.resolveInclude(isSystemInclude, includeName, ancestorDirs);
         std::cout << "Resolved include path: " << includePath << std::endl;
-        includeNode->addChild(0, includePath);
-        includeNode = includeNode->children[0];
+        includeNode->addChild(TSNode{}, includePath);
+        includeNode = includeNode->children[TSNode{}];
         astBank.addFile(includePath);
     }
 

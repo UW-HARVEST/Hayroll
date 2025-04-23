@@ -46,24 +46,27 @@ public:
     };
     z3::expr symbolizeToBoolExpr
     (
-        std::vector<TSNode> && tokens,
+        const std::vector<TSNode> & tokens,
         const ConstSymbolTablePtr & symbolTable = nullptr,
         Prepend prepend = Prepend::None
     )
     {
+        std::vector<TSNode> tokensPrepended;
         switch (prepend)
         {
             case Prepend::None:
                 break;
             case Prepend::Defined:
-                tokens.insert(tokens.begin(), constTokenDefined);
+                tokensPrepended = tokens;
+                tokensPrepended.insert(tokensPrepended.begin(), constTokenDefined);
                 break;
             case Prepend::NotDefined:
-                tokens.insert(tokens.begin(), constTokenDefined);
-                tokens.insert(tokens.begin(), constTokenNot);
+                tokensPrepended = tokens;
+                tokensPrepended.insert(tokensPrepended.begin(), constTokenDefined);
+                tokensPrepended.insert(tokensPrepended.begin(), constTokenNot);
                 break;
         }
-        std::vector<TSNode> expandedTokens = expandPreprocTokens(tokens, symbolTable);
+        std::vector<TSNode> expandedTokens = expandPreprocTokens(prepend == Prepend::None ? tokens : tokensPrepended, symbolTable);
 
         StringBuilder expandedStrBuilder;
         for (const TSNode & token : expandedTokens)
