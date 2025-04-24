@@ -368,33 +368,9 @@ z3::expr factorCommonTerm(const z3::expr & e)
     }
 }
 
-z3::expr combinedSimplify(const z3::expr & expr)
-{
-    z3::context & ctx = expr.ctx();
-
-    z3::params simplify_p(ctx);
-    // simplify_p.set("elim_and", true);
-    // simplify_p.set("flat_and_or", true);
-    z3::tactic simplify_t = with(z3::tactic(ctx, "simplify"), simplify_p);
-
-    z3::tactic t =
-        simplify_t &
-        z3::tactic(ctx, "propagate-values") &
-        z3::tactic(ctx, "aig") &
-        z3::tactic(ctx, "cofactor-term-ite") &
-        z3::tactic(ctx, "ctx-solver-simplify") &
-        simplify_t
-    ;
-    z3::goal g(ctx);
-    g.add(expr);
-    
-    z3::apply_result res = t(g);
-    
-    assert(res.size() != 0);
-    return res[0].as_expr();
-}
-
-// WIP
+// Simplify expressions
+// Most effective for the form: (x && y) || (x && z) => x && (y || z) => x (y || z == 1)
+// Does more setup and cleanup work than the factorCommonTerm function
 z3::expr simplifyOrOfAnd(const z3::expr & expr)
 {
     z3::context & ctx = expr.ctx();

@@ -306,7 +306,7 @@ int main(int argc, char **argv)
                     else
                     {
                         z3::expr expr = expander.int2bool(expander.symbolizeExpression(exprNode));
-                        expr = combinedSimplify(expr);
+                        expr = simplifyOrOfAnd(expr);
                         std::cout << std::format("Symbolized: \n{}\n", expr.to_string()) << std::endl;
                     }
                 }

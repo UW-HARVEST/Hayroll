@@ -74,10 +74,30 @@ struct PremiseTree
     {
     }
 
+    // Retrieve the complete premese, a conjunction of all premises of its ancestors.
+    z3::expr getCompletePremise() const
+    {
+        z3::expr completePremise = premise;
+        const PremiseTree * ancestor = parent;
+        while (ancestor)
+        {
+            completePremise = completePremise && ancestor->premise;
+            ancestor = ancestor->parent;
+        }
+        return completePremise;
+    }
+
     void disjunctPremise(const z3::expr & premise)
     {
         SPDLOG_DEBUG(std::format("Disjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string()));
         this->premise = this->premise || premise;
+        SPDLOG_DEBUG(std::format("New premise: {}", this->premise.to_string()));
+    }
+
+    void conjunctPremise(const z3::expr & premise)
+    {
+        SPDLOG_DEBUG(std::format("Conjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string()));
+        this->premise = this->premise && premise;
         SPDLOG_DEBUG(std::format("New premise: {}", this->premise.to_string()));
     }
 
@@ -137,6 +157,13 @@ public:
         : tree(PremiseTree::make(programPoint, premise)), map(), init(true)
     {
         map.insert_or_assign(programPoint, tree.get());
+    }
+
+    void conjunctPremiseOntoRoot(const z3::expr & premise)
+    {
+        if (!init) return;
+        assert(tree);
+        tree->conjunctPremise(premise);
     }
 
     // Disjunct the premise with the existing one.

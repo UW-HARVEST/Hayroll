@@ -33,8 +33,7 @@ int main(int argc, char **argv)
     std::string testSrcString = 
     R"(
         #ifdef __UINT32_MAX__
-            // #check !defined USER_E
-            #check 1
+            #check !defined USER_E
         #else
             #check 0
         #endif
@@ -43,41 +42,33 @@ int main(int argc, char **argv)
 
         #undef __WORDSIZE
         #if __WORDSIZE == 0
-            // #check !defined USER_E
-            #check 1
+            #check !defined USER_E
         #endif
         #include <math.h>
         #if __WORDSIZE >= 32
-            // #check !defined USER_E
-            #check 1
+            #check !defined USER_E
         #endif
 
         #ifndef USER_A
-            // #check !defined USER_E && !defined USER_A
-            #check !defined USER_A
+            #check !defined USER_E && !defined USER_A
             #if USER_D > USER_A // USER_D > 0
                 #define SOMETHING THAT_BLOCKS_STATE_MERGING
-                // #check !defined USER_E && !defined USER_A && USER_D > 0
-                #check !defined USER_A && USER_D > 0
+                #check !defined USER_E && !defined USER_A && USER_D > 0
             #endif
         #elifndef USER_B
-            // #check !defined USER_E && defined USER_A && !defined USER_B
-            #check defined USER_A && !defined USER_B
+            #check !defined USER_E && defined USER_A && !defined USER_B
         #elifdef CODE_F
             #check 0
         #elifdef USER_C
-            // #check !defined USER_E && defined USER_A && defined USER_B && defined USER_C
-            #check defined USER_A && defined USER_B && defined USER_C
+            #check !defined USER_E && defined USER_A && defined USER_B && defined USER_C
         #elif defined USER_A && defined USER_B && !defined USER_C
-            // #check !defined USER_E && defined USER_A && defined USER_B && !defined USER_C
-            #check defined USER_A && defined USER_B && !defined USER_C
+            #check !defined USER_E && defined USER_A && defined USER_B && !defined USER_C
         #else
             #check 0
         #endif
 
         #if 1
-            // #check !defined USER_E
-            #check 1
+            #check !defined USER_E
             // Even though states splitted, every thread will reach this point
             #define CODE_F
         #endif
@@ -116,6 +107,7 @@ int main(int argc, char **argv)
     std::cout << premiseTree->toString() << std::endl;
 
     // Checking: every premise carried by a #check line should imply the premise of the smallest premise tree node it is in.
+    bool allPass = true;
     for (const IncludeTreePtr includeTreeNode : *includeTree)
     {
         if (includeTreeNode->isSystemInclude) continue;
@@ -131,7 +123,7 @@ int main(int argc, char **argv)
                 std::vector<TSNode> writtenPremiseTokens = lang.tokensToTokenVector(writtenPremiseNode);
                 z3::expr writtenPremise = executor.macroExpander.symbolizeToBoolExpr(std::move(writtenPremiseTokens));
                 writtenPremise = simplifyOrOfAnd(writtenPremise);
-                z3::expr premise = premiseTreeNode->premise;
+                z3::expr premise = premiseTreeNode->getCompletePremise();
                 z3::expr premiseImpliesWrittenPremise = z3::implies(premise, writtenPremise);
                 z3::solver s(executor.ctx);
                 s.add(!premiseImpliesWrittenPremise);
@@ -143,11 +135,14 @@ int main(int argc, char **argv)
                 else
                 {
                     std::cout << std::format("Premise {} does not imply written premise {}\n", premise.to_string(), writtenPremise.to_string());
-                    return 1;
+                    allPass = false;
                 }
             }
         }
     }
 
+    if (!allPass) return 1;
+
+    std::cout << "All checks passed.\n";
     return 0;
 }

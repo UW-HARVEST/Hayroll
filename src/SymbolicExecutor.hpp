@@ -169,11 +169,10 @@ public:
         // The initial state is the root node of the tree.
         State startState{predefinedMacroSymbolTable, ctx.bool_val(true)};
         Warp startWarp{ProgramPoint{includeTree, root}, {std::move(startState)}};
-        // Start the premise tree with a false premise.
-        // Only when a state reaches the end of the translation unit without being killed by an #error,
-        // should the premise tree of the translation unit disjunct with the premise of that surviving state.
-        // Not satisfying the root premise means the program would not compile with this set of flags. 
-        scribe = PremiseTreeScribe(startWarp.programPoint, ctx.bool_val(false));
+        // Start the premise tree with a true premise.
+        // When a state reaches an #error, it does not stop, instead, it conjuncts the negation
+        // of its premise to the root node of the premise tree.
+        scribe = PremiseTreeScribe(startWarp.programPoint, ctx.bool_val(true));
         Warp endWarp = executeTranslationUnit(std::move(startWarp));
         
         return endWarp;
@@ -613,11 +612,12 @@ public:
 
     Warp executeError(Warp && startWarp)
     {
-        // Bug: we are allowing error states to continue for convinience of merging premises for inner nodes.
-        // As a makeup, we should exclude this case from the premise tree root.
         assert(startWarp.programPoint.node.isSymbol(lang.preproc_error_s));
         SPDLOG_DEBUG(std::format("Executing error, keeping state: {}", startWarp.toString()));
-        // Just skip this node.
+        for (State & state : startWarp.states)
+        {
+            scribe.conjunctPremiseOntoRoot(!state.premise);
+        }
         startWarp.programPoint = startWarp.programPoint.nextSibling();
         return std::move(startWarp);
     }
