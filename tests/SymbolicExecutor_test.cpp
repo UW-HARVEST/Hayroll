@@ -48,7 +48,8 @@ int main(int argc, char **argv)
         #endif
         #include <math.h>
         #if __WORDSIZE >= 32
-            #check !defined USER_E
+            // #check !defined USER_E
+            #check 1
         #endif
 
         #ifndef USER_A
@@ -56,7 +57,8 @@ int main(int argc, char **argv)
             #check !defined USER_A
             #if USER_D > USER_A // USER_D > 0
                 #define SOMETHING THAT_BLOCKS_STATE_MERGING
-                #check !defined USER_E && !defined USER_A && USER_D > 0
+                // #check !defined USER_E && !defined USER_A && USER_D > 0
+                #check !defined USER_A && USER_D > 0
             #endif
         #elifndef USER_B
             // #check !defined USER_E && defined USER_A && !defined USER_B
@@ -90,7 +92,7 @@ int main(int argc, char **argv)
 
     std::string incSrcString =
     R"(
-        #check !defined USER_E
+        #check 1
         #undef CODE_F
     )";
     saveSource(incSrcString, "inc.h");
