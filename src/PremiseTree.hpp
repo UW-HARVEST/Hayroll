@@ -138,8 +138,7 @@ public:
     PremiseTree * addPremiseOrCreateChild
     (
         const ProgramPoint & programPoint,
-        const z3::expr & premise,
-        std::optional<TSNode> includeNodeInParentFile = std::nullopt
+        const z3::expr & premise
     )
     {
         if (!init) return nullptr;
@@ -152,7 +151,7 @@ public:
             return treeNode;
         }
         // Keep going to parent until such program point has a corresponding premise tree node.
-        ProgramPoint ancestor = programPoint.parent(includeNodeInParentFile);
+        ProgramPoint ancestor = programPoint.parent();
         PremiseTree * parent = nullptr;
         while (true)
         {
@@ -162,7 +161,7 @@ public:
                 break;
             }
             // If we reach the root node, we can't find a parent.
-            ancestor = ancestor.parent(includeNodeInParentFile);
+            ancestor = ancestor.parent();
             assert(ancestor);
         }
 

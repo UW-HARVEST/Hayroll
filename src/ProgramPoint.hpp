@@ -41,7 +41,7 @@ struct ProgramPoint
         return std::format("{}\n{}\n", includeTree->stacktrace(), toString());
     }
 
-    ProgramPoint parent(std::optional<TSNode> includeNodeInParentFile = std::nullopt) const
+    ProgramPoint parent() const
     {
         // In the same file, just do parent for the TSNode.
         if (TSNode parentNode = node.parent())
@@ -51,9 +51,9 @@ struct ProgramPoint
         // In a different file, we need to find the parent include tree.
         IncludeTreePtr parentIncludeTree = includeTree->parent.lock();
         assert(parentIncludeTree);
-        assert(includeNodeInParentFile);
+        assert(includeTree->includeNode);
         // If we have a node in the parent file, we can use it to find the parent include tree.
-        return ProgramPoint{parentIncludeTree, *includeNodeInParentFile};
+        return ProgramPoint{parentIncludeTree, includeTree->includeNode};
     }
 
     ProgramPoint nextSibling() const

@@ -485,14 +485,14 @@ public:
         // preproc_include
         // preproc_include_next
 
-        IncludeTreePtr & includeTree = startWarp.programPoint.includeTree;
-        TSNode includeNode = startWarp.programPoint.node;
+        const auto & [programPoint, states] = startWarp;
+        const auto & [includeTree, node] = programPoint;
 
         ProgramPoint joinPoint = startWarp.programPoint.nextSibling();
         
-        if (includeNode.isSymbol(lang.preproc_include_s))
+        if (node.isSymbol(lang.preproc_include_s))
         {
-            TSNode pathNode = includeNode.childByFieldId(lang.preproc_include_s.path_f);
+            TSNode pathNode = node.childByFieldId(lang.preproc_include_s.path_f);
             assert(pathNode.isSymbol(lang.string_literal_s) || pathNode.isSymbol(lang.system_lib_string_s));
             bool isSystemInclude = pathNode.isSymbol(lang.system_lib_string_s);
             TSNode stringContentNode = pathNode.childByFieldId(lang.string_literal_s.content_f); // Both types have this field.
@@ -506,11 +506,11 @@ public:
                 // Include found, add it to the AST bank and create a new state for it.
                 const TSTree & tree = astBank.addFile(includePath);
                 TSNode root = tree.rootNode();
-                startWarp.programPoint = {includeTree->addChild(includeNode, includePath), root};
+                startWarp.programPoint = {includeTree->addChild(node, includePath), root};
                 // Print the startWarp for debugging.
                 SPDLOG_DEBUG(std::format("Executing include symbolically: {}", startWarp.programPoint.toString()));
                 // Init the premise tree node with a false premise.
-                scribe.addPremiseOrCreateChild(startWarp.programPoint, ctx.bool_val(false), includeNode);
+                scribe.addPremiseOrCreateChild(startWarp.programPoint, ctx.bool_val(false));
                 return executeTranslationUnit(std::move(startWarp), joinPoint);
             }
             else // Header is outsde of project path, execute concretely.
@@ -521,7 +521,7 @@ public:
                 TSNode root = concretelyExecutedTree.rootNode();
                 TSNode fistChild = root.firstChildForByte(0);
                 assert(fistChild.isSymbol(lang.preproc_def_s) || fistChild.isSymbol(lang.preproc_function_def_s) || fistChild.isSymbol(lang.preproc_undef_s));
-                startWarp.programPoint = {includeTree->addChild(includeNode, includePath, true), fistChild};
+                startWarp.programPoint = {includeTree->addChild(node, includePath, true), fistChild};
                 // Print the startWarp for debugging.
                 SPDLOG_DEBUG(std::format("Executing include concretely: {}", startWarp.programPoint.toString()));
                 // No scribe needed for concrete execution
