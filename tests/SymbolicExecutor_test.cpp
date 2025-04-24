@@ -96,12 +96,12 @@ int main(int argc, char **argv)
     saveSource(incSrcString, "inc.h");
 
     SymbolicExecutor executor(entryPath, tmpPath);
-    std::vector<State> endStates = executor.run();
+    Warp endWarp = executor.run();
     PremiseTree * premiseTree = executor.scribe.borrowTree();
     IncludeTreePtr includeTree = executor.includeTree;
     const CPreproc & lang = executor.lang;
 
-    for (const State & state : endStates)
+    for (const State & state : endWarp.states)
     {
         std::cout << std::format("End state:\n{}\n==============\n", state.toStringFull());
     }
