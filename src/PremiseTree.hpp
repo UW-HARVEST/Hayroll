@@ -132,26 +132,26 @@ public:
         map.insert_or_assign(programPoint, tree.get());
     }
 
-    // If a premise tree node for the given program point already exists, disjunct the premise with the existing one.
-    // Otherwise, create a new premise tree node and add the premise to it, automatically finding the parent node.
-    // When the parent node is in a different file, includeNodeInParentFile must be provided.
-    PremiseTree * addPremiseOrCreateChild
-    (
-        const ProgramPoint & programPoint,
-        const z3::expr & premise
-    )
+    // Disjunct the premise with the existing one.
+    void disjunctPremise(const ProgramPoint & programPoint, const z3::expr & premise)
+    {
+        if (!init) return;
+        SPDLOG_DEBUG(std::format("Scribe disjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string()));
+        auto it = map.find(programPoint);
+        assert(it != map.end());
+        PremiseTree * treeNode = it->second;
+        treeNode->premise = treeNode->premise || premise;
+        SPDLOG_DEBUG(std::format("New premise: {}", treeNode->premise.to_string()));
+    }
+
+    // Create a new premise tree node and add the premise to it, automatically finding the parent node.
+    PremiseTree * createNode(const ProgramPoint & programPoint, const z3::expr & premise)
     {
         if (!init) return nullptr;
-        SPDLOG_DEBUG(std::format("Scribe adding premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string()));
-        if (auto it = map.find(programPoint); it != map.end())
-        {
-            PremiseTree * treeNode = it->second;
-            treeNode->premise = treeNode->premise || premise;
-            SPDLOG_DEBUG(std::format("New premise: {}", treeNode->premise.to_string()));
-            return treeNode;
-        }
+        assert(map.find(programPoint) == map.end());
+
         // Keep going to parent until such program point has a corresponding premise tree node.
-        ProgramPoint ancestor = programPoint.parent();
+        ProgramPoint ancestor = programPoint;
         PremiseTree * parent = nullptr;
         while (true)
         {
@@ -166,7 +166,7 @@ public:
         }
 
         PremiseTree * newTree = parent->addChild(programPoint, premise);
-        map.insert_or_assign(programPoint, newTree);
+        map.insert(std::make_pair(programPoint, newTree));
 
         SPDLOG_DEBUG(std::format("Created new premise tree node: {}", newTree->toString()));
         SPDLOG_DEBUG(std::format("Parent premise tree node: {}", parent->toString()));

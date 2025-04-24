@@ -143,7 +143,8 @@ public:
         std::string predefinedMacros = includeResolver.getPredefinedMacros();
         const TSTree & predefinedMacroTree = astBank.addAnonymousSource(std::move(predefinedMacros));
         State predefinedMacroState{SymbolTable::make(), ctx.bool_val(true)};
-        Warp predefinedMacroWarp{ProgramPoint{IncludeTree::make(TSNode{}, "<PREDEFINED_MACROS>"), predefinedMacroTree.rootNode()}, {predefinedMacroState}};
+        ProgramPoint predefinedMacroProgramPoint{IncludeTree::make(TSNode{}, "<PREDEFINED_MACROS>"), predefinedMacroTree.rootNode()};
+        Warp predefinedMacroWarp{std::move(predefinedMacroProgramPoint), {std::move(predefinedMacroState)}};
         predefinedMacroWarp = executeTranslationUnit(std::move(predefinedMacroWarp));
         assert(predefinedMacroWarp.states.size() == 1);
         SymbolTablePtr predefinedMacroSymbolTable = predefinedMacroWarp.states[0].symbolTable;
@@ -428,7 +429,7 @@ public:
                 // Call the scribe to create a new premise node for the body.
                 if (body)
                 {
-                    scribe.addPremiseOrCreateChild({includeTree, body}, ctx.bool_val(false));
+                    scribe.createNode({includeTree, body}, ctx.bool_val(false));
                 }
                 std::vector<Warp> warps = collectIfBodies(std::move(elseWarp));
                 warps.push_back(std::move(thenWarp));
@@ -438,12 +439,12 @@ public:
             {
                 if (body)
                 {
-                    scribe.addPremiseOrCreateChild({includeTree, body}, ctx.bool_val(false));
+                    scribe.createNode({includeTree, body}, ctx.bool_val(false));
                 }
                 // Call the scribe to mark the else body as unreachable, since we are not going to recurse into it.
                 if (alternative)
                 {
-                    scribe.addPremiseOrCreateChild({includeTree, alternative}, ctx.bool_val(false));
+                    scribe.createNode({includeTree, alternative}, ctx.bool_val(false));
                 }
                 return {std::move(thenWarp)};
             }
@@ -452,7 +453,7 @@ public:
                 // Call the scribe to mark the then body as unreachable.
                 if (body)
                 {
-                    scribe.addPremiseOrCreateChild({includeTree, body}, ctx.bool_val(false));
+                    scribe.createNode({includeTree, body}, ctx.bool_val(false));
                 }
                 return collectIfBodies(std::move(elseWarp));
             }
@@ -464,7 +465,7 @@ public:
             if (body)
             {
                 assert(body.isSymbol(lang.block_items_s));
-                scribe.addPremiseOrCreateChild({includeTree, body}, ctx.bool_val(false));
+                scribe.createNode({includeTree, body}, ctx.bool_val(false));
                 startWarp.programPoint.node = body;
                 return {std::move(startWarp)};
             }
@@ -510,7 +511,7 @@ public:
                 // Print the startWarp for debugging.
                 SPDLOG_DEBUG(std::format("Executing include symbolically: {}", startWarp.programPoint.toString()));
                 // Init the premise tree node with a false premise.
-                scribe.addPremiseOrCreateChild(startWarp.programPoint, ctx.bool_val(false));
+                scribe.createNode(startWarp.programPoint, ctx.bool_val(false));
                 return executeTranslationUnit(std::move(startWarp), joinPoint);
             }
             else // Header is outsde of project path, execute concretely.
@@ -619,7 +620,7 @@ public:
                 // We need to call the scribe to add its premise to the block_items or translation_unit and set the node to the join point.
                 for (State & state : warp.states)
                 {
-                    scribe.addPremiseOrCreateChild(body, state.premise);
+                    scribe.disjunctPremise(body, state.premise);
                 }
                 blockedWarps.push_back(std::move(warp));
                 continue;
