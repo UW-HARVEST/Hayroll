@@ -62,6 +62,11 @@ public:
 
 using Symbol = std::variant<ObjectSymbol, FunctionSymbol, UndefinedSymbol, ExpandedSymbol>;
 
+std::string_view symbolName(const Symbol & symbol)
+{
+    return std::visit([](const auto & s) { return s.name; }, symbol);
+}
+
 
 // Chained hashmap symbol table that holds macro definitions.
 // Shares parents as an immutable data structure.

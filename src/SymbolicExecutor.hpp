@@ -112,6 +112,19 @@ struct Warp
             state.symbolTable = state.symbolTable->define(std::move(symbolCopy));
         }
     }
+
+    void defineAllIfUnknown(Symbol && symbol)
+    {
+        for (State & state : states)
+        {
+            std::optional<const Symbol *> existingSymbol = state.symbolTable->lookup(symbolName(symbol));
+            if (!existingSymbol)
+            {
+                Symbol symbolCopy = symbol;
+                state.symbolTable = state.symbolTable->define(std::move(symbolCopy));
+            }
+        }
+    }
 };
 
 class SymbolicExecutor
@@ -170,6 +183,25 @@ public:
     {
         SPDLOG_DEBUG(std::format("Executing translation unit: {}", startWarp.programPoint.toString()));
         assert(startWarp.programPoint.node.isSymbol(lang.translation_unit_s));
+
+        // Key assumption: any macro name that is ever defined or undefined in the code,
+        // it is not intended to be supplemented by the user from the command line (-D).
+        // An example of this is header guard macros.
+        // We enforce this by scanning the translation unit for all #define and #undef nodes,
+        // and undefining them in the symbol table.
+        for (TSNode node : startWarp.programPoint.node.iterateDescendants())
+        {
+            if (node.isSymbol(lang.preproc_def_s) || node.isSymbol(lang.preproc_function_def_s) || node.isSymbol(lang.preproc_undef_s))
+            {
+                // We need to undefine the macro in the symbol table.
+                // This is done by creating a new state with the same symbol table,
+                // but with the macro undefined.
+                TSNode name = node.childByFieldId(lang.preproc_undef_s.name_f);
+                std::string_view nameStr = name.textView();
+                startWarp.defineAllIfUnknown(UndefinedSymbol{nameStr});
+            }
+        }
+
         // All states shall meet at the end of the translation unit (invalid node).
         if (!joinPoint) joinPoint = startWarp.programPoint.nextSibling();
         return executeInLockStep({std::move(startWarp)}, *joinPoint);
