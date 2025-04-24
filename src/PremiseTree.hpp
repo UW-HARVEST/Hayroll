@@ -74,6 +74,13 @@ struct PremiseTree
     {
     }
 
+    void disjunctPremise(const z3::expr & premise)
+    {
+        SPDLOG_DEBUG(std::format("Disjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string()));
+        this->premise = this->premise || premise;
+        SPDLOG_DEBUG(std::format("New premise: {}", this->premise.to_string()));
+    }
+
     std::string toString(size_t depth = 0) const
     {
         std::string str = std::format
@@ -136,19 +143,18 @@ public:
     void disjunctPremise(const ProgramPoint & programPoint, const z3::expr & premise)
     {
         if (!init) return;
-        SPDLOG_DEBUG(std::format("Scribe disjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string()));
         auto it = map.find(programPoint);
         assert(it != map.end());
         PremiseTree * treeNode = it->second;
-        treeNode->premise = treeNode->premise || premise;
-        SPDLOG_DEBUG(std::format("New premise: {}", treeNode->premise.to_string()));
+        assert(treeNode);
+        treeNode->disjunctPremise(premise);
     }
 
     // Create a new premise tree node and add the premise to it, automatically finding the parent node.
     PremiseTree * createNode(const ProgramPoint & programPoint, const z3::expr & premise)
     {
         if (!init) return nullptr;
-        assert(map.find(programPoint) == map.end());
+        assert(!map.contains(programPoint));
 
         // Keep going to parent until such program point has a corresponding premise tree node.
         ProgramPoint ancestor = programPoint;

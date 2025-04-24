@@ -86,7 +86,7 @@ struct State
     }
 };
 
-// A set of states at the same program point.
+// A set of states at the same program point, meant for lock-step execution.
 struct Warp
 {
     ProgramPoint programPoint;
@@ -308,10 +308,10 @@ public:
         // preproc_ifdef
         // preproc_ifndef
         const auto & [programPoint, states] = startWarp;
-        const auto [includeTree, node] = programPoint;
+        const auto & [includeTree, node] = programPoint;
         assert(node.isSymbol(lang.preproc_if_s) || node.isSymbol(lang.preproc_ifdef_s) || node.isSymbol(lang.preproc_ifndef_s));
 
-        SPDLOG_DEBUG(std::format("Executing conditional: {}", startWarp.programPoint.toString()));
+        SPDLOG_DEBUG(std::format("Executing conditional: {}", programPoint.toString()));
         
         ProgramPoint joinPoint = programPoint.nextSibling();
         std::vector<Warp> warps = collectIfBodies(std::move(startWarp));
@@ -429,7 +429,11 @@ public:
                 // Call the scribe to create a new premise node for the body.
                 if (body)
                 {
-                    scribe.createNode({includeTree, body}, ctx.bool_val(false));
+                    PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx.bool_val(false));
+                    for (const State & state : thenWarp.states)
+                    {
+                        premiseTreeNode->disjunctPremise(state.premise);
+                    }
                 }
                 std::vector<Warp> warps = collectIfBodies(std::move(elseWarp));
                 warps.push_back(std::move(thenWarp));
@@ -439,7 +443,11 @@ public:
             {
                 if (body)
                 {
-                    scribe.createNode({includeTree, body}, ctx.bool_val(false));
+                    PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx.bool_val(false));
+                    for (const State & state : thenWarp.states)
+                    {
+                        premiseTreeNode->disjunctPremise(state.premise);
+                    }
                 }
                 // Call the scribe to mark the else body as unreachable, since we are not going to recurse into it.
                 if (alternative)
@@ -511,7 +519,11 @@ public:
                 // Print the startWarp for debugging.
                 SPDLOG_DEBUG(std::format("Executing include symbolically: {}", startWarp.programPoint.toString()));
                 // Init the premise tree node with a false premise.
-                scribe.createNode(startWarp.programPoint, ctx.bool_val(false));
+                PremiseTree * premiseTreeNode = scribe.createNode(startWarp.programPoint, ctx.bool_val(false));
+                for (const State & state : states)
+                {
+                    premiseTreeNode->disjunctPremise(state.premise);
+                }
                 return executeTranslationUnit(std::move(startWarp), joinPoint);
             }
             else // Header is outsde of project path, execute concretely.
@@ -578,6 +590,7 @@ public:
         std::vector<std::tuple<ProgramPoint, Warp>> tasks; // (block_items/translation_unit body, warp)
         std::vector<Warp> blockedWarps;
 
+        // Initialize the tasks with the start warps.
         for (Warp & warp : startWarps)
         {
             Warp warpOwned = std::move(warp);
@@ -616,26 +629,23 @@ public:
             tasks.pop_back();
             if (!warp.programPoint.node)
             {
-                // This means it successfully reached the end of the block_items or translation_unit (not being killed by #error).
-                // We need to call the scribe to add its premise to the block_items or translation_unit and set the node to the join point.
-                for (State & state : warp.states)
-                {
-                    scribe.disjunctPremise(body, state.premise);
-                }
                 blockedWarps.push_back(std::move(warp));
-                continue;
             }
-
-            tasks.emplace_back(body, executeOne(std::move(warp)));
+            else
+            {
+                tasks.emplace_back(body, executeOne(std::move(warp)));
+            }
         }
 
         #if DEBUG
+        {
             SPDLOG_DEBUG(std::format("Blocked warps ({}):", blockedWarps.size()));
             SPDLOG_DEBUG(std::format("Join point: {}", joinPoint.toString()));
             for (const Warp & warp : blockedWarps)
             {
                 SPDLOG_DEBUG(std::format("{}", warp.toString()));
             }
+        }
         #endif
 
         // Collect states in all blocked warps.
@@ -671,12 +681,14 @@ public:
         }
 
         #if DEBUG
+        {
             SPDLOG_DEBUG(std::format("Merged states ({}):", mergedStates.size()));
             SPDLOG_DEBUG(std::format("Join point: {}", joinPoint.toString()));
             for (const State & state : mergedStates)
             {
                 SPDLOG_DEBUG(std::format("{}", state.toString()));
             }
+        }
         #endif
         
         return {joinPoint, std::move(mergedStates)};
