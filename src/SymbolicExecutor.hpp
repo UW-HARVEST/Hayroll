@@ -386,6 +386,33 @@ public:
             }
             else assert(false);
 
+            // ifPremise -> ||(enterThenPremise)
+            std::unordered_map<z3::expr, z3::expr, Z3ExprHash, Z3ExprEqual> premiseCollector;
+            // Collect premises of states under whose symbol table the expanded ifPremise is identical.
+            auto collectPremise = [&premiseCollector](const z3::expr & expandedIfPremise, const z3::expr statePremise)
+            {
+                auto it = premiseCollector.find(expandedIfPremise);
+                if (it == premiseCollector.end()) premiseCollector.emplace(expandedIfPremise, statePremise);
+                else it->second = it->second || statePremise;
+            };
+            // Aggregate and simplify by each key.
+            auto aggregatePremise = [&premiseCollector, this]() -> z3::expr
+            {
+                z3::expr result = ctx.bool_val(false);
+                for (const auto & [expandedIfPremise, statePremise] : premiseCollector)
+                {
+                    SPDLOG_DEBUG
+                    (
+                        "Aggregating premise:\nexpandedIfPremise:\n{}\nstatePremise:\n{}\nsimplified:\n{}",
+                        expandedIfPremise.to_string(),
+                        statePremise.to_string(),
+                        simplifyOrOfAnd(statePremise).to_string()
+                    );
+                    result = result || (expandedIfPremise && simplifyOrOfAnd(statePremise));
+                }
+                return simplifyOrOfAnd(result);
+            };
+
             // Split each state and put them into the then and else warps.
             for (State & state : states)
             {
@@ -395,6 +422,8 @@ public:
                 z3::expr enterThenPremise = premise && ifPremise;
                 z3::expr elsePremise = !ifPremise;
                 z3::expr enterElsePremise = premise && elsePremise;
+
+                collectPremise(ifPremise, premise);
 
                 bool enterThenPremiseIsSat = z3Check(enterThenPremise) == z3::sat;
                 bool enterElsePremiseIsSat = z3Check(enterElsePremise) == z3::sat;
@@ -430,10 +459,7 @@ public:
                 if (body)
                 {
                     PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx.bool_val(false));
-                    for (const State & state : thenWarp.states)
-                    {
-                        premiseTreeNode->disjunctPremise(state.premise);
-                    }
+                    premiseTreeNode->disjunctPremise(aggregatePremise());
                 }
                 std::vector<Warp> warps = collectIfBodies(std::move(elseWarp));
                 warps.push_back(std::move(thenWarp));
@@ -444,10 +470,7 @@ public:
                 if (body)
                 {
                     PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx.bool_val(false));
-                    for (const State & state : thenWarp.states)
-                    {
-                        premiseTreeNode->disjunctPremise(state.premise);
-                    }
+                    premiseTreeNode->disjunctPremise(aggregatePremise());
                 }
                 // Call the scribe to mark the else body as unreachable, since we are not going to recurse into it.
                 if (alternative)
@@ -473,7 +496,11 @@ public:
             if (body)
             {
                 assert(body.isSymbol(lang.block_items_s));
-                scribe.createNode({includeTree, body}, ctx.bool_val(false));
+                PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx.bool_val(false));
+                for (const State & state : states)
+                {
+                    premiseTreeNode->disjunctPremise(state.premise);
+                }
                 startWarp.programPoint.node = body;
                 return {std::move(startWarp)};
             }

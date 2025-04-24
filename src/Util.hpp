@@ -113,6 +113,24 @@ struct TransparentStringEqual
     }
 };
 
+// In support of std::unordered_map<z3::expr, T>
+struct Z3ExprHash
+{
+    size_t operator()(const z3::expr & expr) const
+    {
+        return expr.hash();
+    }
+};
+
+// In support of std::unordered_map<z3::expr, T>
+struct Z3ExprEqual
+{
+    bool operator()(const z3::expr & lhs, const z3::expr & rhs) const
+    {
+        return z3::eq(lhs, rhs);
+    }
+};
+
 z3::check_result z3Check(const z3::expr & expr)
 {
     z3::context & ctx = expr.ctx();
@@ -153,7 +171,7 @@ z3::expr factorCommonTerm(const z3::expr & e)
 {
     z3::context &ctx = e.ctx();
 
-    // If application (compound) expression:
+    // If not application (compound) expression:
     if (!e.is_app()) return e;
     if (e.is_or()) // Handle disjunction of conjunctions: (or (and ...) (and ...) ...)
     {
@@ -190,7 +208,7 @@ z3::expr factorCommonTerm(const z3::expr & e)
                 {
                     for (const z3::expr &d : ors[i].args())
                     {
-                        if (c.hash() == d.hash())
+                        if (z3::eq(c, d))
                         {
                             tmp.push_back(c);
                             break;
@@ -217,7 +235,7 @@ z3::expr factorCommonTerm(const z3::expr & e)
                             (
                                 common.begin(),
                                 common.end(),
-                                [&](auto &c){ return c.hash() == lit.hash(); }
+                                [&](auto &c){ return z3::eq(c, lit); }
                             )
                         )
                         {
@@ -282,7 +300,7 @@ z3::expr factorCommonTerm(const z3::expr & e)
                 {
                     for (const z3::expr & d : ands[i].args())
                     {
-                        if (c.hash() == d.hash())
+                        if (z3::eq(c, d))
                         {
                             tmp.push_back(c);
                             break;
@@ -307,7 +325,7 @@ z3::expr factorCommonTerm(const z3::expr & e)
                             (
                                 common.begin(),
                                 common.end(),
-                                [&](auto &c){ return c.hash() == lit.hash(); }
+                                [&](auto &c){ return z3::eq(c, lit); }
                             )
                         )
                         {
@@ -380,39 +398,50 @@ z3::expr combinedSimplify(const z3::expr & expr)
 z3::expr simplifyOrOfAnd(const z3::expr & expr)
 {
     z3::context & ctx = expr.ctx();
+    
+    // SPDLOG_DEBUG(std::format("simplifyOrOfAnd input: {}", expr.to_string()));
+    
+    z3::params paramsSimplify(ctx);
+    paramsSimplify.set("flat_and_or", true);
+    paramsSimplify.set("bv_ite2id", true);
+    paramsSimplify.set("local_ctx", true);
+    z3::tactic tacticSimplify = with(z3::tactic(ctx, "simplify"), paramsSimplify);
 
-    z3::params simp_p(ctx);
-    simp_p.set("flat_and_or", true);
-    simp_p.set("bv_ite2id", true);
-    simp_p.set("local_ctx", true);
-    // simp_p.set("elim_and",    true);
-    // simp_p.set("elim_ite",    true);
-    z3::tactic simplify_t = with(z3::tactic(ctx, "simplify"), simp_p);
+    // Flat and/or before sending to factorCommonTerm
+    z3::goal goal1(ctx);
+    goal1.add(expr);
+    z3::apply_result res1 = tacticSimplify(goal1);
+    assert(res1.size() > 0);
+    z3::expr expr1 = res1[0].as_expr();
 
-    z3::tactic t =
-        simplify_t
+    // SPDLOG_DEBUG(std::format("simplifyOrOfAnd simplify_t: {}", expr0.to_string()));
+
+    z3::expr expr2 = factorCommonTerm(expr1);
+
+    // SPDLOG_DEBUG(std::format("simplifyOrOfAnd factorCommonTerm: {}", expr1.to_string()));
+
+    z3::tactic tacticCompound =
+        tacticSimplify
         & z3::tactic(ctx, "propagate-values")
         & z3::tactic(ctx, "unit-subsume-simplify")
         & z3::tactic(ctx, "aig")
         & z3::tactic(ctx, "nnf")
+        & z3::tactic(ctx, "dom-simplify")
         & z3::tactic(ctx, "ctx-solver-simplify")
-        // & z3::tactic(ctx, "dom-simplify")
         // & z3::tactic(ctx, "simplify")
-        & simplify_t
-        ;
+        & tacticSimplify
+    ;
 
-    z3::goal g(ctx);
-    g.add(expr);
-    z3::apply_result res = t(g);
-    assert(res.size() > 0);
-    z3::expr resExpr = res[0].as_expr();
-
-    z3::expr expr2 = factorCommonTerm(resExpr);
+    z3::goal goal2(ctx);
+    goal2.add(expr2);
+    z3::apply_result res2 = tacticCompound(goal2);
+    assert(res2.size() > 0);
+    z3::expr expr3 = res2[0].as_expr();
 
     // Check that resExpr is equivalent to expr
-    assert(z3Check(expr2 != expr) == z3::unsat);
+    assert(z3Check(expr3 != expr) == z3::unsat);
     
-    return ctxSolverSimplify(expr2);
+    return expr3;
 }
 
 } // namespace Hayroll

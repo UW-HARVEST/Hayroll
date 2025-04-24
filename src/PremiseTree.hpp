@@ -172,7 +172,7 @@ public:
         }
 
         PremiseTree * newTree = parent->addChild(programPoint, premise);
-        map.insert(std::make_pair(programPoint, newTree));
+        map.emplace(programPoint, newTree);
 
         SPDLOG_DEBUG(std::format("Created new premise tree node: {}", newTree->toString()));
         SPDLOG_DEBUG(std::format("Parent premise tree node: {}", parent->toString()));
