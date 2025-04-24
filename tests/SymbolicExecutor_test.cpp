@@ -88,54 +88,67 @@ int main(int argc, char **argv)
     )";
     saveSource(incSrcString, "inc.h");
 
-    SymbolicExecutor executor(entryPath, tmpPath);
-    Warp endWarp = executor.run();
-    PremiseTree * premiseTree = executor.scribe.borrowTree();
-    IncludeTreePtr includeTree = executor.includeTree;
-    const CPreproc & lang = executor.lang;
+    std::vector<SymbolicExecutor> executors;
 
-    for (const State & state : endWarp.states)
-    {
-        std::cout << std::format("End state:\n{}\n==============\n", state.toStringFull());
-    }
+    executors.push_back(std::move(SymbolicExecutor(entryPath, tmpPath)));
 
-    std::cout << "Premise tree:\n";
-    std::cout << premiseTree->toString() << std::endl;
-
-    premiseTree->refine();
-    std::cout << "Refined premise tree:\n";
-    std::cout << premiseTree->toString() << std::endl;
-
-    // Checking: every premise carried by a #check line should imply the premise of the smallest premise tree node it is in.
     bool allPass = true;
-    for (const IncludeTreePtr includeTreeNode : *includeTree)
+
+    for (SymbolicExecutor & executor : executors)
     {
-        if (includeTreeNode->isSystemInclude) continue;
-        TSNode astRoot = executor.astBank.find(includeTreeNode->path).rootNode();
-        for (const TSNode & node : astRoot.iterateDescendants())
+
+        Warp endWarp = executor.run();
+        PremiseTree * premiseTree = executor.scribe.borrowTree();
+        IncludeTreePtr includeTree = executor.includeTree;
+        const CPreproc & lang = executor.lang;
+
+        for (const State & state : endWarp.states)
         {
-            if (node && node.isSymbol(lang.preproc_call_s) && node.childByFieldId(lang.preproc_call_s.directive_f).textView() == "#check")
+            std::cout << std::format("End state:\n{}\n==============\n", state.toStringFull());
+        }
+
+        std::cout << "Premise tree:\n";
+        std::cout << premiseTree->toString() << std::endl;
+
+        premiseTree->refine();
+        std::cout << "Refined premise tree:\n";
+        std::cout << premiseTree->toString() << std::endl;
+
+        // Checking: every premise carried by a #check line should imply the premise of the smallest premise tree node it is in.
+        for (const IncludeTreePtr includeTreeNode : *includeTree)
+        {
+            if (includeTreeNode->isSystemInclude) continue;
+            TSNode astRoot = executor.astBank.find(includeTreeNode->path).rootNode();
+            for (const TSNode & node : astRoot.iterateDescendants())
             {
-                ProgramPoint programPoint{includeTreeNode, node};
-                const PremiseTree * premiseTreeNode = premiseTree->findEnclosingNode(programPoint);
-                TSNode writtenPremiseNode = node.childByFieldId(lang.preproc_call_s.argument_f);
-                assert(writtenPremiseNode.isSymbol(lang.preproc_tokens_s));
-                std::vector<TSNode> writtenPremiseTokens = lang.tokensToTokenVector(writtenPremiseNode);
-                z3::expr writtenPremise = executor.macroExpander.symbolizeToBoolExpr(std::move(writtenPremiseTokens));
-                writtenPremise = simplifyOrOfAnd(writtenPremise);
-                z3::expr premise = premiseTreeNode->getCompletePremise();
-                z3::expr premiseImpliesWrittenPremise = z3::implies(premise, writtenPremise);
-                z3::solver s(executor.ctx);
-                s.add(!premiseImpliesWrittenPremise);
-                std::cout << std::format("Checking written premise at {}\n", programPoint.toString());
-                if (s.check() == z3::unsat)
+                if (node && node.isSymbol(lang.preproc_call_s) && node.childByFieldId(lang.preproc_call_s.directive_f).textView() == "#check")
                 {
-                    std::cout << std::format("Premise {} implies written premise {}\n", premise.to_string(), writtenPremise.to_string());
-                }
-                else
-                {
-                    std::cout << std::format("Premise {} does not imply written premise {}\n", premise.to_string(), writtenPremise.to_string());
-                    allPass = false;
+                    ProgramPoint programPoint{includeTreeNode, node};
+                    const PremiseTree * premiseTreeNode = premiseTree->findEnclosingNode(programPoint);
+                    TSNode writtenPremiseNode = node.childByFieldId(lang.preproc_call_s.argument_f);
+                    assert(writtenPremiseNode.isSymbol(lang.preproc_tokens_s));
+                    std::vector<TSNode> writtenPremiseTokens = lang.tokensToTokenVector(writtenPremiseNode);
+                    z3::expr writtenPremise = executor.macroExpander.symbolizeToBoolExpr(std::move(writtenPremiseTokens));
+                    writtenPremise = simplifyOrOfAnd(writtenPremise);
+                    if (premiseTree->premise.to_string().size() > 1024)
+                    {
+                        std::cout << "Warning: inconcise premise. \n";
+                        allPass = false;
+                    }
+                    z3::expr premise = premiseTreeNode->getCompletePremise();
+                    z3::expr premiseImpliesWrittenPremise = z3::implies(premise, writtenPremise);
+                    z3::solver s(*executor.ctx);
+                    s.add(!premiseImpliesWrittenPremise);
+                    std::cout << std::format("Checking written premise at {}\n", programPoint.toString());
+                    if (s.check() == z3::unsat)
+                    {
+                        std::cout << std::format("Pass: Premise {} implies written premise {}\n", premise.to_string(), writtenPremise.to_string());
+                    }
+                    else
+                    {
+                        std::cout << std::format("Error: Premise {} does not imply written premise {}\n", premise.to_string(), writtenPremise.to_string());
+                        allPass = false;
+                    }
                 }
             }
         }

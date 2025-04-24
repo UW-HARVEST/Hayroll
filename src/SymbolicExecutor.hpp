@@ -131,7 +131,7 @@ class SymbolicExecutor
 {
 public:
     const CPreproc lang;
-    z3::context ctx;
+    std::unique_ptr<z3::context> ctx;
     std::filesystem::path srcPath;
     std::filesystem::path projPath; // Any #include not under projPath will be concretely executed.
     IncludeResolver includeResolver;
@@ -141,21 +141,26 @@ public:
     PremiseTreeScribe scribe;
 
     SymbolicExecutor(std::filesystem::path srcPath, std::filesystem::path projPath, const std::vector<std::filesystem::path> & includePaths = {})
-        : lang(CPreproc()), ctx(z3::context()), srcPath(std::filesystem::canonical(srcPath)),
+        : lang(CPreproc()), ctx(std::make_unique<z3::context>()), srcPath(std::filesystem::canonical(srcPath)),
           projPath(std::filesystem::canonical(projPath)), includeResolver(CLANG_EXE, includePaths),
-          astBank(lang), macroExpander(lang, ctx),
+          astBank(lang), macroExpander(lang, ctx.get()),
           includeTree(IncludeTree::make(TSNode{}, std::filesystem::canonical(srcPath))),
           scribe() // Init scribe after we have parsed predefined macros
     {
         astBank.addFileOrFind(srcPath);
+        SymbolTable::totalSymbols = 0;
+        SymbolTable::totalSymbolTables = 0;
     }
+
+    SymbolicExecutor(SymbolicExecutor && other) = default;
+    SymbolicExecutor & operator=(SymbolicExecutor && other) = default;
 
     Warp run()
     {
         // Generate a base symbol table with the predefined macros.
         std::string predefinedMacros = includeResolver.getPredefinedMacros();
         const TSTree & predefinedMacroTree = astBank.addAnonymousSource(std::move(predefinedMacros));
-        State predefinedMacroState{SymbolTable::make(), ctx.bool_val(true)};
+        State predefinedMacroState{SymbolTable::make(), ctx->bool_val(true)};
         ProgramPoint predefinedMacroProgramPoint{IncludeTree::make(TSNode{}, "<PREDEFINED_MACROS>"), predefinedMacroTree.rootNode()};
         Warp predefinedMacroWarp{std::move(predefinedMacroProgramPoint), {std::move(predefinedMacroState)}};
         predefinedMacroWarp = executeTranslationUnit(std::move(predefinedMacroWarp));
@@ -167,12 +172,12 @@ public:
         TSNode root = tree.rootNode();
         predefinedMacroSymbolTable->makeImmutable(); // Just for debug clarity
         // The initial state is the root node of the tree.
-        State startState{predefinedMacroSymbolTable, ctx.bool_val(true)};
+        State startState{predefinedMacroSymbolTable, ctx->bool_val(true)};
         Warp startWarp{ProgramPoint{includeTree, root}, {std::move(startState)}};
         // Start the premise tree with a true premise.
         // When a state reaches an #error, it does not stop, instead, it conjuncts the negation
         // of its premise to the root node of the premise tree.
-        scribe = PremiseTreeScribe(startWarp.programPoint, ctx.bool_val(true));
+        scribe = PremiseTreeScribe(startWarp.programPoint, ctx->bool_val(true));
         Warp endWarp = executeTranslationUnit(std::move(startWarp));
         
         return endWarp;
@@ -429,7 +434,7 @@ public:
             // Aggregate and simplify by each key.
             auto aggregatePremise = [&premiseCollector, this]() -> z3::expr
             {
-                z3::expr result = ctx.bool_val(false);
+                z3::expr result = ctx->bool_val(false);
                 for (const auto & [expandedIfPremise, statePremise] : premiseCollector)
                 {
                     SPDLOG_DEBUG
@@ -489,7 +494,7 @@ public:
                 // Call the scribe to create a new premise node for the body.
                 if (body)
                 {
-                    PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx.bool_val(false));
+                    PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx->bool_val(false));
                     premiseTreeNode->disjunctPremise(aggregatePremise());
                 }
                 std::vector<Warp> warps = collectIfBodies(std::move(elseWarp));
@@ -500,13 +505,13 @@ public:
             {
                 if (body)
                 {
-                    PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx.bool_val(false));
+                    PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx->bool_val(false));
                     premiseTreeNode->disjunctPremise(aggregatePremise());
                 }
                 // Call the scribe to mark the else body as unreachable, since we are not going to recurse into it.
                 if (alternative)
                 {
-                    scribe.createNode({includeTree, alternative}, ctx.bool_val(false));
+                    scribe.createNode({includeTree, alternative}, ctx->bool_val(false));
                 }
                 return {std::move(thenWarp)};
             }
@@ -515,7 +520,7 @@ public:
                 // Call the scribe to mark the then body as unreachable.
                 if (body)
                 {
-                    scribe.createNode({includeTree, body}, ctx.bool_val(false));
+                    scribe.createNode({includeTree, body}, ctx->bool_val(false));
                 }
                 return collectIfBodies(std::move(elseWarp));
             }
@@ -527,7 +532,7 @@ public:
             if (body)
             {
                 assert(body.isSymbol(lang.block_items_s));
-                PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx.bool_val(false));
+                PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx->bool_val(false));
                 for (const State & state : states)
                 {
                     premiseTreeNode->disjunctPremise(state.premise);
@@ -577,7 +582,7 @@ public:
                 // Print the startWarp for debugging.
                 SPDLOG_DEBUG(std::format("Executing include symbolically: {}", startWarp.programPoint.toString()));
                 // Init the premise tree node with a false premise.
-                PremiseTree * premiseTreeNode = scribe.createNode(startWarp.programPoint, ctx.bool_val(false));
+                PremiseTree * premiseTreeNode = scribe.createNode(startWarp.programPoint, ctx->bool_val(false));
                 for (const State & state : states)
                 {
                     premiseTreeNode->disjunctPremise(state.premise);
@@ -614,10 +619,12 @@ public:
     {
         assert(startWarp.programPoint.node.isSymbol(lang.preproc_error_s));
         SPDLOG_DEBUG(std::format("Executing error, keeping state: {}", startWarp.toString()));
+        z3::expr disallowed = ctx->bool_val(false);
         for (State & state : startWarp.states)
         {
-            scribe.conjunctPremiseOntoRoot(!state.premise);
+            disallowed = disallowed || state.premise;
         }
+        scribe.conjunctPremiseOntoRoot(!simplifyOrOfAnd(disallowed));
         startWarp.programPoint = startWarp.programPoint.nextSibling();
         return std::move(startWarp);
     }

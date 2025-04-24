@@ -23,9 +23,9 @@ namespace Hayroll
 class MacroExpander
 {
 public:
-    MacroExpander(const CPreproc & lang, z3::context & ctx)
+    MacroExpander(const CPreproc & lang, z3::context * ctx)
         : lang(lang), parser(lang), ctx(ctx), 
-          constExpr0(ctx.int_val(0)), constExpr1(ctx.int_val(1))
+          constExpr0(ctx->int_val(0)), constExpr1(ctx->int_val(1))
     {
         // Initialize constant tokens
         auto && [tree, tokens] = parseIntoPreprocTokens("0 1 ! defined");
@@ -77,7 +77,7 @@ public:
         std::string expandedStr = expandedStrBuilder.str();
         // Parse the string into an expression
         auto [exprTree, exprNode] = parseIntoExpression(expandedStr);
-        if (!exprNode) return ctx.bool_val(false);
+        if (!exprNode) return ctx->bool_val(false);
         // Symbolize the expression
         return int2bool(symbolizeExpression(exprNode));
     }
@@ -504,8 +504,8 @@ public:
             std::string defName = std::format("def{}", name);
             std::string valName = std::format("val{}", name);
 
-            z3::expr def = ctx.bool_const(defName.c_str());
-            z3::expr val = ctx.int_const(valName.c_str());
+            z3::expr def = ctx->bool_const(defName.c_str());
+            z3::expr val = ctx->int_const(valName.c_str());
 
             // Create the expression
             z3::expr iteExpr = z3::ite(def, val, constExpr0);
@@ -520,7 +520,7 @@ public:
         {
             // Number literal, just return its value
             std::string spelling = node.text();
-            z3::expr val = ctx.int_val(spelling.c_str());
+            z3::expr val = ctx->int_val(spelling.c_str());
             return val;
         }
         else if (node.isSymbol(lang.char_literal_s))
@@ -537,7 +537,7 @@ public:
             std::string_view name = idNode.textView();
             std::string defName = std::format("def{}", name);
 
-            z3::expr def = ctx.bool_const(defName.c_str());
+            z3::expr def = ctx->bool_const(defName.c_str());
             z3::expr defExpr = bool2int(def);
             return defExpr;
         }
@@ -719,7 +719,7 @@ public:
     z3::expr int2bool(const z3::expr & expr)
     {
         assert(expr.is_int());
-        return z3::ite(expr != 0, ctx.bool_val(true), ctx.bool_val(false));
+        return z3::ite(expr != 0, ctx->bool_val(true), ctx->bool_val(false));
     }
 
     z3::expr bool2int(const z3::expr & expr)
@@ -757,7 +757,7 @@ private:
     const CPreproc & lang;
     TSParser parser;
 
-    z3::context & ctx;
+    z3::context * ctx;
 
     // Cache for the ownership of temporarily parsed trees
     TSTree tempTokensTree;

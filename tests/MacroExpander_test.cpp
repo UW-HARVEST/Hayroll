@@ -199,7 +199,7 @@ int main(int argc, char **argv)
 
     z3::context ctx;
 
-    MacroExpander expander(lang, ctx);
+    MacroExpander expander(lang, &ctx);
 
     const TSTree & tree = astBank.find(srcPath);
     TSNode root = tree.rootNode();
