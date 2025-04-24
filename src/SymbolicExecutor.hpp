@@ -147,7 +147,7 @@ public:
           includeTree(IncludeTree::make(TSNode{}, std::filesystem::canonical(srcPath))),
           scribe() // Init scribe after we have parsed predefined macros
     {
-        astBank.addFile(srcPath);
+        astBank.addFileOrFind(srcPath);
     }
 
     Warp run()
@@ -572,7 +572,7 @@ public:
             else if (includePath.string().starts_with(projPath.string())) // Header is in project path, execute symbolically. 
             {
                 // Include found, add it to the AST bank and create a new state for it.
-                const TSTree & tree = astBank.addFile(includePath);
+                const TSTree & tree = astBank.addFileOrFind(includePath);
                 TSNode root = tree.rootNode();
                 startWarp.programPoint = {includeTree->addChild(node, includePath), root};
                 // Print the startWarp for debugging.
@@ -749,6 +749,9 @@ public:
             }
         }
         #endif
+
+        SPDLOG_DEBUG(std::format("Total symbol table nodes: {}", SymbolTable::totalSymbolTables));
+        SPDLOG_DEBUG(std::format("Total symbol table items: {}", SymbolTable::totalSymbols));
         
         return {joinPoint, std::move(mergedStates)};
     }

@@ -74,11 +74,12 @@ class SymbolTable
     : public std::enable_shared_from_this<SymbolTable>
 {
 public:
-
     // Constructor
     // A SymbolTable object shall only be managed by a shared_ptr
     static SymbolTablePtr make(ConstSymbolTablePtr parent = nullptr)
     {
+        totalSymbolTables++;
+
         auto table = std::make_shared<SymbolTable>();
         table->parent = parent;
         table->immutable = false;
@@ -99,6 +100,8 @@ public:
     // The user must assign the SymbolTablePtr back to itself. 
     SymbolTablePtr define(Symbol && symbol)
     {
+        totalSymbols++;
+
         if (immutable)
         {
             SPDLOG_DEBUG("Defining symbol in immutable table, creating child");
@@ -177,6 +180,9 @@ public:
         }
         return ss.str();
     }
+    
+    static int totalSymbols;
+    static int totalSymbolTables;
 
 private:
     std::unordered_map<std::string_view, Symbol, TransparentStringHash, TransparentStringEqual> symbols;
@@ -188,6 +194,9 @@ private:
         return make(shared_from_this());
     }
 };
+
+int SymbolTable::totalSymbols = 0;
+int SymbolTable::totalSymbolTables = 0;
 
 // A top-level symbol table wrapper used for expanding macros
 // Undefines symbols in prevention of recursive expansion

@@ -152,6 +152,7 @@ merge the tree to the existing one (whose condition is now (condTree || condNewT
 Only if the tree still does not contain the file can we make sure it's skipped due to header guards
 
 valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all ./ASTBank_test
+valgrind --tool=massif --stacks=yes ./SymbolicExecutor_test &> trace.txt
 
 Only after finding that a macro symbol is function-like, will the expander start looking for parameters (pairing parentheses) in the rest part of the line
 Doing that, it is ignoring any future expansions that may happen before the final parentheses

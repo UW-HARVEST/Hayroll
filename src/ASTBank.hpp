@@ -25,9 +25,15 @@ public:
     {
     }
 
-    // Add a file to the bank. The bank parses the file and stores the syntax tree.
-    const TSTree & addFile(const std::filesystem::path & path)
+    // Add a file to the bank or find it if it already exists.
+    // The bank parses the file and stores the syntax tree.
+    const TSTree & addFileOrFind(const std::filesystem::path & path)
     {
+        if (auto it = bank.find(path); it != bank.end())
+        {
+            return it->second;
+        }
+
         std::ifstream file(path);
         if (!file.is_open())
         {

@@ -132,17 +132,17 @@ int main(int argc, char **argv)
                 z3::expr writtenPremise = executor.macroExpander.symbolizeToBoolExpr(std::move(writtenPremiseTokens));
                 writtenPremise = simplifyOrOfAnd(writtenPremise);
                 z3::expr premise = premiseTreeNode->premise;
-                z3::expr writtenPremiseImpliesPremise = z3::implies(writtenPremise, premise);
+                z3::expr premiseImpliesWrittenPremise = z3::implies(premise, writtenPremise);
                 z3::solver s(executor.ctx);
-                s.add(!writtenPremiseImpliesPremise);
+                s.add(!premiseImpliesWrittenPremise);
                 std::cout << std::format("Checking written premise at {}\n", programPoint.toString());
                 if (s.check() == z3::unsat)
                 {
-                    std::cout << std::format("Written premise {} implies premise {}\n", writtenPremise.to_string(), premise.to_string());
+                    std::cout << std::format("Premise {} implies written premise {}\n", premise.to_string(), writtenPremise.to_string());
                 }
                 else
                 {
-                    std::cout << std::format("Written premise {} does not imply premise {}\n", writtenPremise.to_string(), premise.to_string());
+                    std::cout << std::format("Premise {} does not imply written premise {}\n", premise.to_string(), writtenPremise.to_string());
                     return 1;
                 }
             }

@@ -47,7 +47,7 @@ int main(int argc, char **argv)
     CPreproc lang = CPreproc();
 
     ASTBank astBank(lang);
-    astBank.addFile(srcPath);
+    astBank.addFileOrFind(srcPath);
 
     for (const auto & [isSystemInclude, includeName] : includes)
     {
@@ -56,7 +56,7 @@ int main(int argc, char **argv)
         std::cout << "Resolved include path: " << includePath << std::endl;
         includeNode->addChild(TSNode{}, includePath);
         includeNode = includeNode->children[TSNode{}];
-        astBank.addFile(includePath);
+        astBank.addFileOrFind(includePath);
     }
 
     // Go from the last node to the root (excluding the root), printing the included files

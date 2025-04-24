@@ -195,7 +195,7 @@ int main(int argc, char **argv)
     CPreproc lang = CPreproc();
 
     ASTBank astBank(lang);
-    astBank.addFile(srcPath);
+    astBank.addFileOrFind(srcPath);
 
     z3::context ctx;
 

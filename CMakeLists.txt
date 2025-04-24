@@ -162,6 +162,14 @@ endif()
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -gdwarf-2")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
+# # AddressSanitizer
+# add_compile_options(
+#     "$<$<CONFIG:Debug>:-fsanitize=address;-fno-omit-frame-pointer>"
+# )
+# add_link_options(
+#     "$<$<CONFIG:Debug>:-fsanitize=address>"
+# )
+
 include_directories(include)
 include_directories(src)
 
