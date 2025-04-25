@@ -154,6 +154,12 @@ Only if the tree still does not contain the file can we make sure it's skipped d
 valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all ./ASTBank_test
 valgrind --tool=massif --stacks=yes ./SymbolicExecutor_test &> trace.txt
 
+flamegraph -o flamegraph.svg -- ./SymbolicExecutor_test &> trace.txt
+
+perf record -F 999 -g -- ./SymbolicExecutor_test &> trace.txt
+perf script -i perf.data > profile.linux-perf.txt
+perf script -i perf.data | speedscope -
+
 Only after finding that a macro symbol is function-like, will the expander start looking for parameters (pairing parentheses) in the rest part of the line
 Doing that, it is ignoring any future expansions that may happen before the final parentheses
 

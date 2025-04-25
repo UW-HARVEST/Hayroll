@@ -89,16 +89,16 @@ struct PremiseTree
 
     void disjunctPremise(const z3::expr & premise)
     {
-        SPDLOG_DEBUG(std::format("Disjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string()));
+        SPDLOG_DEBUG("Disjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string());
         this->premise = this->premise || premise;
-        SPDLOG_DEBUG(std::format("New premise: {}", this->premise.to_string()));
+        SPDLOG_DEBUG("New premise: {}", this->premise.to_string());
     }
 
     void conjunctPremise(const z3::expr & premise)
     {
-        SPDLOG_DEBUG(std::format("Conjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string()));
+        SPDLOG_DEBUG("Conjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string());
         this->premise = this->premise && premise;
-        SPDLOG_DEBUG(std::format("New premise: {}", this->premise.to_string()));
+        SPDLOG_DEBUG("New premise: {}", this->premise.to_string());
     }
 
     std::string toString(size_t depth = 0) const
@@ -201,9 +201,9 @@ public:
         PremiseTree * newTree = parent->addChild(programPoint, premise);
         map.emplace(programPoint, newTree);
 
-        SPDLOG_DEBUG(std::format("Created new premise tree node: {}", newTree->toString()));
-        SPDLOG_DEBUG(std::format("Parent premise tree node: {}", parent->toString()));
-        SPDLOG_DEBUG(std::format("New premise: {}", newTree->premise.to_string()));
+        SPDLOG_DEBUG("Created new premise tree node: {}", newTree->toString());
+        SPDLOG_DEBUG("Parent premise tree node: {}", parent->toString());
+        SPDLOG_DEBUG("New premise: {}", newTree->premise.to_string());
 
         return newTree;
     }
@@ -218,6 +218,16 @@ public:
     PremiseTree * borrowTree()
     {
         return tree.get();
+    }
+
+    std::vector<PremiseTree *> getPremiseTreeNodes()
+    {
+        std::vector<PremiseTree *> result;
+        for (const auto & [_, node] : map)
+        {
+            result.push_back(node);
+        }
+        return result;
     }
 
 private:

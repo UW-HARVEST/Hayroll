@@ -114,6 +114,15 @@ int main(int argc, char **argv)
         std::cout << "Refined premise tree:\n";
         std::cout << premiseTree->toString() << std::endl;
 
+        for (const PremiseTree * node : executor.scribe.getPremiseTreeNodes())
+        {
+            if (node->premise.to_string().size() > 1024)
+            {
+                std::cout << "Warning: inconcise premise. \n";
+                allPass = false;
+            }
+        }
+
         // Checking: every premise carried by a #check line should imply the premise of the smallest premise tree node it is in.
         for (const IncludeTreePtr includeTreeNode : *includeTree)
         {
@@ -130,11 +139,6 @@ int main(int argc, char **argv)
                     std::vector<TSNode> writtenPremiseTokens = lang.tokensToTokenVector(writtenPremiseNode);
                     z3::expr writtenPremise = executor.macroExpander.symbolizeToBoolExpr(std::move(writtenPremiseTokens));
                     writtenPremise = simplifyOrOfAnd(writtenPremise);
-                    if (premiseTree->premise.to_string().size() > 1024)
-                    {
-                        std::cout << "Warning: inconcise premise. \n";
-                        allPass = false;
-                    }
                     z3::expr premise = premiseTreeNode->getCompletePremise();
                     z3::expr premiseImpliesWrittenPremise = z3::implies(premise, writtenPremise);
                     z3::solver s(*executor.ctx);

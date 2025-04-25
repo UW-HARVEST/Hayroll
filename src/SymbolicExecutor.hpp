@@ -60,9 +60,9 @@ struct State
 
     void simplify()
     {
-        SPDLOG_DEBUG(std::format("Simplifying merged state premise: {}", premise.to_string()));
+        SPDLOG_DEBUG("Simplifying merged state premise: {}", premise.to_string());
         premise = simplifyOrOfAnd(premise);
-        SPDLOG_DEBUG(std::format("Simplified merged state premise: {}", premise.to_string()));
+        SPDLOG_DEBUG("Simplified merged state premise: {}", premise.to_string());
     }
 
     std::string toString() const
@@ -148,15 +148,15 @@ public:
           scribe() // Init scribe after we have parsed predefined macros
     {
         astBank.addFileOrFind(srcPath);
-        SymbolTable::totalSymbols = 0;
-        SymbolTable::totalSymbolTables = 0;
     }
 
     SymbolicExecutor(SymbolicExecutor && other) = default;
-    SymbolicExecutor & operator=(SymbolicExecutor && other) = default;
 
     Warp run()
     {
+        SymbolTable::totalSymbols = 0;
+        SymbolTable::totalSymbolTables = 0;
+
         // Generate a base symbol table with the predefined macros.
         std::string predefinedMacros = includeResolver.getPredefinedMacros();
         const TSTree & predefinedMacroTree = astBank.addAnonymousSource(std::move(predefinedMacros));
@@ -185,7 +185,7 @@ public:
 
     Warp executeTranslationUnit(Warp && startWarp, std::optional<ProgramPoint> joinPoint = std::nullopt)
     {
-        SPDLOG_DEBUG(std::format("Executing translation unit: {}", startWarp.programPoint.toString()));
+        SPDLOG_DEBUG("Executing translation unit: {}", startWarp.programPoint.toString());
         assert(startWarp.programPoint.node.isSymbol(lang.translation_unit_s));
 
         // Key assumption: any macro name that is ever defined or undefined in the code,
@@ -231,7 +231,7 @@ public:
         // c_tokens
         // preproc_call
 
-        SPDLOG_DEBUG(std::format("Executing one node: {}", startWarp.programPoint.toString()));
+        SPDLOG_DEBUG("Executing one node: {}", startWarp.programPoint.toString());
         
         const TSNode & node = startWarp.programPoint.node;
         const TSSymbol symbol = node.symbol();
@@ -279,7 +279,7 @@ public:
         // all continuous define segments into a symbol table node to avoid repetitive parsing.
         // For now we just process them one by one.
 
-        SPDLOG_DEBUG(std::format("Executing continuous defines: {}", startWarp.programPoint.toString()));
+        SPDLOG_DEBUG("Executing continuous defines: {}", startWarp.programPoint.toString());
 
         TSNode & node = startWarp.programPoint.node;
         for 
@@ -347,7 +347,7 @@ public:
         const auto & [includeTree, node] = programPoint;
         assert(node.isSymbol(lang.preproc_if_s) || node.isSymbol(lang.preproc_ifdef_s) || node.isSymbol(lang.preproc_ifndef_s));
 
-        SPDLOG_DEBUG(std::format("Executing conditional: {}", programPoint.toString()));
+        SPDLOG_DEBUG("Executing conditional: {}", programPoint.toString());
         
         ProgramPoint joinPoint = programPoint.nextSibling();
         std::vector<Warp> warps = collectIfBodies(std::move(startWarp));
@@ -533,10 +533,12 @@ public:
             {
                 assert(body.isSymbol(lang.block_items_s));
                 PremiseTree * premiseTreeNode = scribe.createNode({includeTree, body}, ctx->bool_val(false));
+                z3::expr tempPremise = ctx->bool_val(false);
                 for (const State & state : states)
                 {
-                    premiseTreeNode->disjunctPremise(state.premise);
+                    tempPremise = tempPremise || state.premise;
                 }
+                premiseTreeNode->disjunctPremise(simplifyOrOfAnd(tempPremise));
                 startWarp.programPoint.node = body;
                 return {std::move(startWarp)};
             }
@@ -580,13 +582,15 @@ public:
                 TSNode root = tree.rootNode();
                 startWarp.programPoint = {includeTree->addChild(node, includePath), root};
                 // Print the startWarp for debugging.
-                SPDLOG_DEBUG(std::format("Executing include symbolically: {}", startWarp.programPoint.toString()));
+                SPDLOG_DEBUG("Executing include symbolically: {}", startWarp.programPoint.toString());
                 // Init the premise tree node with a false premise.
                 PremiseTree * premiseTreeNode = scribe.createNode(startWarp.programPoint, ctx->bool_val(false));
+                z3::expr tempPremise = ctx->bool_val(false);
                 for (const State & state : states)
                 {
-                    premiseTreeNode->disjunctPremise(state.premise);
+                    tempPremise = tempPremise || state.premise;
                 }
+                premiseTreeNode->disjunctPremise(simplifyOrOfAnd(tempPremise));
                 return executeTranslationUnit(std::move(startWarp), joinPoint);
             }
             else // Header is outsde of project path, execute concretely.
@@ -599,7 +603,7 @@ public:
                 assert(fistChild.isSymbol(lang.preproc_def_s) || fistChild.isSymbol(lang.preproc_function_def_s) || fistChild.isSymbol(lang.preproc_undef_s));
                 startWarp.programPoint = {includeTree->addChild(node, includePath, true), fistChild};
                 // Print the startWarp for debugging.
-                SPDLOG_DEBUG(std::format("Executing include concretely: {}", startWarp.programPoint.toString()));
+                SPDLOG_DEBUG("Executing include concretely: {}", startWarp.programPoint.toString());
                 // No scribe needed for concrete execution
                 // We need to set the node to the join point, so it will be merged with the other states.
                 startWarp = executeContinuousDefines(std::move(startWarp));
@@ -618,7 +622,7 @@ public:
     Warp executeError(Warp && startWarp)
     {
         assert(startWarp.programPoint.node.isSymbol(lang.preproc_error_s));
-        SPDLOG_DEBUG(std::format("Executing error, keeping state: {}", startWarp.toString()));
+        SPDLOG_DEBUG("Executing error, keeping state: {}", startWarp.toString());
         z3::expr disallowed = ctx->bool_val(false);
         for (State & state : startWarp.states)
         {
@@ -645,12 +649,12 @@ public:
     {
         // Print the program points of start states for debugging.
         #if DEBUG
-            SPDLOG_DEBUG(std::format("Executing in lock step:"));
+            SPDLOG_DEBUG("Executing in lock step:");
             for (const Warp & warp : startWarps)
             {
-                SPDLOG_DEBUG(std::format("Warp: {}", warp.programPoint.toString()));
+                SPDLOG_DEBUG("Warp: {}", warp.programPoint.toString());
             }
-            SPDLOG_DEBUG(std::format("Join point: {}", joinPoint.toString()));
+            SPDLOG_DEBUG("Join point: {}", joinPoint.toString());
         #endif
 
         std::vector<std::tuple<ProgramPoint, Warp>> tasks; // (block_items/translation_unit body, warp)
@@ -689,7 +693,7 @@ public:
 
         while (!tasks.empty())
         {
-            SPDLOG_DEBUG(std::format("Tasks left: {}", tasks.size()));
+            SPDLOG_DEBUG("Tasks left: {}", tasks.size());
             // Take one task from the queue (std::move). 
             auto [body, warp] = std::move(tasks.back()); // Do not use auto && here, or there will be memory corruption.
             tasks.pop_back();
@@ -705,11 +709,11 @@ public:
 
         #if DEBUG
         {
-            SPDLOG_DEBUG(std::format("Blocked warps ({}):", blockedWarps.size()));
-            SPDLOG_DEBUG(std::format("Join point: {}", joinPoint.toString()));
+            SPDLOG_DEBUG("Blocked warps ({}):", blockedWarps.size());
+            SPDLOG_DEBUG("Join point: {}", joinPoint.toString());
             for (const Warp & warp : blockedWarps)
             {
-                SPDLOG_DEBUG(std::format("{}", warp.toString()));
+                SPDLOG_DEBUG("{}", warp.toString());
             }
         }
         #endif
@@ -748,17 +752,17 @@ public:
 
         #if DEBUG
         {
-            SPDLOG_DEBUG(std::format("Merged states ({}):", mergedStates.size()));
-            SPDLOG_DEBUG(std::format("Join point: {}", joinPoint.toString()));
+            SPDLOG_DEBUG("Merged states ({}):", mergedStates.size());
+            SPDLOG_DEBUG("Join point: {}", joinPoint.toString());
             for (const State & state : mergedStates)
             {
-                SPDLOG_DEBUG(std::format("{}", state.toString()));
+                SPDLOG_DEBUG("{}", state.toString());
             }
         }
         #endif
 
-        SPDLOG_DEBUG(std::format("Total symbol table nodes: {}", SymbolTable::totalSymbolTables));
-        SPDLOG_DEBUG(std::format("Total symbol table items: {}", SymbolTable::totalSymbols));
+        SPDLOG_DEBUG("Total symbol table nodes: {}", SymbolTable::totalSymbolTables);
+        SPDLOG_DEBUG("Total symbol table items: {}", SymbolTable::totalSymbols);
         
         return {joinPoint, std::move(mergedStates)};
     }
