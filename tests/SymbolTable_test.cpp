@@ -24,7 +24,7 @@ int main()
     spdlog::set_level(spdlog::level::debug);
 
     IncludeTreePtr includeTree = IncludeTree::make(TSNode{}, "<PREDEFINED_MACROS>");
-    SymbolTablePtr symbolTable = SymbolTable::make();
+    SymbolSegmentPtr symbolSegment = SymbolSegment::make();
     IncludeResolver resolver(clang_exe_path, {});
     CPreproc lang = CPreproc();
     TSParser parser(lang);
@@ -57,8 +57,10 @@ int main()
         std::string_view name = nameNode.textView();
 
         // valueNode can be an invalid node, but wo store it as-is
-        symbolTable = symbolTable->define(ObjectSymbol{name, {includeTree, node}});
+        symbolSegment->define(ObjectSymbol{name, {includeTree, node}});
     }
+
+    SymbolTablePtr symbolTable = SymbolTable::make(symbolSegment);
 
     std::cout << symbolTable->toString() << std::endl;
 

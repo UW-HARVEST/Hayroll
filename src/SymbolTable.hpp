@@ -67,55 +67,35 @@ std::string_view symbolName(const Symbol & symbol)
     return std::visit([](const auto & s) { return s.name; }, symbol);
 }
 
+class SymbolSegment;
+using SymbolSegmentPtr = std::shared_ptr<SymbolSegment>;
+using ConstSymbolSegmentPtr = std::shared_ptr<const SymbolSegment>;
 
-// Chained hashmap symbol table that holds macro definitions.
-// Shares parents as an immutable data structure.
-class SymbolTable
-    : public std::enable_shared_from_this<SymbolTable>
+// Shared hashmap storage for the symbol table.
+// Represents a continuous segment of #define/#undef statements.
+class SymbolSegment
+    : public std::enable_shared_from_this<SymbolSegment>
 {
 public:
     // Constructor
-    // A SymbolTable object shall only be managed by a shared_ptr
-    static SymbolTablePtr make(ConstSymbolTablePtr parent = nullptr)
+    // A SymbolSegment object shall only be managed by a shared_ptr.
+    static SymbolSegmentPtr make()
     {
-        totalSymbolTables++;
-
-        auto table = std::make_shared<SymbolTable>();
-        table->parent = parent;
-        table->immutable = false;
-        return table;
+        totalSymbolSegments++;
+        
+        return std::make_shared<SymbolSegment>();
     }
 
-    // Make this symbol table immutable so any changes will create a new child table
-    // This is meant to be called when the execution reaches a branch
-    void makeImmutable()
-    {
-        SPDLOG_DEBUG("Making symbol table immutable");
-        immutable = true;
-    }
-
-    // Define a symbol in either the current table if it is mutable,
-    // or in a new child table if it is immutable.
-    // The defined symbol can be a "UndefinedSymbol" or an "ExpandedSymbol" too.
-    // The user must assign the SymbolTablePtr back to itself. 
-    SymbolTablePtr define(Symbol && symbol)
+    // Define a symbol in the segment.
+    void define(Symbol && symbol)
     {
         totalSymbols++;
 
-        if (immutable)
-        {
-            SPDLOG_DEBUG("Defining symbol in immutable table, creating child");
-            return makeChild()->define(std::move(symbol));;
-        }
-        else
-        {
-            std::string_view name = std::visit([](const auto & s) { return s.name; }, symbol);
-            symbols.insert_or_assign(name, std::move(symbol));
-            return shared_from_this();
-        }
+        std::string_view name = std::visit([](const auto & s) { return s.name; }, symbol);
+        symbols.insert_or_assign(name, std::move(symbol));
     }
 
-    // Lookup a symbol in the current table and its parent tables
+    // Lookup a symbol in the segment.
     std::optional<const Symbol *> lookup(std::string_view name) const
     {
         auto it = symbols.find(name);
@@ -123,11 +103,6 @@ public:
         {
             return &it->second;
         }
-        if (parent)
-        {
-            return parent->lookup(name);
-        }
-        // Missing: unknown symbol, should create a symbolic value
         return std::nullopt;
     }
 
@@ -169,6 +144,72 @@ public:
         return ss.str();
     }
 
+    static int totalSymbolSegments;
+    static int totalSymbols;
+
+private:
+    std::unordered_map<std::string_view, Symbol, TransparentStringHash, TransparentStringEqual> symbols;
+};
+
+int SymbolSegment::totalSymbolSegments = 0;
+int SymbolSegment::totalSymbols = 0;
+
+// Chained hashmap symbol table that holds macro definitions.
+// Shares parents as an immutable data structure.
+class SymbolTable
+    : public std::enable_shared_from_this<SymbolTable>
+{
+public:
+    // Constructor
+    // A SymbolTable object shall only be managed by a shared_ptr
+    static SymbolTablePtr make
+    (
+        SymbolSegmentPtr symbols = SymbolSegment::make(),
+        ConstSymbolTablePtr parent = nullptr
+    )
+    {
+        totalSymbolTables++;
+
+        auto table = std::make_shared<SymbolTable>();
+        table->symbols = symbols;
+        table->parent = parent;
+        return table;
+    }
+
+    // Create a child that binds to the provied SymbolSegmentPtr
+    SymbolTablePtr define(SymbolSegmentPtr segment)
+    {
+        totalSymbolTables++;
+        return makeChild(segment);
+    }
+
+    // Force define a symbol in the current SymbolSegment
+    SymbolTablePtr forceDefine(Symbol && symbol)
+    {
+        symbols->define(std::move(symbol));
+        return shared_from_this();
+    }
+
+    // Lookup a symbol in the current table and its parent tables
+    std::optional<const Symbol *> lookup(std::string_view name) const
+    {
+        if (std::optional<const Symbol *> symbol = symbols->lookup(name))
+        {
+            return symbol;
+        }
+        if (parent)
+        {
+            return parent->lookup(name);
+        }
+        // Missing: unknown symbol, should create a symbolic value
+        return std::nullopt;
+    }
+
+    std::string toString(int maxEntries = 10) const
+    {
+        return symbols->toString(maxEntries);
+    }
+
     std::string toStringFull() const
     {
         std::stringstream ss;
@@ -181,21 +222,18 @@ public:
         return ss.str();
     }
     
-    static int totalSymbols;
     static int totalSymbolTables;
 
 private:
-    std::unordered_map<std::string_view, Symbol, TransparentStringHash, TransparentStringEqual> symbols;
+    SymbolSegmentPtr symbols;
     ConstSymbolTablePtr parent;
-    bool immutable;
 
-    SymbolTablePtr makeChild() const
+    SymbolTablePtr makeChild(SymbolSegmentPtr segment)
     {
-        return make(shared_from_this());
+        return make(segment, shared_from_this());
     }
 };
 
-int SymbolTable::totalSymbols = 0;
 int SymbolTable::totalSymbolTables = 0;
 
 // A top-level symbol table wrapper used for expanding macros

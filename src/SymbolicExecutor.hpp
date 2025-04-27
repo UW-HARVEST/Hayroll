@@ -39,7 +39,6 @@ struct State
     // so if any one of the states modifies it, it will create a new layer.
     std::tuple<State, State> split() const
     {
-        symbolTable->makeImmutable();
         State state1{symbolTable, premise};
         State state2{std::move(symbolTable), premise};
         return {std::move(state1), std::move(state2)};
@@ -104,25 +103,11 @@ struct Warp
         return str;
     }
 
-    void defineAll(Symbol && symbol)
+    void defineAll(SymbolSegmentPtr segment)
     {
         for (State & state : states)
         {
-            Symbol symbolCopy = symbol;
-            state.symbolTable = state.symbolTable->define(std::move(symbolCopy));
-        }
-    }
-
-    void defineAllIfUnknown(Symbol && symbol)
-    {
-        for (State & state : states)
-        {
-            std::optional<const Symbol *> existingSymbol = state.symbolTable->lookup(symbolName(symbol));
-            if (!existingSymbol)
-            {
-                Symbol symbolCopy = symbol;
-                state.symbolTable = state.symbolTable->define(std::move(symbolCopy));
-            }
+            state.symbolTable = state.symbolTable->define(segment);
         }
     }
 };
@@ -138,6 +123,10 @@ public:
     ASTBank astBank;
     MacroExpander macroExpander;
     IncludeTreePtr includeTree;
+    // The root symbol segment stores #undefs produced by the key assumption:
+    // any macro name that is ever defined or undefined in the code,
+    // it is not intended to be supplemented by the user from the command line (-D).
+    SymbolTablePtr symbolTableRoot;
     PremiseTreeScribe scribe;
 
     SymbolicExecutor(std::filesystem::path srcPath, std::filesystem::path projPath, const std::vector<std::filesystem::path> & includePaths = {})
@@ -145,7 +134,7 @@ public:
           projPath(std::filesystem::canonical(projPath)), includeResolver(CLANG_EXE, includePaths),
           astBank(lang), macroExpander(lang, ctx.get()),
           includeTree(IncludeTree::make(TSNode{}, std::filesystem::canonical(srcPath))),
-          scribe() // Init scribe after we have parsed predefined macros
+          symbolTableRoot(SymbolTable::make()), scribe()
     {
         astBank.addFileOrFind(srcPath);
     }
@@ -154,13 +143,14 @@ public:
 
     Warp run()
     {
-        SymbolTable::totalSymbols = 0;
+        SymbolSegment::totalSymbolSegments = 0;
+        SymbolSegment::totalSymbols = 0;
         SymbolTable::totalSymbolTables = 0;
 
         // Generate a base symbol table with the predefined macros.
         std::string predefinedMacros = includeResolver.getPredefinedMacros();
         const TSTree & predefinedMacroTree = astBank.addAnonymousSource(std::move(predefinedMacros));
-        State predefinedMacroState{SymbolTable::make(), ctx->bool_val(true)};
+        State predefinedMacroState{symbolTableRoot, ctx->bool_val(true)};
         ProgramPoint predefinedMacroProgramPoint{IncludeTree::make(TSNode{}, "<PREDEFINED_MACROS>"), predefinedMacroTree.rootNode()};
         Warp predefinedMacroWarp{std::move(predefinedMacroProgramPoint), {std::move(predefinedMacroState)}};
         predefinedMacroWarp = executeTranslationUnit(std::move(predefinedMacroWarp));
@@ -170,7 +160,6 @@ public:
 
         const TSTree & tree = astBank.find(srcPath);
         TSNode root = tree.rootNode();
-        predefinedMacroSymbolTable->makeImmutable(); // Just for debug clarity
         // The initial state is the root node of the tree.
         State startState{predefinedMacroSymbolTable, ctx->bool_val(true)};
         Warp startWarp{ProgramPoint{includeTree, root}, {std::move(startState)}};
@@ -202,7 +191,7 @@ public:
                 // but with the macro undefined.
                 TSNode name = node.childByFieldId(lang.preproc_undef_s.name_f);
                 std::string_view nameStr = name.textView();
-                startWarp.defineAllIfUnknown(UndefinedSymbol{nameStr});
+                symbolTableRoot->forceDefine(UndefinedSymbol{nameStr});
             }
         }
 
@@ -281,6 +270,8 @@ public:
 
         SPDLOG_DEBUG("Executing continuous defines: {}", startWarp.programPoint.toString());
 
+        SymbolSegmentPtr segment = SymbolSegment::make();
+
         TSNode & node = startWarp.programPoint.node;
         for 
         (
@@ -294,7 +285,7 @@ public:
                 TSNode name = node.childByFieldId(lang.preproc_def_s.name_f);
                 TSNode value = node.childByFieldId(lang.preproc_def_s.value_f); // May not exist
                 std::string_view nameStr = name.textView();
-                startWarp.defineAll(ObjectSymbol{nameStr, startWarp.programPoint, value});
+                segment->define(ObjectSymbol{nameStr, startWarp.programPoint, value});
             }
             else if (node.isSymbol(lang.preproc_function_def_s))
             {
@@ -309,16 +300,18 @@ public:
                     if (!param.isSymbol(lang.identifier_s)) continue;
                     paramsStrs.push_back(param.text());
                 }
-                startWarp.defineAll(FunctionSymbol{nameStr, startWarp.programPoint, std::move(paramsStrs), body});
+                segment->define(FunctionSymbol{nameStr, startWarp.programPoint, std::move(paramsStrs), body});
             }
             else if (node.isSymbol(lang.preproc_undef_s))
             {
                 TSNode name = node.childByFieldId(lang.preproc_undef_s.name_f);
                 std::string_view nameStr = name.textView();
-                startWarp.defineAll(UndefinedSymbol{nameStr});
+                segment->define(UndefinedSymbol{nameStr});
             }
             else assert(false);
         }
+
+        startWarp.defineAll(segment);
 
         return std::move(startWarp);
     }
@@ -761,8 +754,9 @@ public:
         }
         #endif
 
-        SPDLOG_DEBUG("Total symbol table nodes: {}", SymbolTable::totalSymbolTables);
-        SPDLOG_DEBUG("Total symbol table items: {}", SymbolTable::totalSymbols);
+        SPDLOG_DEBUG("Total symbol segments: {}", SymbolSegment::totalSymbolSegments);
+        SPDLOG_DEBUG("Total symbols: {}", SymbolSegment::totalSymbols);
+        SPDLOG_DEBUG("Total symbol tables: {}", SymbolTable::totalSymbolTables);
         
         return {joinPoint, std::move(mergedStates)};
     }
