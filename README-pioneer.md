@@ -36,6 +36,8 @@ After removing non-preprocessor directive sections (pure C code) from C source c
 
 Hayroll utilizes the tree-sitter parsing library with a specialized `tree-sitter-c_preproc` grammar to parse this AST. While the `#include` directive can introduce multiple ASTs within a single compilation unit, this document simplifies the explanation by assuming they are all inlined into one AST.
 
+For convenience, our grammar parses consecutive non-preprocessor directive sections (pure C code) into an AST node, namely a `c_tokens` node. It is a plain list of C tokens, not containing any internal structures and does not have to be parsable as a C program. 
+
 ### Symbol Table
 
 Similar to the symbol table used during C compilation to record identifiers and their types, the preprocessor maintains a symbol table mapping macro names to their definitions (token sequences). Unlike structured compiler values, macro bodies are merely strings of tokens without intrinsic semantic structure, and their semantics depend on context during expansion. The expansion of macros depends on this symbol table, effectively substituting macro names with their bodies if defined, or leaving the macro name intact if undefined.
@@ -61,13 +63,8 @@ It represents execution conditions $p$ and symbol definitions $\sigma$ when reac
 
 ### Notations
 
-Each program point $n$ corresponding to a preprocessor directive has a distinct transition function, defined formally as:
-
-$$
-n(\sigma: SymbolTable, p: Premise) \rightarrow List(State)
-$$
-
-- $next(n: ProgramPoint) : ProgramPoint$ identifies the next node in pre-order traversal.
+- $n(\sigma: SymbolTable, p: Premise) \rightarrow List(State)$ is the transition function associated with $n : ProgramPoint$.
+- $next(n: ProgramPoint) : ProgramPoint$ identifies the next node in logical order. It returns the next sibling in a sequence of nodes, or, when it reaches the end of the sequence, climbs up its ancestor tree until the ancestor has a next sibling. It returns `EOF` if no next sibling exists for any of its ancestors. 
 - $nextThen(n) : ProgramPoint$ and $nextElse(n) : ProgramPoint$ refer to the initial nodes of the respective branches following an `#if` directive.
 - Given a symbol table $\sigma$, the expression $eval_\sigma(t: Tokens) : Premise$ evaluates tokens $t$ into a symbolic expression within the context of $\sigma$.
 
@@ -84,8 +81,8 @@ While tasks not empty:
   s: State = (n: ProgramPoint, σ: SymbolTable, p: Premise) taken from tasks
   lineToPremise[n] ||= p
 
-  if pure C code segment immediately follows n:
-    for each e: ExpansionSite in the segment:
+  if n is c_tokens:
+    for each e: ExpansionSite in n:
       expansionToPremise[e][σ(e.name)] ||= p
 
   newStates: List(State) = n(σ, p)
@@ -96,17 +93,11 @@ Output: lineToPremise, expansionToPremise
 
 ### State Transitions
 
-#### EOF
-
-$$
-EOF(\sigma: SymbolTable, p: Premise) = \{\}
-$$
-
 #### `#define name body`
 
 $$
 n: ProgramPoint = (name: String, body: Tokens) \\
-n(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma [name \rightarrow body], p)\}
+n(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma [name \mapsto body], p)\}
 $$
 
 Similar logic applies to empty definitions, function-like definitions, and `#undef` directives. (`#undef` definitions use a special body marking definedness as false, with no value.)
@@ -119,6 +110,19 @@ n(\sigma: SymbolTable, p: Premise) = \{(nextThen(n), \sigma, p \wedge eval_\sigm
 $$
 
 The same applies for `#ifdef`, `#ifndef`, `#elif`, `#elifdef`, `#elifndef`.
+
+#### `c_tokens`
+
+$$
+n: ProgramPoint = (name: String, body: Tokens) \\
+n(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma, p)\}
+$$
+
+#### `EOF`
+
+$$
+EOF(\sigma: SymbolTable, p: Premise) = \{\}
+$$
 
 ### Macro Expansion and Evaluation
 
