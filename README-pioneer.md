@@ -63,10 +63,10 @@ It represents execution conditions $p$ and symbol definitions $\sigma$ when reac
 
 ### Notations
 
-- $n(\sigma: SymbolTable, p: Premise) \rightarrow List(State)$ is the transition function associated with $n : ProgramPoint$.
-- $next(n: ProgramPoint) : ProgramPoint$ identifies the next node in logical order. It returns the next sibling in a sequence of nodes, or, when it reaches the end of the sequence, climbs up its ancestor tree until the ancestor has a next sibling. It returns `EOF` if no next sibling exists for any of its ancestors. 
-- $nextThen(n) : ProgramPoint$ and $nextElse(n) : ProgramPoint$ refer to the initial nodes of the respective branches following an `#if` directive.
-- Given a symbol table $\sigma$, the expression $eval_\sigma(t: Tokens) : Premise$ evaluates tokens $t$ into a symbolic expression within the context of $\sigma$.
+- $n : (SymbolTable, Premise) \rightarrow List(State)$ is the transition function associated with $n : ProgramPoint$.
+- $next : ProgramPoint \rightarrow ProgramPoint$ identifies the next node in logical order. It returns the next sibling in a sequence of nodes, or, when it reaches the end of the sequence, climbs up its ancestor tree until the ancestor has a next sibling. It returns `EOF` if no next sibling exists for any of its ancestors. 
+- $nextThen : ProgramPoint \rightarrow ProgramPointt$ and $nextElse : ProgramPoint \rightarrow ProgramPoint$ refer to the initial nodes of the respective branches following an `#if` directive.
+- Given a symbol table $\sigma$, the function $eval_\sigma : Tokens \rightarrow Premise$ evaluates tokens into a symbolic expression within the context of $\sigma$.
 
 ### Algorithm Pseudocode
 
