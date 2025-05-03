@@ -2,11 +2,11 @@
 
 ## Background
 
-In compiling C code, users can provide macro definitions using the `-D<MACRO_NAME>=<MACRO_VALUE>` flag to influence preprocessor behavior, enabling configurable compilation. For example, macros can selectively enable program features, and the disabled ones are removed by conditional compilation directives during preprocessing, incurring no runtime overhead. Another use case involves defining the same macro name differently under various conditional branches. Depending on the user's `-D` flags, these macros will expand differently during compilation.
+When compiling C code, a certain set of macros are defined.  These depend on the OS, architecture, and `-D<MACRO_NAME>=<MACRO_VALUE>` command-line arguments. Macros can selectively enable program features (including further macro definitions), with disabled features removed by conditional compilation directives during preprocessing, incurring no runtime overhead.
 
 The existing `c2rust` translation framework operates on preprocessed C code, meaning only the code enabled by user-specified `-D` flags is translated, causing the remaining code paths and configurability to be lost in the resulting Rust code.
 
-The complexity of the C preprocessor arises from complicated relationships between user-defined flags (`-D`) and the resulting code, involving boolean logic and arithmetic operations. Some combinations of macro definitions may fail to preprocess or compile successfully. Without a unified, structured configuration file, exploring these relationships necessitates symbolic execution. Hayroll addresses this challenge by symbolically executing C preprocessor directives, automatically exploring all possible outcomes from various combinations of user-defined flags. Combined with subsequent steps, Hayroll performs multiple `c2rust` translations of these outcomes and merges them into a configurable Rust implementation using Rust’s `#cfg` macros.
+The conditions for inclusion or exclusion of each line can be expressed as boolean logic and arithmetic operations. Pioneer symbolically executes C preprocessor directives, automatically determining the conditions leading to all possible outcomes. Hayroll runs the preprocessor multiple times with different macro definitions, runs `c2rust` on each, and then merges all the resulting Rust programs into a single Rust implementation that uses Rust's `#cfg` macros.
 
 ## Input and Output
 
@@ -14,6 +14,8 @@ The complexity of the C preprocessor arises from complicated relationships betwe
 - **Output:**
   - For each line of code: the premise (symbolic boolean/arithmetic expression) under which the line survives preprocessing.
   - For each macro expansion: the premise under which a specific macro definition is expanded.
+
+TODO: Is the macro expansion a span of characters in the source code?  Does the information include what the macro expands to, or just the condition under which it is expanded?  There might be different premises for different expansions; is that also an output?
 
 Note: The actual output of the program is structured as a hierarchical premise tree rather than a direct mapping from each line to its premise. This hierarchical structure serves as an optimization, but this document describes only the fundamental logical relationships.
 
@@ -26,27 +28,36 @@ Symbolic values mathematically correspond to user-defined macros (`-D`). Each ma
 - Boolean value (`defMACRO_NAME`) indicating whether the macro is defined.
 - Integer value (`valMACRO_NAME`) representing its numeric value.
 
-These representations are separated because the C macro system allows testing a macro's definedness independently from its value.
+These representations are distinct because the C macro system allows testing a macro's definedness independently from its value.
 
-Symbolic expressions are constructed from symbolic values or constants through boolean logic (`&&`, `||`, `!`) and integer arithmetic operations (`+`, `-`, `*`, `/`, `:?`, and comparisons). All premises are symbolic expressions.
+A _symbolic expression_ is constructed from symbolic values or constants through boolean logic (`&&`, `||`, `!`) and integer arithmetic operations (`+`, `-`, `*`, `/`, `:?`, and comparisons). All premises are symbolic expressions.
 
 ### Program Point
 
-After removing non-preprocessor directive sections (pure C code) from C source code, the remaining preprocessor directives form a structured program without loops, made up of sequential execution and conditional branches. This structured program is represented by an Abstract Syntax Tree (AST), and a **Program Point** refers to the position between AST nodes. Program Points are represented using AST nodes indicating the upcoming directive to be executed.
+The input to the C preprocessor is an if-then "program" without loops, made up of sequential execution and conditional branches. Pioneer represents this program by an Abstract Syntax Tree (AST).  One variety of AST node is `c_tokens`, for a contiguous set of non-preprocessor lines, represented as an unstructured list of C tokens.
 
-Hayroll utilizes the tree-sitter parsing library with a specialized `tree-sitter-c_preproc` grammar to parse this AST. While the `#include` directive can introduce multiple ASTs within a single compilation unit, this document simplifies the explanation by assuming they are all inlined into one AST.
+A **Program Point** refers to the position between AST nodes. Program Points are represented using AST nodes indicating the upcoming directive to be executed.
 
-For convenience, our grammar parses consecutive non-preprocessor directive sections (pure C code) into an AST node, namely a `c_tokens` node. It is a plain list of C tokens, not containing any internal structures and does not have to be parsable as a C program. 
+TODO: Explain the Program Point AST nodes.  How are they related to `c_tokens` AST nodes?  Is the set of Program Points the same as the set of locations that a `c_tokens` could possibly appear?  What is the span of a Program point withing the source code?
+
+Pioneer contains a `tree-sitter-c_preproc` grammar to parse this AST.
+For simplicity, this document ignores `#include` directive, assuming they have been inlined.
+
+TODO: To further clarify the relationship among `c_tokens` and Program Points and how they fit into the AST, please show an example here.
+
 
 ### Symbol Table
 
-Similar to the symbol table used during C compilation to record identifiers and their types, the preprocessor maintains a symbol table mapping macro names to their definitions (token sequences). Unlike structured compiler values, macro bodies are merely strings of tokens without intrinsic semantic structure, and their semantics depend on context during expansion. The expansion of macros depends on this symbol table, effectively substituting macro names with their bodies if defined, or leaving the macro name intact if undefined.
+Similar to the symbol table used during C compilation to record identifiers and their types, the preprocessor maintains a symbol table mapping macro names to their definitions (token sequences).
+The expansion of macros depends on this symbol table, effectively substituting macro names with their bodies if defined, or leaving the macro name intact if undefined.
 
 Fromally, a symbol table can be represented as:
 $$
 \sigma : String \rightarrow ProgramPoint
 $$
 indicating the mapping from macro names to their definition nodes.
+
+What is a definition node?  I presume it is a subset of a `#define` line.  Is it a node of type `c_tokens`?  If so, the characterization of `c_tokens` as only between preprocessor lines is incorrect.
 
 ### State
 
@@ -56,7 +67,7 @@ $$
 s: State = (n: ProgramPoint, \sigma: SymbolTable, p: Premise)
 $$
 
-It represents execution conditions $p$ and symbol definitions $\sigma$ when reaching program point $n$. This means that when the user `-D` satisfies $p$, a concrete preprocessor execution will pass by this $n$, at which time $\sigma$ is defined. Symbolic execution progresses states according to the directives encountered, with `#if` conditions splitting states to explore multiple execution paths.
+It represents execution conditions $p$ and symbol definitions $\sigma$ when reaching program point $n$. This means that when the macro definitions satisfy $p$, a concrete preprocessor execution will pass by this $n$, at which time $\sigma$ is defined. Symbolic execution progresses states according to the directives encountered, with `#if` conditions splitting states to explore multiple execution paths.
 
 
 ## Symbolic Executor Algorithm
