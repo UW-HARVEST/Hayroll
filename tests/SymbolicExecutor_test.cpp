@@ -49,14 +49,19 @@ int main(int argc, char **argv)
             #check !defined USER_E
         #endif
 
+        #ifdef USER_C
+            #define __USER_C 1
+        #endif
+
         #ifndef USER_A
             #check !defined USER_E && !defined USER_A
             #if USER_D > USER_A // USER_D > 0
-                #define SOMETHING THAT_BLOCKS_STATE_MERGING
+                #define SOMETHING() THAT_BLOCKS_STATE_MERGING
                 #check !defined USER_E && !defined USER_A && USER_D > 0
             #endif
         #elifndef USER_B
             #check !defined USER_E && defined USER_A && !defined USER_B
+            #define SOMETHING() ALTERNATIVELY_THAT_DEPENDS_ON __USER_C
         #elifdef CODE_F
             #check 0
         #elifdef USER_C
@@ -75,8 +80,10 @@ int main(int argc, char **argv)
 
         #ifdef USER_E
             #check defined USER_E
-            #error // Ignore for now
+            #error
         #endif
+
+        SOMETHING() // There should be a warning about its different expansion w.r.t. USER_C
 
     )";
     std::filesystem::path entryPath = saveSource(testSrcString, "test.c");
@@ -114,7 +121,7 @@ int main(int argc, char **argv)
         std::cout << "Refined premise tree:\n";
         std::cout << premiseTree->toString() << std::endl;
 
-        for (const PremiseTree * node : executor.scribe.getPremiseTreeNodes())
+        for (const PremiseTree * node : premiseTree->getDescendants())
         {
             if (node->premise.to_string().size() > 1024)
             {

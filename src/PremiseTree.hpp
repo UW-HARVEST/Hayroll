@@ -101,15 +101,55 @@ struct PremiseTree
         SPDLOG_DEBUG("New premise: {}", this->premise.to_string());
     }
 
+    void disjunctMacroPremise
+    (
+        const ProgramPoint & programPoint,
+        const z3::expr & premise
+    )
+    {
+        SPDLOG_DEBUG("Disjuncting macro premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string());
+        auto it = macroPremises.find(programPoint);
+        if (it == macroPremises.end())
+        {
+            macroPremises.insert_or_assign(programPoint, premise);
+        }
+        else
+        {
+            it->second = it->second || premise;
+        }
+    }
+
     std::string toString(size_t depth = 0) const
     {
-        std::string str = std::format
-        (
-            "{}{} {}",
-            std::string(depth * 4, ' '),
-            programPoint.toString(),
-            premise.to_string()
-        );
+        std::string str(depth * 4, ' ');
+        if (macroPremises.empty())
+        {
+            str += std::format
+            (
+                "{} {}",
+                programPoint.toString(),
+                premise.to_string()
+            );
+        }
+        else
+        {
+            str += std::format
+            (
+                "{} {}",
+                programPoint.toString(),
+                "Macro expansion:"
+            );
+            for (const auto & [programPoint, premise] : macroPremises)
+            {
+                str += std::format
+                (
+                    "\n{}{}: {}",
+                    std::string((depth + 1) * 4, ' '),
+                    programPoint.toString(),
+                    premise.to_string()
+                );
+            }
+        }
         for (const PremiseTreePtr & child : children)
         {
             str += "\n" + child->toString(depth + 1);
@@ -121,12 +161,48 @@ struct PremiseTree
     void refine()
     {
         premise = simplifyOrOfAnd(premise);
+        std::unordered_map<ProgramPoint, z3::expr, ProgramPoint::Hasher> newMacroPremises;
+        for (auto & [macroProgramPoint, macroPremise] : macroPremises)
+        {
+            if (z3Check(!z3::implies(getCompletePremise(), macroPremise)) == z3::unsat)
+            {
+                SPDLOG_DEBUG("Eliminating macro premise: {}", macroPremise.to_string());
+                continue;
+            }
+            macroPremise = simplifyOrOfAnd(macroPremise);
+            newMacroPremises.emplace(macroProgramPoint, macroPremise);
+        }
+        macroPremises = std::move(newMacroPremises);
 
+        std::vector<PremiseTreePtr> newChildren;
+        for (PremiseTreePtr & child : children)
+        {
+            child->refine();
+            // If the current node's premise implies the child's premise,
+            // we can remove the child node.
+            if (child->children.empty() && child->macroPremises.empty())
+            {
+                if (z3Check(!z3::implies(getCompletePremise(), child->premise)) == z3::unsat)
+                {
+                    SPDLOG_DEBUG("Eliminating child node: {}", child->toString());
+                    continue;
+                }
+            }
+            newChildren.push_back(std::move(child));
+        }
+        children = std::move(newChildren);
+    }
+
+    std::vector<PremiseTree *> getDescendants()
+    {
+        std::vector<PremiseTree *> result;
+        result.push_back(this);
         for (const PremiseTreePtr & child : children)
         {
-            // child->premise = premise && child->premise;
-            child->refine();
+            auto childNodes = child->getDescendants();
+            result.insert(result.end(), childNodes.begin(), childNodes.end());
         }
+        return result;
     }
 
     // Find the smallest premise tree node that contains the target program point.
@@ -218,16 +294,6 @@ public:
     PremiseTree * borrowTree()
     {
         return tree.get();
-    }
-
-    std::vector<PremiseTree *> getPremiseTreeNodes()
-    {
-        std::vector<PremiseTree *> result;
-        for (const auto & [_, node] : map)
-        {
-            result.push_back(node);
-        }
-        return result;
     }
 
 private:

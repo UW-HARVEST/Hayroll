@@ -67,6 +67,19 @@ std::string_view symbolName(const Symbol & symbol)
     return std::visit([](const auto & s) { return s.name; }, symbol);
 }
 
+const ProgramPoint & symbolProgramPoint(const Symbol & symbol)
+{
+    if (std::holds_alternative<ObjectSymbol>(symbol))
+    {
+        return std::get<ObjectSymbol>(symbol).def;
+    }
+    else if (std::holds_alternative<FunctionSymbol>(symbol))
+    {
+        return std::get<FunctionSymbol>(symbol).def;
+    }
+    else assert(false);
+}
+
 class SymbolSegment;
 using SymbolSegmentPtr = std::shared_ptr<SymbolSegment>;
 using ConstSymbolSegmentPtr = std::shared_ptr<const SymbolSegment>;

@@ -322,9 +322,69 @@ public:
         // c_tokens
         assert(startWarp.programPoint.node.isSymbol(lang.c_tokens_s));
 
-        // We should scan for possible macro expansions in identifiers.
-        // The final output should contain information about which definitions were expanded.
-        // For now, we just skip this node.
+        const auto & [programPoint, states] = startWarp;
+        const auto & [includeTree, node] = programPoint;
+
+        for (const TSNode & token : node.iterateChildren())
+        {
+            if (!token.isSymbol(lang.identifier_s)) continue;
+            std::string_view name = token.textView();
+            PremiseTree * premiseTreeNode = nullptr;
+            z3::expr unexpandedPremise = ctx->bool_val(false);
+            std::unordered_map<TSNode, std::vector<TSNode>, TSNode::Hasher> nestedExpansionUniformityChecker;
+            for (const State & state : states)
+            {
+                const auto & [symbolTable, premise] = state;
+                if (std::optional<const Hayroll::Symbol *> symbol = symbolTable->lookup(name))
+                {
+                    if (std::holds_alternative<ObjectSymbol>(**symbol) || std::holds_alternative<FunctionSymbol>(**symbol))
+                    {
+                        if (!premiseTreeNode)
+                        {
+                            premiseTreeNode = scribe.createNode({includeTree, token}, ctx->bool_val(true));
+                        }
+                        premiseTreeNode->disjunctMacroPremise(symbolProgramPoint(**symbol), premise);
+
+                        std::vector<TSNode> nestedExpansionDefinitions = macroExpander.collectNestedExpansionDefinitions(token, symbolTable);
+                        SPDLOG_DEBUG("Nested expansion definitions for token {}", name);
+                        for (const TSNode & nestedExpansion : nestedExpansionDefinitions)
+                        {
+                            SPDLOG_DEBUG("  {}", nestedExpansion.textView());
+                        }
+                        if (auto it = nestedExpansionUniformityChecker.find(token); it == nestedExpansionUniformityChecker.end())
+                        {
+                            nestedExpansionUniformityChecker.emplace(token, std::move(nestedExpansionDefinitions));
+                        }
+                        else
+                        {
+                            // Check if the nested expansion definitions are the same.
+                            std::vector<TSNode> & existingDefinitions = it->second;
+                            if (existingDefinitions != nestedExpansionDefinitions)
+                            {
+                                std::cerr << std::format("Warning: nested expansion definitions are not the same for token {} at {}.\n", name, programPoint.toString());
+                            }
+                        }
+                    }
+                    else if (std::holds_alternative<UndefinedSymbol>(**symbol))
+                    {
+                        unexpandedPremise = unexpandedPremise || premise;
+                    }
+                    else assert(false);
+                }
+                else
+                {
+                    unexpandedPremise = unexpandedPremise || premise;
+                }
+            }
+
+            // For tokens that are at least sometimes expanded, and also sometimes not expanded,
+            // take down when it is not expanded.
+            if (premiseTreeNode && z3Check(unexpandedPremise) == z3::sat)
+            {
+                premiseTreeNode->disjunctMacroPremise({includeTree, TSNode{}}, unexpandedPremise);
+            }
+        }
+        
         startWarp.programPoint = startWarp.programPoint.nextSibling();
 
         return std::move(startWarp);

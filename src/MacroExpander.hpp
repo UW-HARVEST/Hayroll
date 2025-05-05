@@ -44,6 +44,8 @@ public:
         Defined,
         NotDefined
     };
+
+    // Expand and symbolize the expression
     z3::expr symbolizeToBoolExpr
     (
         const std::vector<TSNode> & tokens,
@@ -412,6 +414,54 @@ public:
         } // while stack
 
         return buffer;
+    }
+
+    // Collect all definitons used for a nested expansion.
+    // Used to make sure our premise collection for multi-defined macro expansion is correct.
+    std::vector<TSNode> collectNestedExpansionDefinitions
+    (
+        const TSNode & token,
+        const ConstSymbolTablePtr & symbolTable
+    )
+    {
+        if (!token.isSymbol(lang.identifier_s)) return {};
+
+        std::string_view name = token.textView();
+        std::optional<const Hayroll::Symbol *> symbol = symbolTable->lookup(name);
+        if (symbol.has_value())
+        {
+            const Symbol & sym = *symbol.value();
+            if (std::holds_alternative<ObjectSymbol>(sym))
+            {
+                const ObjectSymbol & objSymbol = std::get<ObjectSymbol>(sym);
+                const TSNode & body = objSymbol.body;
+                std::vector<TSNode> definitions = {token};
+                for (const TSNode & token : body.iterateChildren())
+                {
+                    std::vector<TSNode> nestedDefinitions = collectNestedExpansionDefinitions(token, symbolTable);
+                    definitions.insert(definitions.end(), nestedDefinitions.begin(), nestedDefinitions.end());
+                }
+                return definitions;
+            }
+            else if (std::holds_alternative<FunctionSymbol>(sym))
+            {
+                const FunctionSymbol & funcSymbol = std::get<FunctionSymbol>(sym);
+                const TSNode & body = funcSymbol.body;
+                std::vector<TSNode> definitions = {token};
+                for (const TSNode & token : body.iterateChildren())
+                {
+                    std::vector<TSNode> nestedDefinitions = collectNestedExpansionDefinitions(token, symbolTable);
+                    definitions.insert(definitions.end(), nestedDefinitions.begin(), nestedDefinitions.end());
+                }
+                return definitions;
+            }
+            else if (std::holds_alternative<UndefinedSymbol>(sym))
+            {
+                return {};
+            }
+            else assert(false);
+        }
+        return {};
     }
 
     std::vector<TSNode> expandFunctionLikeMacro
