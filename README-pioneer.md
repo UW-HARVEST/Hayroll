@@ -8,9 +8,7 @@ The existing `c2rust` translation framework operates on preprocessed C code, mea
 
 The condition for inclusion of each line can be expressed as a boolean/arithmetic expression, based on the kinds of computation that is allowed in preprocessing. Pioneer symbolically executes C preprocessor directives to compute such inclusion conditions for each line of code (represented with an AST node in Pioneer's output).
 
-Pioneer is part of the Hayroll pipeline. According to Pioneer's output, Hayroll runs the preprocessor multiple times with different macro definitions, runs `c2rust` on each, and then merges all the resulting Rust programs into a single Rust implementation that uses Rust's `#cfg` macros.
-
-TODO: "According to Pioneer's output": not here, but elsewhere the documentation should give the algorithm for exactly how many times the preprocessor is run.  What guarantee is provided about the completeness of the set of runs?
+Pioneer is part of the Hayroll pipeline. According to Pioneer's output, Hayroll runs the preprocessor multiple times with different macro definitions, runs `c2rust` on each, and then merges all the resulting Rust programs into a single Rust implementation that uses Rust's `#cfg` macros. The algorithm that decides what macro definition conbinations to run with and how many total runs are needed is still work-in-progress.
 
 ## Input and Output
 
@@ -32,9 +30,7 @@ Symbolic values express to the definedness and value of user-defined macros (`-D
 
 These two values are distinct because the C macro system allows testing a macro's definedness independently from its value.
 
-A macro that is defined by a `#define` directive in program text is not represented with symbolic values, as the user cannot customize its value with `-D` input. While the user input may affect whether this directive is reached via conditional macros, that is handled by the State data structure introduced later.
-
-TODO: "in program text": What about in system header files?  It seems to me that those are like user-defined macros: they are unknown and all possible variation in them should be preserved.  Is this already handled, or will it be handled in the future, or is it out of scope?
+A macro that is defined by a `#define` directive in program text or a system header is not represented with symbolic values, as the user cannot customize its value with `-D` input. While the user input may affect whether this directive is reached via conditional macros, that is handled by the State data structure introduced later.
 
 A _symbolic expression_ is constructed from symbolic values or constants through boolean logic (`&&`, `||`, `!`) and integer arithmetic operations (`+`, `-`, `*`, `/`, `:?`, and comparisons). All premises are symbolic expressions.
 
@@ -46,9 +42,7 @@ Preprocessor directives, such as `#define` and `#if`, are the bones of this prog
 Pioneer represents this program by an Abstract Syntax Tree (AST).
 An AST node either stands for a preprocessor directive, or is a `c_tokens` node, meaning a contiguous set of non-preprocessor lines, represented as an unstructured list of C tokens. Pioneer contains a `tree-sitter-c_preproc` grammar to parse this AST.
 
-For simplicity, this document ignores `#include` directives, assuming they have been inlined -- an entire compilation unit is a single AST.
-
-TODO: Briefly, what is the behavior of the implementation?  (You don't have to give implementation details here, just the user perspective.)
+For simplicity, this document ignores `#include` directives, assuming they have been inlined -- an entire compilation unit is a single AST. The underlying implementation maintains a data structure that acts as a portal between `#include` and root nodes in different ASTs, in order to achieve that single-AST abstraction. 
 
 A **Program Point** is the beginning of a preprocessor line.
 Program Points are represented using AST nodes, meaning the line start of that AST node.
@@ -75,26 +69,20 @@ preproc_ifndef "#ifndef HEADER_GUARD [then] #endif"
 
 ### Symbol Table
 
-Pioneer maintains a symbol table mapping macro names to their definitions (token sequences).
+Pioneer maintains a symbol table mapping non-user-defined macro names to their definitions (token sequences). Macros defined in both the target project and system headers are included. 
 The expansion of macros depends on this symbol table, effectively substituting macro names with their bodies if defined, or leaving the macro name intact if undefined.
 
-TODO: "mapping macro names":  which macro names?  Some? all?  Not the user-defined ones?  What about those defined in system header files that are outside the code the programmer wrote?
-
 Formally, a symbol table can be represented as:
-$$
-\sigma : String \rightarrow ASTNode
-$$
-indicating the mapping from macro names to their definition nodes (the `#define` line). 
 
-TODO: Above, I would use _MacroDef_ rather than _AstNode_, because it is more specific.  (Even if your implementation doesn't have such a notion, clarity in this document is desirable.)
+$$
+\sigma : String \rightarrow MacroDef
+$$
+
+indicating the mapping from macro names to their definition nodes (the `#define` line). 
 
 ### State
 
-Pioneer explores all possible program states of a concrete C preprocessor in order to explore all its possible outputs. In Pioneer, a **State** is defined as:
-
-TODO: I am confused by "concrete C preprocessor".  Do you mean a C program?  or a preprocessor execution?  The state is used by an abstract interpretation, so what does the word "concrete" indicate there?
-
-TODO: "in order to explore":  Avoid passive voice, and make the actor clear.  What system will do that?  Pioneer, or some other part of the system?
+Pioneer finds all possible outputs of a C preprocessor execution by exploring all its execution states. In Pioneer, a **State** is defined as:
 
 $$
 s: State = (n: ProgramPoint, \sigma: SymbolTable, p: Premise)
@@ -106,7 +94,7 @@ Pioneer keeps a list of States during execution. A certain State being in the li
 
 ### Notations
 
-- $n : (SymbolTable, Premise) \rightarrow List(State)$ is the transition function associated with the first AST node after $n : ProgramPoint$.  TODO: I would replace "the first AST node after" by "the AST node at" or "the AST node immediately after".
+- $n : (SymbolTable, Premise) \rightarrow List(State)$ is the transition function associated with the AST node immediately after $n : ProgramPoint$.
 - $next : ProgramPoint \rightarrow ProgramPoint$ identifies the next ProgramPoint according to control flow sequence. The last ProgramPoint is repesented with `EOF`.
 - $nextThen : ProgramPoint \rightarrow ProgramPoint$ and $nextElse : ProgramPoint \rightarrow ProgramPoint$ refer to the initial ProgramPoints of the respective branches following an `#if` directive.
 - Given a symbol table $\sigma$, the function $eval_\sigma : Tokens \rightarrow Premise$ evaluates tokens into a symbolic expression within the context of $\sigma$.
@@ -118,7 +106,7 @@ Input: astRoot: ProgramPoint
 
 worklist = {(astRoot, emptySymbolTable, true)} : List(State)
 lineToPremise = [] : ProgramPoint -> Premise, initially false
-expansionToPremise = [] : ExpansionSite -> ProgramPoint -> Premise, initially false
+expansionToPremise = [] : (ExpansionSite x MacroDef) -> Premise, initially false
 
 While worklist not empty:
   s: State = (n: ProgramPoint, σ: SymbolTable, p: Premise) taken from worklist
@@ -134,11 +122,21 @@ While worklist not empty:
 Output: lineToPremise, expansionToPremise
 ```
 
-TODO: Why does `expansionToPremise` have type "ExpansionSite -> ProgramPoint -> Premise" rather than "ExpansionSite x ProgramPoint -> Premise"?  If you will depend on currying, the former is needed.  If you won't do currying, then the latter is clearer.  Also, should "ProgramPoint" be "MacroDef" instead?
+### Invariant of Outputs
 
-What invariants does `expansionToPremise` satisfy?  for example, for a given e and distinct s1 and s2, are the premises disjoint for `expansionToPremise[e][s1]` and `expansionToPremise[e][s2]`?
+For any given $e : ExpansionSite$ and all possible different definitions $d_i : MacroDef, 0 \le i < k$ according to which it expands, it is guaranteed that
 
+$$
+\forall i,j.\quad i\neq j \rightarrow \lnot (expansionToPremise[e][d_i] \land expansionToPremise[e][d_j])
+$$
 
+and
+
+$$
+\bigvee_{i=0}^{k-1}{expansionToPremise[e][d_i]}
+$$
+
+This essentially says that $d_i$ is a _logical partition_ of $expansionToPremise[e]$, similar to _set partition_. For $lineToPremise$, lines in different branches of the same `#if` directive follow a similar invariant. 
 
 ### State Transitions
 
