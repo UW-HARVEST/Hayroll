@@ -126,6 +126,7 @@ public:
         X(preproc_line) \
             Y(line_number) \
             Y(filename) \
+            Y(flag) \
         XX \
         X(preproc_params) \
             Y(parameter) \

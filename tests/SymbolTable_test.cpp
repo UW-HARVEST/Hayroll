@@ -23,17 +23,17 @@ int main()
 
     spdlog::set_level(spdlog::level::debug);
 
-    IncludeTreePtr includeTree = IncludeTree::make(TSNode{}, "<PREDEFINED_MACROS>");
+    IncludeTreePtr includeTree = IncludeTree::make(TSNode{}, "<built-in>");
     SymbolSegmentPtr symbolSegment = SymbolSegment::make();
     IncludeResolver resolver(clang_exe_path, {});
     CPreproc lang = CPreproc();
     TSParser parser(lang);
 
-    std::string predefinedMacros = resolver.getPredefinedMacros();
+    std::string builtinMacros = resolver.getBuiltinMacros();
 
-    std::cout << "Predefined macros:\n" << predefinedMacros << std::endl;
+    std::cout << "Predefined macros:\n" << builtinMacros << std::endl;
     
-    TSTree tree = parser.parseString(predefinedMacros);
+    TSTree tree = parser.parseString(builtinMacros);
 
     // Walk the tree and add the macros to the symbol table
     // The tree will be like:

@@ -277,3 +277,16 @@ add_test(
     NAME SymbolicExecutor_test
     COMMAND SymbolicExecutor_test
 )
+
+add_executable(LineMatcher_test tests/LineMatcher_test.cpp)
+target_link_libraries(LineMatcher_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME LineMatcher_test
+    COMMAND LineMatcher_test
+)

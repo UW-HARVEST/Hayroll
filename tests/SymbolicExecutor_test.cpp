@@ -99,6 +99,17 @@ int main(int argc, char **argv)
 
     executors.push_back(std::move(SymbolicExecutor(entryPath, tmpPath)));
 
+    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/include/complex.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/include/config.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/include/fenv.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/include/internal_config.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/include/math.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
+
+    executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/common/tools.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
+
+    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/mathf/sinhf.c", "../../libmcs/", {"../../libmcs/libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/complexd/cabsd.c", "../../libmcs/", {"../../libmcs/libm/include/"})));
+    
     bool allPass = true;
 
     for (SymbolicExecutor & executor : executors)
@@ -120,6 +131,9 @@ int main(int argc, char **argv)
         premiseTree->refine();
         std::cout << "Refined premise tree:\n";
         std::cout << premiseTree->toString() << std::endl;
+
+        std::cout << "Include tree:\n";
+        std::cout << includeTree->toString() << std::endl;
 
         for (const PremiseTree * node : premiseTree->getDescendants())
         {

@@ -148,20 +148,20 @@ public:
         SymbolTable::totalSymbolTables = 0;
 
         // Generate a base symbol table with the predefined macros.
-        std::string predefinedMacros = includeResolver.getPredefinedMacros();
-        const TSTree & predefinedMacroTree = astBank.addAnonymousSource(std::move(predefinedMacros));
-        State predefinedMacroState{symbolTableRoot, ctx->bool_val(true)};
-        ProgramPoint predefinedMacroProgramPoint{IncludeTree::make(TSNode{}, "<PREDEFINED_MACROS>"), predefinedMacroTree.rootNode()};
-        Warp predefinedMacroWarp{std::move(predefinedMacroProgramPoint), {std::move(predefinedMacroState)}};
+        std::string builtinMacros = includeResolver.getBuiltinMacros();
+        const TSTree & predefinedMacroTree = astBank.addAnonymousSource(std::move(builtinMacros));
+        State buildinMacroState{symbolTableRoot, ctx->bool_val(true)};
+        ProgramPoint predefinedMacroProgramPoint{IncludeTree::make(TSNode{}, "<built-in>"), predefinedMacroTree.rootNode()};
+        Warp predefinedMacroWarp{std::move(predefinedMacroProgramPoint), {std::move(buildinMacroState)}};
         predefinedMacroWarp = executeTranslationUnit(std::move(predefinedMacroWarp));
         assert(predefinedMacroWarp.states.size() == 1);
-        SymbolTablePtr predefinedMacroSymbolTable = predefinedMacroWarp.states[0].symbolTable;
-        assert(predefinedMacroSymbolTable != nullptr);
+        SymbolTablePtr builtinMacroSymbolTable = predefinedMacroWarp.states[0].symbolTable;
+        assert(builtinMacroSymbolTable != nullptr);
 
         const TSTree & tree = astBank.find(srcPath);
         TSNode root = tree.rootNode();
         // The initial state is the root node of the tree.
-        State startState{predefinedMacroSymbolTable, ctx->bool_val(true)};
+        State startState{builtinMacroSymbolTable, ctx->bool_val(true)};
         Warp startWarp{ProgramPoint{includeTree, root}, {std::move(startState)}};
         // Start the premise tree with a true premise.
         // When a state reaches an #error, it does not stop, instead, it conjuncts the negation

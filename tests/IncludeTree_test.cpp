@@ -21,7 +21,7 @@ int main(int argc, char **argv)
 
     IncludeResolver resolver(CLANG_EXE, {});
 
-    std::cout << "Predefined macros:\n" << resolver.getPredefinedMacros() << std::endl;
+    std::cout << "Predefined macros:\n" << resolver.getBuiltinMacros() << std::endl;
 
     auto tmpDir = TempDir();
     auto tmpPath = tmpDir.getPath();

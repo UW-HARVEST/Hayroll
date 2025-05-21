@@ -29,23 +29,27 @@ public:
     // The bank parses the file and stores the syntax tree.
     const TSTree & addFileOrFind(const std::filesystem::path & path)
     {
-        if (auto it = bank.find(path); it != bank.end())
+        std::filesystem::path pathCanonical = std::filesystem::canonical(path);
+
+        // Check if the file is already in the bank
+
+        if (auto it = bank.find(pathCanonical); it != bank.end())
         {
             return it->second;
         }
 
-        std::ifstream file(path);
+        std::ifstream file(pathCanonical);
         if (!file.is_open())
         {
-            throw std::runtime_error("Failed to open file: " + path.string());
+            throw std::runtime_error("Failed to open file: " + pathCanonical.string());
         }
         std::string fullSrc = std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         file.close();
         
         TSTree tree = parser.parseString(std::move(fullSrc));
-        bank[path] = std::move(tree);
+        bank[pathCanonical] = std::move(tree);
 
-        return bank.at(path);
+        return bank.at(pathCanonical);
     }
 
     const TSTree & addAnonymousSource(std::string && src)
@@ -58,7 +62,8 @@ public:
     // Find a tree in the bank by file path
     const TSTree & find(const std::filesystem::path & path) const
     {
-        return bank.at(path);
+        std::filesystem::path pathCanonical = std::filesystem::canonical(path);
+        return bank.at(pathCanonical);
     }
 
 private:

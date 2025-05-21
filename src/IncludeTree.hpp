@@ -128,10 +128,10 @@ public:
             {
                 ss << std::format
                 (
-                    "{}:{}",
+                    "{}:{}:{}",
                     parent->path.string(),
-                    includeNode.startPoint().column + 1,
-                    includeNode.startPoint().row + 1
+                    includeNode.startPoint().row + 1,
+                    includeNode.startPoint().column + 1
                 );
             }
             else
@@ -173,6 +173,10 @@ public:
             }
             prevIncludeNode = node->includeNode;
             node = node->parent.lock();
+            if (node)
+            {
+                ss << "\n<- ";
+            }
         }
         return ss.str();
     }

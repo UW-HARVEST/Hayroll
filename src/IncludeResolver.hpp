@@ -22,8 +22,12 @@ class IncludeResolver
 {
 public:
     IncludeResolver(const std::string & ccExePath, const std::vector<std::filesystem::path> & includePaths)
-        : ccExePath(ccExePath), includePaths(includePaths)
+        : ccExePath(ccExePath)
     {
+        for (const auto & includePath : includePaths)
+        {
+            this->includePaths.push_back(std::filesystem::canonical(includePath));
+        }
     }
 
     // Resolve an include path using the given C compiler
@@ -43,6 +47,8 @@ public:
         // cc -H -fsyntax-only -I{includePaths} stub.c
         // If is a user include, prioritize parent paths
         // cc -H -fsyntax-only -I{parentPaths} -I{includePaths} stub.c
+
+        if (includeName.starts_with("<")) return includeName; // <built-in> or <command-line>
 
         TempDir tmpDir;
         auto stubPath = tmpDir.getPath() / "stub.c";
@@ -87,17 +93,19 @@ public:
 
         std::string_view hierarchy(err.buf.data(), err.length);
         SPDLOG_DEBUG("Include hierarchy:\n{}", hierarchy);
-        return parseStubIncludePath(hierarchy);
+
+        std::string includePath = parseStubIncludePath(hierarchy);
+        return std::filesystem::canonical(includePath);
     }
 
-    std::filesystem::path resolveSystemInclude(const std::string & includeName) const
+    std::filesystem::path resolveSystemInclude(std::string_view includeName) const
     {
         return resolveInclude(true, includeName, {});
     }
 
     std::filesystem::path resolveUserInclude
     (
-        const std::string & includeName, 
+        std::string_view includeName, 
         const std::vector<std::filesystem::path> & parentPaths
     ) const
     {
@@ -105,7 +113,7 @@ public:
     }
 
     // Get macros that are predefined by the compiler before processing any source file
-    std::string getPredefinedMacros() const
+    std::string getBuiltinMacros() const
     {
         // cc -dM -E - < /dev/null
         std::vector<std::string> ccArgs = {ccExePath, "-dM", "-E", "-"};
