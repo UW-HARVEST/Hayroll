@@ -49,9 +49,12 @@ public:
         // cc -H -fsyntax-only -I{parentPaths} -I{includePaths} stub.c
 
         if (includeName.starts_with("<")) return includeName; // <built-in> or <command-line>
+        // Short circuit if the include name is absolute
+        // This saves time especially for LineMatcher, which has many system includes shown in absolute paths
+        if (std::filesystem::path(includeName).is_absolute()) return std::filesystem::canonical(includeName);
 
         TempDir tmpDir;
-        auto stubPath = tmpDir.getPath() / "stub.c";
+        std::filesystem::path stubPath = tmpDir.getPath() / "stub.c";
         std::ofstream stubFile(stubPath);
         if (isSystemInclude)
         {
@@ -66,12 +69,12 @@ public:
         std::vector<std::string> ccArgs = {ccExePath, "-H", "-fsyntax-only", stubPath};
         if (!isSystemInclude)
         {
-            for (const auto & parentPath : parentPaths)
+            for (const std::filesystem::path & parentPath : parentPaths)
             {
                 ccArgs.push_back("-I" + parentPath.string());
             }
         }
-        for (const auto & includePath : includePaths)
+        for (const std::filesystem::path & includePath : includePaths)
         {
             ccArgs.push_back("-I" + includePath.string());
         }
