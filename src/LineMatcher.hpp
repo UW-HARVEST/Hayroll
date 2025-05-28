@@ -29,28 +29,22 @@ namespace Hayroll
 class LineMatcher
 {
 public:
-    const CPreproc lang;
-    std::filesystem::path srcPath;
-    IncludeResolver includeResolver;
-    ASTBank astBank;
-    IncludeTreePtr includeTree;
-    // IncludeTree -> line number in original source -> line number in -frewrite-includes -generated file
-    std::unordered_map<IncludeTreePtr, std::vector<int>> lineMap; 
-
-    LineMatcher
+    static std::unordered_map<IncludeTreePtr, std::vector<int>> run
     (
-        const std::filesystem::path & srcPath,
+        std::filesystem::path srcPath,
         IncludeTreePtr includeTree, // IncludeTree from a previous symbolic execution
         const std::vector<std::filesystem::path> & includePaths = {}
     )
-        : lang(CPreproc()), srcPath(std::filesystem::canonical(srcPath)), includeResolver(CLANG_EXE, includePaths), astBank(lang),
-          includeTree(includeTree)
     {
+        const CPreproc lang{CPreproc()};
+        srcPath = std::filesystem::canonical(srcPath);
+        IncludeResolver includeResolver{CLANG_EXE, includePaths};
+        ASTBank astBank{lang};
         astBank.addFileOrFind(srcPath);
-    }
 
-    void run()
-    {
+        // IncludeTree -> line number in original source -> line number in -frewrite-includes -generated file
+        std::unordered_map<IncludeTreePtr, std::vector<int>> lineMap; 
+
         lineMap.clear();
 
         const TSTree & tree = astBank.find(srcPath);
@@ -173,6 +167,8 @@ public:
                 lines.pop_back();
             }
         }
+
+        return lineMap;
     }
 };
 

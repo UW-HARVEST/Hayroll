@@ -58,11 +58,10 @@ int main(int argc, char **argv)
         std::cout << "Include tree:\n";
         std::cout << includeTree->toString() << std::endl;
 
-        LineMatcher lineMatcher(includedFilename, includeTree, includePaths);
-        lineMatcher.run();
+        std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> lineMap = LineMatcher::run(includedFilename, includeTree, includePaths);
 
         std::cout << "Line map:\n";
-        for (const auto & [includeTreeNode, lines] : lineMatcher.lineMap)
+        for (const auto & [includeTreeNode, lines] : lineMap)
         {
             std::cout << includeTreeNode->stacktrace() << "\n";
             for (size_t i = 0; i < lines.size(); ++i)
