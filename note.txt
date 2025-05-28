@@ -6,7 +6,7 @@ awk 'NR==144 {print substr($0, 1, 31) "ESCAPED" substr($0, 32)} NR!=144' /home/h
 
 awk 'NR==1 {print substr($0, 1, 10) "ESCAPED" substr($0, 11)} NR!=1' ./trace.txt > /tmp/hayroll.tmp && mv /tmp/hayroll.tmp ./trace.txt
 
-./seeder /home/hurrypeng/libmcs/macro_invocation_analyses/all_results.cpp2c ../libmcs/libm/mathf/ &> trace.txt
+./seeder /home/hurrypeng/libmcs/macro_invocation_analyses/all_results.cpp2c ../libmcs/libm/mathf/sinhf.c &> trace.txt
 
     {
         *"{}";

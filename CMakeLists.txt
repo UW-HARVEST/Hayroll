@@ -174,6 +174,12 @@ include_directories(include)
 include_directories(src)
 
 add_executable(seeder src/seeder.cpp)
+target_link_libraries(seeder PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    tree_sitter_config
+)
 
 add_executable(pioneer src/pioneer.cpp)
 target_link_libraries(pioneer PRIVATE
@@ -289,4 +295,17 @@ target_link_libraries(LineMatcher_test PRIVATE
 add_test(
     NAME LineMatcher_test
     COMMAND LineMatcher_test
+)
+
+add_executable(Seeder_test tests/Seeder_test.cpp)
+target_link_libraries(Seeder_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME Seeder_test
+    COMMAND Seeder_test
 )

@@ -11,7 +11,9 @@
 #include <tuple>
 #include <filesystem>
 
-#include "json.hpp"
+#include <json.hpp>
+
+#include "LineMatcher.hpp"
 
 using namespace nlohmann;
 
@@ -166,11 +168,28 @@ public:
         std::string_view locDecl,
         std::string_view locInv, // Only for args, the locInv for the invocation is locBegin
         std::string_view spelling,
-        bool canFn
+        bool canFn,
+        const std::filesystem::path & dstPath,
+        const std::optional<std::vector<int>> & lineMap = std::nullopt
     )
     {
         auto [path, line, col] = parseLocation(locBegin);
         auto [pathEnd, lineEnd, colEnd] = parseLocation(locEnd);
+
+        if (lineMap)
+        {
+            // If lineMap is provided, use it to adjust the line and column numbers
+            if (line <= 0 || line > static_cast<int>(lineMap->size()) || (*lineMap)[line] == 0)
+            {
+                throw std::invalid_argument("Invalid line number in location: " + std::string(locBegin));
+            }
+            line = (*lineMap)[line];
+            if (lineEnd <= 0 || lineEnd > static_cast<int>(lineMap->size()) || (*lineMap)[lineEnd] == 0)
+            {
+                throw std::invalid_argument("Invalid line number in location: " + std::string(locEnd));
+            }
+            lineEnd = (*lineMap)[lineEnd];
+        }
 
         Tag tagBegin
         {
@@ -211,7 +230,7 @@ public:
                 // (*((*tagBegin)?(&(ORIGINAL_INVOCATION)):((__typeof__(spelling)*)(0))))
                 InstrumentationTask taskLeft
                 {
-                    .filename = std::string(path),
+                    .filename = std::string(dstPath),
                     .line = line,
                     .col = col,
                     .str = 
@@ -224,7 +243,7 @@ public:
                 };
                 InstrumentationTask taskRight
                 {
-                    .filename = std::string(path),
+                    .filename = std::string(dstPath),
                     .line = lineEnd,
                     .col = colEnd,
                     .str = 
@@ -244,7 +263,7 @@ public:
                 // ((*tagBegin)?(ORIGINAL_INVOCATION):(*(__typeof__(spelling)*)(0)))
                 InstrumentationTask taskLeft
                 {
-                    .filename = std::string(path),
+                    .filename = std::string(dstPath),
                     .line = line,
                     .col = col,
                     .str = 
@@ -257,7 +276,7 @@ public:
                 };
                 InstrumentationTask taskRight
                 {
-                    .filename = std::string(path),
+                    .filename = std::string(dstPath),
                     .line = lineEnd,
                     .col = colEnd,
                     .str = 
@@ -278,7 +297,7 @@ public:
             // {*tagBegin;ORIGINAL_INVOCATION;*tagEnd;}
             InstrumentationTask taskLeft
             {
-                .filename = std::string(path),
+                .filename = std::string(dstPath),
                 .line = line,
                 .col = col,
                 .str = 
@@ -291,7 +310,7 @@ public:
             };
             InstrumentationTask taskRight
             {
-                .filename = std::string(path),
+                .filename = std::string(dstPath),
                 .line = lineEnd,
                 .col = colEnd,
                 .str = 
@@ -305,6 +324,7 @@ public:
             tasks.push_back(taskLeft);
             tasks.push_back(taskRight);
         }
+        else {} // Do nothing for other AST kinds
 
         return tasks;
     }
@@ -327,7 +347,11 @@ public:
         NLOHMANN_DEFINE_TYPE_INTRUSIVE(ArgInfo, Name, ASTKind, Type, IsLValue, ActualArgLocBegin, ActualArgLocEnd)
 
         // Generate tags for the arguments
-        std::list<InstrumentationTask> collectInstrumentationTasks() const
+        std::list<InstrumentationTask> collectInstrumentationTasks
+        (
+            const std::filesystem::path & dstPath,
+            const std::optional<std::vector<int>> & lineMap = std::nullopt
+        ) const
         {
             return genInstrumentationTasks(
                 ActualArgLocBegin,
@@ -340,7 +364,9 @@ public:
                 "", // locDecl
                 InvocationLocation,
                 Spelling,
-                false // canFn
+                false, // canFn
+                dstPath,
+                lineMap
             );
         }
     };
@@ -719,12 +745,16 @@ public:
         }
 
         // Collect the instrumentation tasks for the invocation and its arguments
-        std::list<InstrumentationTask> collectInstrumentationTasks() const
+        std::list<InstrumentationTask> collectInstrumentationTasks
+        (
+            const std::filesystem::path & dstPath,
+            const std::optional<std::vector<int>> & lineMap = std::nullopt
+        ) const
         {
             std::list<InstrumentationTask> tasks;
             for (const ArgInfo & arg : Args)
             {
-                std::list<InstrumentationTask> argTasks = arg.collectInstrumentationTasks();
+                std::list<InstrumentationTask> argTasks = arg.collectInstrumentationTasks(dstPath, lineMap);
                 tasks.splice(tasks.end(), argTasks);
             }
 
@@ -745,7 +775,9 @@ public:
                 DefinitionLocation,
                 "", // locInv, not required for invocations
                 Spelling,
-                canRustFn()
+                canRustFn(),
+                dstPath,
+                lineMap
             );
             tasks.splice(tasks.end(), invocationTasks);
             
@@ -755,7 +787,7 @@ public:
 
     // Check if the invocation info is valid and thus should be kept
     // Invalid cases: empty fields, invalid path, non-Expr/Stmt ASTKind
-    static bool keepInvocationInfo(const MakiInvocationInfo & invocation, const std::filesystem::path & projectRootDir)
+    static bool keepInvocationInfo(const MakiInvocationInfo & invocation, const std::filesystem::path & srcPath)
     {
         if
         (
@@ -770,8 +802,8 @@ public:
             return false;
         }
         auto [path, line, col] = parseLocation(invocation.InvocationLocation);
-        // If the path is not a subpath of the project root directory, skip it.
-        if (!path.string().starts_with(projectRootDir.string()))
+        // Only modify source files
+        if (path != srcPath)
         {
             return false;
         }
@@ -783,12 +815,18 @@ public:
         return true;
     }
 
-    static int seeder
+    static void run
     (
-        const std::filesystem::path & cpp2cFilePath,
-        const std::filesystem::path & projectRootDir
+        std::filesystem::path cpp2cFilePath,
+        std::filesystem::path srcPath,
+        std::filesystem::path dstPath,
+        const std::optional<std::vector<int>> & lineMap = std::nullopt
     )
     {
+        cpp2cFilePath = std::filesystem::canonical(cpp2cFilePath);
+        srcPath = std::filesystem::canonical(srcPath);
+        dstPath = std::filesystem::canonical(dstPath);
+
         // Open the file. For each line, check the first word before the first whitespace (can be space or tab).
         // If it is Invocation, then treat the rest of the line as a JSON string and parse it.
         // If it is not, then ignore the line.
@@ -797,8 +835,7 @@ public:
             std::ifstream cpp2cFile(cpp2cFilePath);
             if (!cpp2cFile.is_open())
             {
-                std::cerr << "Error: Could not open file " << cpp2cFilePath << std::endl;
-                return 1;
+                throw std::runtime_error("Error: Could not open file " + cpp2cFilePath.string());
             }
 
             std::string line;
@@ -815,15 +852,14 @@ public:
                     {
                         json j = json::parse(jsonString);
                         MakiInvocationInfo invocation = j.get<MakiInvocationInfo>();
-                        if (keepInvocationInfo(invocation, projectRootDir))
+                        if (keepInvocationInfo(invocation, srcPath))
                         {
                             invocations.push_back(invocation);
                         }
                     }
                     catch (json::parse_error& e)
                     {
-                        std::cerr << "Error: Failed to parse JSON: " << e.what() << std::endl;
-                        return 1;
+                        throw std::runtime_error("Error: Failed to parse JSON: " + std::string(e.what()));
                     }
                 }
             }
@@ -851,8 +887,7 @@ public:
             std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(awkCommand.c_str(), "r"), pclose);
             if (!pipe)
             {
-                std::cerr << "Error: popen() failed!" << std::endl;
-                return 1;
+                throw std::runtime_error("Error: popen() failed!");
             }
             while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
             {
@@ -865,8 +900,7 @@ public:
             }
             if (result.size() != colEnd - col)
             {
-                std::cerr << "Error: awk command result size does not match the expected size: " << result << " vs " << colEnd << " - " << col << std::endl;
-                return 1;
+                throw std::runtime_error("Error: awk command result size does not match the expected size: " + result + " vs " + std::to_string(colEnd) + " - " + std::to_string(col));
             }
             invocation.Spelling = result;
 
@@ -883,8 +917,7 @@ public:
                 std::string argResult;
                 std::unique_ptr<FILE, decltype(&pclose)> argPipe(popen(argAwkCommand.c_str(), "r"), pclose);
                 if (!argPipe) {
-                    std::cerr << "Error: popen() failed!" << std::endl;
-                    return 1;
+                    throw std::runtime_error("Error: popen() failed!");
                 }
                 while (fgets(buffer.data(), buffer.size(), argPipe.get()) != nullptr)
                 {
@@ -897,8 +930,7 @@ public:
                 }
                 if (argResult.size() != argColEnd - argCol)
                 {
-                    std::cerr << "Error: awk command result size does not match the expected size: " << argResult << " vs " << argColEnd << " - " << argCol << std::endl;
-                    return 1;
+                    throw std::runtime_error("Error: awk command result size does not match the expected size: " + argResult + " vs " + std::to_string(argColEnd) + " - " + std::to_string(argCol));
                 }
                 arg.Spelling = argResult;
                 arg.InvocationLocation = invocation.InvocationLocation;
@@ -909,7 +941,7 @@ public:
         std::list<InstrumentationTask> tasks;
         for (const MakiInvocationInfo & invocation : invocations)
         {
-            std::list<InstrumentationTask> invocationTasks = invocation.collectInstrumentationTasks();
+            std::list<InstrumentationTask> invocationTasks = invocation.collectInstrumentationTasks(dstPath, lineMap);
             tasks.splice(tasks.end(), invocationTasks);
         }
 
@@ -921,14 +953,12 @@ public:
         {
             std::cout << task.readable() << std::endl;
             int ret = system(task.awkCommand().c_str());
+            SPDLOG_DEBUG("Executing awk command: {}", task.awkCommand());
             if (ret != 0)
             {
-                std::cerr << "Error: Failed to execute awk command: " << task.awkCommand() << std::endl;
-                return 2;
+                throw std::runtime_error("Error: Failed to execute awk command: " + task.awkCommand());
             }
         }
-
-        return 0;
     }
 };
 
