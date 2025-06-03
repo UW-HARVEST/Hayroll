@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <fstream>
 
 #include <z3++.h>
 
@@ -23,6 +24,18 @@ template<class... Ts>
 struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
+
+std::string loadFromFile(const std::filesystem::path & path)
+{
+    std::ifstream file(path);
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Error: Could not open file " + path.string());
+    }
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    file.close();
+    return content;
+}
 
 // A string builder that can append std::string, std::string_view, and const char *
 // Reduces copys at best effort

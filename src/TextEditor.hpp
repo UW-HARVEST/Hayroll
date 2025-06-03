@@ -1,5 +1,6 @@
-// Text editor that allows insertion, erasion, and modification of text at specific lines and columns.
-// Commits all changes to a file at once.
+// Text editor that allows insertion, erasion, and modification of text at 1-based line and column indices.
+// Commits all changes to a string at once, ensuring that edits do not conflict with each other,
+// as long as edits do not overlap.
 
 #ifndef HAYROLL_TEXTEDITOR_HPP
 #define HAYROLL_TEXTEDITOR_HPP
@@ -8,20 +9,12 @@
 #include <vector>
 #include <ranges>
 
-#include "Util.hpp"
-
 namespace Hayroll
 {
 
 class TextEditor
 {
 public:
-
-    TextEditor(std::string_view text)
-        : text(text)
-    {
-    }
-
     enum EditType
     {
         Insert,
@@ -48,31 +41,14 @@ public:
         }
     };
 
-    void insert(std::size_t line, std::size_t column, std::string_view content)
-    {
-        edits.emplace_back(EditType::Insert, line, column, content);
-    }
-
-    void modify(std::size_t line, std::size_t column, std::string_view content)
-    {
-        edits.emplace_back(EditType::Modify, line, column, content);
-    }
-
-    // Equivalent to changing the text to space characters
-    void erase(std::size_t line, std::size_t column, std::size_t length)
-    {
-        if (length == 0) return;
-        std::string spaces(length, ' ');
-        edits.emplace_back(EditType::Modify, line, column, spaces);
-    }
-
     std::string text;
+    std::vector<std::string> lines;
     std::vector<Edit> edits;
 
-    std::string commit()
+    TextEditor(std::string_view t)
+        : text(t)
     {
         // Ln and col number start from 1
-        std::vector<std::string> lines;
         lines.push_back(""); // Padding line 0
         std::size_t pos = 0;
         while (pos < text.size())
@@ -86,7 +62,43 @@ public:
             lines.push_back(text.substr(pos, nextPos - pos));
             pos = nextPos + 1; // Skip the newline character
         }
+    }
 
+    void insert(std::size_t ln, std::size_t col, std::string_view content)
+    {
+        edits.emplace_back(EditType::Insert, ln, col, content);
+    }
+
+    void modify(std::size_t ln, std::size_t col, std::string_view content)
+    {
+        edits.emplace_back(EditType::Modify, ln, col, content);
+    }
+
+    // Equivalent to changing the text to space characters
+    void erase(std::size_t ln, std::size_t col, std::size_t length)
+    {
+        if (length == 0) return;
+        std::string spaces(length, ' ');
+        edits.emplace_back(EditType::Modify, ln, col, spaces);
+    }
+
+    std::string get(std::size_t ln, std::size_t col, std::size_t length) const
+    {
+        if (ln >= lines.size() || col == 0 || col > lines[ln].size())
+        {
+            throw std::out_of_range("Line or column out of range");
+        }
+        std::size_t start = col - 1; // Convert to 0-based index
+        std::size_t end = start + length;
+        if (end > lines[ln].size())
+        {
+            end = lines[ln].size();
+        }
+        return lines[ln].substr(start, end - start);
+    }
+
+    std::string commit()
+    {
         // Sort edits by line and column
         std::sort(edits.begin(), edits.end());
 

@@ -14,6 +14,7 @@
 #include <json.hpp>
 
 #include "LineMatcher.hpp"
+#include "TextEditor.hpp"
 
 using namespace nlohmann;
 
@@ -120,7 +121,7 @@ public:
         }
     };
 
-    // InstrumentationTask will be transformed into an awk command that performs insertion
+    // InstrumentationTask will be transformed into TextEditor edits
     struct InstrumentationTask
     {
         std::string filename;
@@ -128,25 +129,9 @@ public:
         int col;
         std::string str;
 
-        bool operator<(const InstrumentationTask & other) const
+        void addToEditor(TextEditor & editor) const
         {
-            // Insert from the end of the file to the beginning.
-            if (filename != other.filename)
-            {
-                return filename < other.filename;
-            }
-            if (line != other.line)
-            {
-                return line > other.line;
-            }
-            return col > other.col;
-        }
-
-        std::string awkCommand() const
-        {
-            // Example: awk 'NR==144 {print substr($0, 1, 31) "ESCAPED_SPELLING" substr($0, 32)} NR!=144' /home/husky/libmcs/libm/include/internal_config.h > /tmp/hayroll.tmp && mv /tmp/hayroll.tmp /home/husky/libmcs/libm/include/internal_config.h
-            std::string escaped = escapeString(str);
-            return "awk 'NR==" + std::to_string(line) + " {print substr($0, 1, " + std::to_string(col - 1) + ") \"" + escaped + "\" substr($0, " + std::to_string(col) + ")} NR!=" + std::to_string(line) + "' " + filename + " > /tmp/hayroll.tmp && mv /tmp/hayroll.tmp " + filename;
+            editor.insert(line, col, str);
         }
 
         std::string readable() const
@@ -868,71 +853,20 @@ public:
         }
         
 
-        // Collect the spelling of each invocation and argument.
-        // They are the strings between xxxLocBegin and xxxLocEnd.
-        // We can use awk to extract them.
-        // Example awk 'NR==144 {print substr($0, 32, 15)}' /home/husky/libmcs/libm/include/internal_config.h
+        std::string srcStr = loadFromFile(srcPath);
+        TextEditor srcEditor{srcStr};
+
         for (MakiInvocationInfo & invocation : invocations)
         {
             auto [path, line, col] = parseLocation(invocation.InvocationLocation);
             auto [pathEnd, lineEnd, colEnd] = parseLocation(invocation.InvocationLocationEnd);
-            assert(line == lineEnd);
-            std::string awkCommand = "awk 'NR==" + std::to_string(line)
-                + " {print substr($0, " + std::to_string(col)
-                + ", " + std::to_string(colEnd - col)
-                + ")}' " + std::string(path);
-
-            std::array<char, 128> buffer;
-            std::string result;
-            std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(awkCommand.c_str(), "r"), pclose);
-            if (!pipe)
-            {
-                throw std::runtime_error("Error: popen() failed!");
-            }
-            while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
-            {
-                result += buffer.data();
-            }
-            // get rid of the newline character
-            if (!result.empty() && result.back() == '\n')
-            {
-                result.pop_back();
-            }
-            if (result.size() != colEnd - col)
-            {
-                throw std::runtime_error("Error: awk command result size does not match the expected size: " + result + " vs " + std::to_string(colEnd) + " - " + std::to_string(col));
-            }
-            invocation.Spelling = result;
+            invocation.Spelling = srcEditor.get(line, col, colEnd - col);
 
             for (ArgInfo & arg : invocation.Args)
             {
                 auto [argPath, argLine, argCol] = parseLocation(arg.ActualArgLocBegin);
                 auto [argPathEnd, argLineEnd, argColEnd] = parseLocation(arg.ActualArgLocEnd);
-                assert(argLine == argLineEnd);
-                std::string argAwkCommand = "awk 'NR==" + std::to_string(argLine)
-                + " {print substr($0, " + std::to_string(argCol)
-                + ", " + std::to_string(argColEnd - argCol)
-                + ")}' " + std::string(argPath);
-
-                std::string argResult;
-                std::unique_ptr<FILE, decltype(&pclose)> argPipe(popen(argAwkCommand.c_str(), "r"), pclose);
-                if (!argPipe) {
-                    throw std::runtime_error("Error: popen() failed!");
-                }
-                while (fgets(buffer.data(), buffer.size(), argPipe.get()) != nullptr)
-                {
-                    argResult += buffer.data();
-                }
-                // get rid of the newline character
-                if (!argResult.empty() && argResult.back() == '\n')
-                {
-                    argResult.pop_back();
-                }
-                if (argResult.size() != argColEnd - argCol)
-                {
-                    throw std::runtime_error("Error: awk command result size does not match the expected size: " + argResult + " vs " + std::to_string(argColEnd) + " - " + std::to_string(argCol));
-                }
-                arg.Spelling = argResult;
+                arg.Spelling = srcEditor.get(argLine, argCol, argColEnd - argCol);
                 arg.InvocationLocation = invocation.InvocationLocation;
             }
         }
@@ -945,20 +879,32 @@ public:
             tasks.splice(tasks.end(), invocationTasks);
         }
 
-        // Sort the tasks so that we can insert them from the end of the file to the beginning.
-        tasks.sort();
+        std::ifstream dstFile(dstPath);
+        if (!dstFile.is_open()) {
+            throw std::runtime_error("Error: Could not open destination file " + dstPath.string());
+        }
+        std::string dstContent((std::istreambuf_iterator<char>(dstFile)), 
+                              std::istreambuf_iterator<char>());
+        dstFile.close();
 
-        // Execute the awk commands.
+        std::string dstStr = loadFromFile(dstPath);
+        TextEditor dstEditor{dstStr};
+        
         for (const InstrumentationTask & task : tasks)
         {
             std::cout << task.readable() << std::endl;
-            int ret = system(task.awkCommand().c_str());
-            SPDLOG_DEBUG("Executing awk command: {}", task.awkCommand());
-            if (ret != 0)
-            {
-                throw std::runtime_error("Error: Failed to execute awk command: " + task.awkCommand());
-            }
+            task.addToEditor(dstEditor);
         }
+        
+        std::string newStr = dstEditor.commit();
+        
+        std::ofstream outFile(dstPath);
+        if (!outFile.is_open())
+        {
+            throw std::runtime_error("Error: Could not open file for writing: " + dstPath.string());
+        }
+        outFile << newStr;
+        outFile.close();
     }
 };
 
