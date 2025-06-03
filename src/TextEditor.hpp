@@ -26,7 +26,7 @@ public:
         EditType type;
         std::size_t ln;
         std::size_t col;
-        std::string_view content;
+        std::string content;
 
         Edit(EditType t, std::size_t l, std::size_t c, std::string_view cont)
             : type(t), ln(l), col(c), content(cont)
