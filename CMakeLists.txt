@@ -309,3 +309,16 @@ add_test(
     NAME Seeder_test
     COMMAND Seeder_test
 )
+
+add_executable(TextEditor_test tests/TextEditor_test.cpp)
+target_link_libraries(TextEditor_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME TextEditor_test
+    COMMAND TextEditor_test
+)
