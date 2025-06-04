@@ -322,3 +322,16 @@ add_test(
     NAME TextEditor_test
     COMMAND TextEditor_test
 )
+
+add_executable(LinemarkerEraser_test tests/LinemarkerEraser_test.cpp)
+target_link_libraries(LinemarkerEraser_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME LinemarkerEraser_test
+    COMMAND LinemarkerEraser_test
+)
