@@ -5,12 +5,12 @@
 When compiling C code, a certain set of macros are defined. These depend on the
 OS, architecture, and `-D<MACRO_NAME>=<MACRO_VALUE>` command-line
 arguments. Macros can selectively enable program features (including further
-macro definitions), with disabled features removed by conditional compilation
+macro definitions). Disabled features are removed by conditional compilation
 directives during preprocessing, incurring no run-time overhead.
 
 The existing `c2rust` translation framework operates on preprocessed C code,
 meaning it translates only the code enabled by one setting of macro definitions
-(most notably, user-specified `-D` flags). The remaining code paths and
+(e.g., user-specified `-D` flags). The remaining code paths and
 configurability are lost in the resulting Rust code.
 
 The condition for inclusion of each line can be expressed as a
@@ -28,6 +28,9 @@ needed is still work-in-progress.
 
 ## Input and Output
 
+Pioneer is provided as a C++ library. The input is a path to the source file, 
+and the outputs are in-memory data structures that will be described later. 
+
 - **Input:** A single C compilation unit.
 - **Output:**
   - For each line of code (represented with an AST node): the premise (symbolic
@@ -42,7 +45,7 @@ Note: The actual output of the program is structured as a hierarchical premise t
 
 ### Symbolic Value and Expression
 
-Symbolic values express to the definedness and value of user-defined macros (`-D`). We assume such macros are defined to integers, which is the common case. Each macro is associated with two symbolic values:
+Symbolic values express the definedness and value of user-defined macros (`-D`). We assume such macros are defined to integers, which is the common case. Pioneer does not explore potential executions from non-integer `-D` values. Each macro is associated with two symbolic values:
 
 - Boolean value (`defMACRO_NAME`) indicating whether the macro is defined.
 - Integer value (`valMACRO_NAME`) representing its numeric value.
@@ -57,7 +60,7 @@ introduced later.
 
 A _symbolic expression_ is constructed from symbolic values or constants through
 boolean logic (`&&`, `||`, `!`) and integer arithmetic operations (`+`, `-`,
-`*`, `/`, `:?`, and comparisons). All premises are symbolic expressions.
+`*`, `/`, `()?():()`, and comparisons). All premises are symbolic expressions.
 
 ### Program Point
 
@@ -104,16 +107,16 @@ preproc_ifndef "#ifndef HEADER_GUARD [then] #endif"
 
 ### Symbol Table
 
-Pioneer maintains a symbol table mapping non-user-defined macro names to their
+Pioneer maintains a symbol table mapping program-defined macro names to their
 definitions (token sequences). Macros defined in both the target project and
-system headers are included.  The expansion of macros depends on this symbol
+system headers are included. The expansion of macros depends on this symbol
 table, effectively substituting macro names with their bodies if defined, or
 leaving the macro name intact if undefined.
 
-Formally, a symbol table can be represented as:
+Formally, a symbol table can be represented as a partial function:
 
 $$
-\sigma : String \rightarrow MacroDef
+\sigma : String \rightarrow ProgramPoint
 $$
 
 indicating the mapping from macro names to their definition nodes (the `#define` line). 
@@ -127,8 +130,8 @@ $$
 s: State = (n: ProgramPoint, \sigma: SymbolTable, p: Premise)
 $$
 
-Pioneer keeps a list of States during execution. A certain State being in the
-list means that, when the user-provided macro definitions satisfy its $p$, a
+Pioneer keeps a set of States during execution. A certain State being in the
+set means that, when the user-provided macro definitions satisfy its $p$ (a symbolic expression), a
 concrete preprocessor execution will pass by this $n$, at which time macros in
 $\sigma$ are defined. Pioneer explores the reachable state space according to
 its algorithm.
@@ -137,16 +140,19 @@ its algorithm.
 
 ### Notations
 
-- $n : (SymbolTable, Premise) \rightarrow List(State)$ is the transition
-  function associated with the AST node immediately after $n : ProgramPoint$.
+- $F : ProgramPoint \rightarrow (SymbolTable, Premise) \rightarrow List(State)$ turns $n : ProgramPoint$ into the transition
+  function associated with the AST node immediately after $n$.
 
 - $next : ProgramPoint \rightarrow ProgramPoint$ identifies the next
-  ProgramPoint according to control flow sequence. The last ProgramPoint is
+  ProgramPoint according to control flow sequence. 
+  It only accepts non-conditional preprocessor directives. 
+  The last ProgramPoint is
   repesented with `EOF`.
 
 - $nextThen : ProgramPoint \rightarrow ProgramPoint$ and $nextElse :
   ProgramPoint \rightarrow ProgramPoint$ refer to the initial ProgramPoints of
   the respective branches following an `#if` directive.
+  They only accept conditional preprocessor directives. 
 
 - Given a symbol table $\sigma$, the function $eval_\sigma : Tokens \rightarrow
   Premise$ evaluates tokens into a symbolic expression within the context of
@@ -169,7 +175,7 @@ While worklist not empty:
     for each e: ExpansionSite in n:
       expansionToPremise[e][σ(e.name)] ||= p
 
-  newStates: List(State) = n(σ, p)
+  newStates: List(State) = F(n)(σ, p)
   worklist += newStates
 
 Output: lineToPremise, expansionToPremise
@@ -177,8 +183,9 @@ Output: lineToPremise, expansionToPremise
 
 ### Invariant of Outputs
 
-For any given $e : ExpansionSite$ and all possible different definitions 
-$d_i : MacroDef, 0 \le i < k$ according to which it expands, 
+For any given $e : ExpansionSite$, all possible different definitions 
+$d_i : MacroDef, 0 \le i < k$ according to which it expands,
+and $n: ProgramPoint$ which contains $e$,
 it is guaranteed that
 
 $$
@@ -188,47 +195,12 @@ $$
 and
 
 $$
-\bigvee_{i=0}^{k-1}{expansionToPremise[e][d_i]}
+lineToPremise[n] = \bigvee_{i=0}^{k-1}{expansionToPremise[e][d_i]}
 $$
 
 This essentially says that $d_i$ is a _logical partition_ of
-$expansionToPremise[e]$, similar to _set partition_. For $lineToPremise$, lines
+$lineToPremise[n]$, similar to _set partition_. For $lineToPremise$, lines
 in different branches of the same `#if` directive follow a similar invariant.
-
-### State Transitions
-
-#### `#define name body`
-
-$$
-n: ProgramPoint = (name: String, body: Tokens) \\
-n(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma [name \mapsto body], p)\}
-$$
-
-Similar logic applies to empty definitions, function-like definitions, and
-`#undef` directives. (`#undef` definitions use a special body marking
-definedness as false, with no value.)
-
-#### `#if cond`
-
-$$
-n: ProgramPoint = (cond: Tokens) \\
-n(\sigma: SymbolTable, p: Premise) = \{(nextThen(n), \sigma, p \wedge eval_\sigma(cond)), (nextElse(n), \sigma, p \wedge \neg eval_\sigma(cond))\}
-$$
-
-The same applies for `#ifdef`, `#ifndef`, `#elif`, `#elifdef`, `#elifndef`.
-
-#### `c_tokens`
-
-$$
-n: ProgramPoint = (name: String, body: Tokens) \\
-n(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma, p)\}
-$$
-
-#### `EOF`
-
-$$
-EOF(\sigma: SymbolTable, p: Premise) = \{\}
-$$
 
 ### Macro Expansion and Evaluation
 
@@ -246,13 +218,57 @@ preprocessing errors during a concrete execution. Symbolic execution handles
 these by discarding related states, marking them unreachable, and stopping
 further exploration from such points.
 
+### State Transitions
+
+#### `#define name body` and `#undef name`
+
+$$
+n: ProgramPoint = (name: String)
+\newline
+F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma [name \mapsto n], p)\}
+$$
+
+#### `#if cond`
+
+$$
+n: ProgramPoint = (cond: Tokens)
+\newline
+F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(nextThen(n), \sigma, p \wedge eval_\sigma(cond)), (nextElse(n), \sigma, p \wedge \neg eval_\sigma(cond))\}
+$$
+
+The same applies for `#elif`.
+
+#### `#ifdef name`
+
+$$
+n: ProgramPoint = (name: String)
+\newline
+F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(nextThen(n), \sigma, p \wedge eval_\sigma(defined(name))), (nextElse(n), \sigma, p \wedge \neg eval_\sigma(defined(name)))\}
+$$
+
+The same applies for `#ifdef`, `#ifndef`, `#elifdef`, `#elifndef`.
+
+#### `c_tokens`
+
+$$
+n: ProgramPoint = (name: String, body: Tokens)
+\newline
+F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma, p)\}
+$$
+
+#### `EOF`
+
+$$
+F(EOF: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{\}
+$$
+
 ## Optimizations
 
 ### Symbol Segment
 
 Symbol tables are implemented as chained hash maps sharing common underlying
-hash map instances. Consecutive `#define` statements aggregate into a single
-hash table (**SymbolSegment**) to prevent exponential growth in symbol tables.
+hash map instances, or **SymbolSegment**s. Consecutive `#define` directives aggregate into a single
+hash table (SymbolSegment) to prevent exponential growth in symbol table storage.
 
 ### Warp
 
@@ -271,3 +287,7 @@ Premises are represented via a hierarchical structure reflecting the nested
 conditional structure to reduce fragmentation. The complete premise for a line
 of code is derived by conjoining premises along the path from the root to the
 corresponding leaf node.
+
+### Concrete Execution of System Headers
+
+Much control flow complexity hide in the system headers that the target project includes, but the user usually does not care about that. Pioneer concretely executes such system headers (by calling `cc -dM -E` and adding all resulting macro definitions to the symbol table) to avoid state explosion and to simplify output. The user can tell Pioneer what to consider as target project headers, and the rest are treated as system headers and concretely executed. 
