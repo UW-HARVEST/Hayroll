@@ -226,7 +226,7 @@ $$
 n: ProgramPoint = (name: String)
 $$
 $$
-F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma [name \mapsto n], p)\}
+F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \lbrace(next(n), \sigma [name \mapsto n], p)\rbrace
 $$
 
 #### `#if cond`
@@ -235,7 +235,7 @@ $$
 n: ProgramPoint = (cond: Tokens)
 $$
 $$
-F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(nextThen(n), \sigma, p \wedge eval_\sigma(cond)), (nextElse(n), \sigma, p \wedge \neg eval_\sigma(cond))\}
+F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \lbrace(nextThen(n), \sigma, p \wedge eval_\sigma(cond)), (nextElse(n), \sigma, p \wedge \neg eval_\sigma(cond))\rbrace
 $$
 
 The same applies for `#elif`.
@@ -246,7 +246,7 @@ $$
 n: ProgramPoint = (name: String)
 $$
 $$
-F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(nextThen(n), \sigma, p \wedge eval_\sigma(defined(name))), (nextElse(n), \sigma, p \wedge \neg eval_\sigma(defined(name)))\}
+F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \lbrace(nextThen(n), \sigma, p \wedge eval_\sigma(defined(name))), (nextElse(n), \sigma, p \wedge \neg eval_\sigma(defined(name)))\rbrace
 $$
 
 The same applies for `#ifdef`, `#ifndef`, `#elifdef`, `#elifndef`.
@@ -257,13 +257,13 @@ $$
 n: ProgramPoint = (name: String, body: Tokens)
 $$
 $$
-F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma, p)\}
+F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \lbrace(next(n), \sigma, p)\rbrace
 $$
 
 #### `EOF`
 
 $$
-F(EOF: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{\}
+F(EOF: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \lbrace\rbrace
 $$
 
 ## Optimizations
