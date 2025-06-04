@@ -224,7 +224,8 @@ further exploration from such points.
 
 $$
 n: ProgramPoint = (name: String)
-\newline
+$$
+$$
 F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma [name \mapsto n], p)\}
 $$
 
@@ -232,7 +233,8 @@ $$
 
 $$
 n: ProgramPoint = (cond: Tokens)
-\newline
+$$
+$$
 F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(nextThen(n), \sigma, p \wedge eval_\sigma(cond)), (nextElse(n), \sigma, p \wedge \neg eval_\sigma(cond))\}
 $$
 
@@ -242,7 +244,8 @@ The same applies for `#elif`.
 
 $$
 n: ProgramPoint = (name: String)
-\newline
+$$
+$$
 F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(nextThen(n), \sigma, p \wedge eval_\sigma(defined(name))), (nextElse(n), \sigma, p \wedge \neg eval_\sigma(defined(name)))\}
 $$
 
@@ -252,7 +255,8 @@ The same applies for `#ifdef`, `#ifndef`, `#elifdef`, `#elifndef`.
 
 $$
 n: ProgramPoint = (name: String, body: Tokens)
-\newline
+$$
+$$
 F(n: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \{(next(n), \sigma, p)\}
 $$
 
