@@ -37,7 +37,7 @@ int main(int argc, char **argv)
                 "../../libmcs/",
                 {"../../libmcs/", "../../libmcs/libm/include/"}
             ),
-            "../../libmcs/libm/mathf/sinhf.included.c",
+            "../../libmcs/libm/mathf/sinhf.cu.c",
             std::vector<std::string>{"../../libmcs/", "../../libmcs/libm/include/"}
         )
     );

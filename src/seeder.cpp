@@ -32,7 +32,9 @@ int main(const int argc, const char* argv[])
     std::filesystem::path cpp2cFilePath(cpp2cFilePathStr);
     cpp2cFilePath = std::filesystem::canonical(cpp2cFilePath);
 
-    Seeder::run(cpp2cFilePath, srcPath, srcPath);
+    // NOT FUNCTIONAL YET
+    // Requires inverseLineMap from LineMatcher
+    // Seeder::run(cpp2cFilePath, srcPath);
 
     return 0;
 }

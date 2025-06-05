@@ -93,6 +93,16 @@ public:
         return {path, line, col};
     }
 
+    static std::string makeLocation
+    (
+        const std::filesystem::path & path,
+        int line,
+        int col
+    )
+    {
+        return fmt::format("{}:{}:{}", path.string(), line, col);
+    }
+
     // Tag structure to hold the information about the instrumentation task.
     // This maps to the JSON structure in the .cpp2c invocation summary file.
     // They will be serialized into C strings and embedded into the C code.
@@ -124,7 +134,6 @@ public:
     // InstrumentationTask will be transformed into TextEditor edits
     struct InstrumentationTask
     {
-        std::string filename;
         int line;
         int col;
         std::string str;
@@ -134,9 +143,9 @@ public:
             editor.insert(line, col, str);
         }
 
-        std::string readable() const
+        std::string toString() const
         {
-            return filename + ":" + std::to_string(line) + ":" + std::to_string(col) + ": " + str;
+            return fmt::format("{}:{}: {}", line, col, str);
         }
     };
 
@@ -151,29 +160,33 @@ public:
         bool isLvalue,
         std::string_view name,
         std::string_view locDecl,
-        std::string_view locInv, // Only for args, the locInv for the invocation is locBegin
+        std::string_view locInv, // Only for args, the locInv for an invocation is locBegin
         std::string_view spelling,
         bool canFn,
-        const std::filesystem::path & dstPath,
-        const std::optional<std::vector<int>> & lineMap = std::nullopt
+        const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
         auto [path, line, col] = parseLocation(locBegin);
         auto [pathEnd, lineEnd, colEnd] = parseLocation(locEnd);
+        assert(path == pathEnd);
 
-        if (lineMap)
+        // Map the compilation unit line numbers back to the source file line numbers
+        auto [includeTree, srcLine] = inverseLineMap[line];
+        auto [includeTreeEnd, srcLineEnd] = inverseLineMap[lineEnd];
+        assert(includeTree == includeTreeEnd);
+
+        std::filesystem::path srcPath = includeTree->path;
+
+        std::string srcLocBegin = makeLocation(srcPath, srcLine, col);
+
+        std::string srcLocInv = "";
+        if (isArg)
         {
-            // If lineMap is provided, use it to adjust the line and column numbers
-            if (line <= 0 || line > static_cast<int>(lineMap->size()) || (*lineMap)[line] == 0)
-            {
-                throw std::invalid_argument("Invalid line number in location: " + std::string(locBegin));
-            }
-            line = (*lineMap)[line];
-            if (lineEnd <= 0 || lineEnd > static_cast<int>(lineMap->size()) || (*lineMap)[lineEnd] == 0)
-            {
-                throw std::invalid_argument("Invalid line number in location: " + std::string(locEnd));
-            }
-            lineEnd = (*lineMap)[lineEnd];
+            assert(locInv != "");
+            auto [invPath, invLine, invCol] = parseLocation(locInv);
+            auto [invIncludeTree, invSrcLine] = inverseLineMap[invLine];
+            assert(invIncludeTree == includeTree);
+            srcLocInv = makeLocation(srcPath, invLine, invCol);
         }
 
         Tag tagBegin
@@ -185,8 +198,8 @@ public:
             .isLvalue = isLvalue,
             .name = std::string(name),
             .locDecl = std::string(locDecl),
-            .locInv = isArg ? std::string(locInv) : std::string(locBegin),
-            .locArg = isArg ? std::string(locBegin) : "",
+            .locInv = isArg ? std::string(srcLocInv) : std::string(srcLocBegin),
+            .locArg = isArg ? std::string(srcLocBegin) : "",
 
             .canFn = canFn
         };
@@ -200,8 +213,8 @@ public:
             .isLvalue = isLvalue,
             .name = std::string(name),
             .locDecl = std::string(locDecl),
-            .locInv = isArg ? std::string(locInv) : std::string(locBegin),
-            .locArg = isArg ? std::string(locBegin) : "",
+            .locInv = isArg ? std::string(srcLocInv) : std::string(srcLocBegin),
+            .locArg = isArg ? std::string(srcLocBegin) : "",
 
             .canFn = canFn
         };
@@ -215,7 +228,6 @@ public:
                 // (*((*tagBegin)?(&(ORIGINAL_INVOCATION)):((__typeof__(spelling)*)(0))))
                 InstrumentationTask taskLeft
                 {
-                    .filename = std::string(dstPath),
                     .line = line,
                     .col = col,
                     .str = 
@@ -228,7 +240,6 @@ public:
                 };
                 InstrumentationTask taskRight
                 {
-                    .filename = std::string(dstPath),
                     .line = lineEnd,
                     .col = colEnd,
                     .str = 
@@ -248,7 +259,6 @@ public:
                 // ((*tagBegin)?(ORIGINAL_INVOCATION):(*(__typeof__(spelling)*)(0)))
                 InstrumentationTask taskLeft
                 {
-                    .filename = std::string(dstPath),
                     .line = line,
                     .col = col,
                     .str = 
@@ -261,7 +271,6 @@ public:
                 };
                 InstrumentationTask taskRight
                 {
-                    .filename = std::string(dstPath),
                     .line = lineEnd,
                     .col = colEnd,
                     .str = 
@@ -282,7 +291,6 @@ public:
             // {*tagBegin;ORIGINAL_INVOCATION;*tagEnd;}
             InstrumentationTask taskLeft
             {
-                .filename = std::string(dstPath),
                 .line = line,
                 .col = col,
                 .str = 
@@ -295,7 +303,6 @@ public:
             };
             InstrumentationTask taskRight
             {
-                .filename = std::string(dstPath),
                 .line = lineEnd,
                 .col = colEnd,
                 .str = 
@@ -334,8 +341,7 @@ public:
         // Generate tags for the arguments
         std::list<InstrumentationTask> collectInstrumentationTasks
         (
-            const std::filesystem::path & dstPath,
-            const std::optional<std::vector<int>> & lineMap = std::nullopt
+            const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
         ) const
         {
             return genInstrumentationTasks(
@@ -350,8 +356,7 @@ public:
                 InvocationLocation,
                 Spelling,
                 false, // canFn
-                dstPath,
-                lineMap
+                inverseLineMap
             );
         }
     };
@@ -732,14 +737,13 @@ public:
         // Collect the instrumentation tasks for the invocation and its arguments
         std::list<InstrumentationTask> collectInstrumentationTasks
         (
-            const std::filesystem::path & dstPath,
-            const std::optional<std::vector<int>> & lineMap = std::nullopt
+            const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
         ) const
         {
             std::list<InstrumentationTask> tasks;
             for (const ArgInfo & arg : Args)
             {
-                std::list<InstrumentationTask> argTasks = arg.collectInstrumentationTasks(dstPath, lineMap);
+                std::list<InstrumentationTask> argTasks = arg.collectInstrumentationTasks(inverseLineMap);
                 tasks.splice(tasks.end(), argTasks);
             }
 
@@ -761,8 +765,7 @@ public:
                 "", // locInv, not required for invocations
                 Spelling,
                 canRustFn(),
-                dstPath,
-                lineMap
+                inverseLineMap
             );
             tasks.splice(tasks.end(), invocationTasks);
             
@@ -772,7 +775,7 @@ public:
 
     // Check if the invocation info is valid and thus should be kept
     // Invalid cases: empty fields, invalid path, non-Expr/Stmt ASTKind
-    static bool keepInvocationInfo(const MakiInvocationInfo & invocation, const std::filesystem::path & srcPath)
+    static bool keepInvocationInfo(const MakiInvocationInfo & invocation)
     {
         if
         (
@@ -787,11 +790,6 @@ public:
             return false;
         }
         auto [path, line, col] = parseLocation(invocation.InvocationLocation);
-        // Only modify source files
-        if (path != srcPath)
-        {
-            return false;
-        }
         // If ASTKind is not "Expr" or "Stmt", skip it.
         if (invocation.ASTKind != "Expr" && invocation.ASTKind != "Stmt")
         {
@@ -800,28 +798,21 @@ public:
         return true;
     }
 
-    static void run
+    static std::string run
     (
-        std::filesystem::path cpp2cPath,
-        std::filesystem::path srcPath,
-        std::filesystem::path dstPath,
-        const std::optional<std::vector<int>> & lineMap = std::nullopt
+        std::string_view cpp2cStr,
+        std::string_view srcStr,
+        const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        cpp2cPath = std::filesystem::canonical(cpp2cPath);
-        srcPath = std::filesystem::canonical(srcPath);
-        dstPath = std::filesystem::canonical(dstPath);
-
         // Open the file. For each line, check the first word before the first whitespace (can be space or tab).
         // If it is Invocation, then treat the rest of the line as a JSON string and parse it.
         // If it is not, then ignore the line.
         std::vector<MakiInvocationInfo> invocations;
         {
-            std::string cpp2cStr = loadFileToString(cpp2cPath);
-
             std::vector<std::string> cpp2cLines;
             {
-                std::istringstream iss(cpp2cStr);
+                std::istringstream iss{std::string{cpp2cStr}};
                 std::string line;
                 while (std::getline(iss, line))
                 {
@@ -842,7 +833,7 @@ public:
                     {
                         json j = json::parse(jsonString);
                         MakiInvocationInfo invocation = j.get<MakiInvocationInfo>();
-                        if (keepInvocationInfo(invocation, srcPath))
+                        if (keepInvocationInfo(invocation))
                         {
                             invocations.push_back(invocation);
                         }
@@ -854,9 +845,7 @@ public:
                 }
             }
         }
-        
 
-        std::string srcStr = loadFileToString(srcPath);
         TextEditor srcEditor{srcStr};
 
         for (MakiInvocationInfo & invocation : invocations)
@@ -878,28 +867,17 @@ public:
         std::list<InstrumentationTask> tasks;
         for (const MakiInvocationInfo & invocation : invocations)
         {
-            std::list<InstrumentationTask> invocationTasks = invocation.collectInstrumentationTasks(dstPath, lineMap);
+            std::list<InstrumentationTask> invocationTasks = invocation.collectInstrumentationTasks(inverseLineMap);
             tasks.splice(tasks.end(), invocationTasks);
         }
-
-        std::string dstStr = loadFileToString(dstPath);
-        TextEditor dstEditor{dstStr};
         
         for (const InstrumentationTask & task : tasks)
         {
-            std::cout << task.readable() << std::endl;
-            task.addToEditor(dstEditor);
+            std::cout << task.toString() << std::endl;
+            task.addToEditor(srcEditor);
         }
         
-        std::string outStr = dstEditor.commit();
-        
-        std::ofstream outFile(dstPath);
-        if (!outFile.is_open())
-        {
-            throw std::runtime_error("Error: Could not open file for writing: " + dstPath.string());
-        }
-        outFile << outStr;
-        outFile.close();
+        return srcEditor.commit();
     }
 };
 

@@ -6,6 +6,9 @@
 // Tag: Selected info from xxxInfo to be inserted into C code.
 // InstrumentationTask: What to insert (serialized and escaped Tag) and where to insert, in a format that is easy to convert to awk commands.
 
+#include <iostream>
+#include <fstream>
+
 #include "SymbolicExecutor.hpp"
 #include "LineMatcher.hpp"
 #include "Seeder.hpp"
@@ -37,7 +40,7 @@ int main(const int argc, const char* argv[])
         "../../libmcs/",
         {"../../libmcs/", "../../libmcs/libm/include/"}
     );
-    std::filesystem::path includedFilename = "../../libmcs/libm/mathf/sinhf.included.c";
+    std::filesystem::path includedFilename = "../../libmcs/libm/mathf/sinhf.cu.c";
     std::vector<std::string> includePathStrs = {"../../libmcs/", "../../libmcs/libm/include/"};
 
     std::vector<std::filesystem::path> includePaths(includePathStrs.begin(), includePathStrs.end());
@@ -57,27 +60,24 @@ int main(const int argc, const char* argv[])
     auto [lineMap, inverseLineMap] = LineMatcher::run(includedFilename, includeTree, includePaths);
     
     std::filesystem::path cpp2cFilePath = "../../libmcs/macro_invocation_analyses/all_results.cpp2c";
-    std::filesystem::path srcPath = "../../libmcs/libm/mathf/sinhf.c";
-    std::filesystem::path dstPath = "../../libmcs/libm/mathf/sinhf.included.c";
-    const std::vector<int> & lineMapRootOnly = lineMap[includeTree];
-
-    std::cout << "Line map root only:\n";
-    for (int i = 0; i < lineMapRootOnly.size(); ++i)
-    {
-        std::cout << "    " << i << " -> " << lineMapRootOnly[i] << "\n";
-    }
+    std::filesystem::path srcPath = "../../libmcs/libm/mathf/sinhf.cu.c";
 
     // Copy dstPath to a temporary file
-    std::filesystem::path tmpDstPath = tmpPath / "sinhf.included.c";
-    std::filesystem::copy(dstPath, tmpDstPath, std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::path tmpDstPath = tmpPath / "sinhf.cu.c";
 
-    Seeder::run
-    (
-        cpp2cFilePath,
-        srcPath,
-        tmpDstPath,
-        lineMapRootOnly
-    );
+    std::string cpp2cStr = loadFileToString(cpp2cFilePath);
+    std::string srcStr = loadFileToString(srcPath);
+
+    std::string output = Seeder::run(cpp2cStr, srcStr, inverseLineMap);
+
+    // Save the source file to the temporary directory
+    std::ofstream tmpDstFile(tmpDstPath);
+    if (!tmpDstFile.is_open())
+    {
+        throw std::runtime_error("Error: Could not open temporary destination file " + tmpDstPath.string());
+    }
+    tmpDstFile << output;
+    tmpDstFile.close();
 
     std::cout << "Seeder completed. Instrumentation tasks generated in " << tmpDstPath << std::endl;
 
