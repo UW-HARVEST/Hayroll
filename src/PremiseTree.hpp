@@ -74,6 +74,12 @@ struct PremiseTree
     {
     }
 
+    bool isMacroExpansion() const
+    {
+        // If there are macro premises, this is a macro expansion.
+        return !macroPremises.empty();
+    }
+
     // Retrieve the complete premese, a conjunction of all premises of its ancestors.
     z3::expr getCompletePremise() const
     {
@@ -122,7 +128,7 @@ struct PremiseTree
     std::string toString(size_t depth = 0) const
     {
         std::string str(depth * 4, ' ');
-        if (macroPremises.empty())
+        if (!isMacroExpansion())
         {
             str += std::format
             (
@@ -180,7 +186,7 @@ struct PremiseTree
             child->refine();
             // If the current node's premise implies the child's premise,
             // we can remove the child node.
-            if (child->children.empty() && child->macroPremises.empty())
+            if (child->children.empty() && !child->isMacroExpansion())
             {
                 if (z3Check(!z3::implies(getCompletePremise(), child->premise)) == z3::unsat)
                 {

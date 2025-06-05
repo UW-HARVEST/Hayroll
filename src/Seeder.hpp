@@ -13,6 +13,7 @@
 
 #include <json.hpp>
 
+#include "SymbolicExecutor.hpp"
 #include "LineMatcher.hpp"
 #include "TextEditor.hpp"
 
@@ -311,6 +312,39 @@ public:
                     << ";*"
                     << tagEnd.stringLiteral()
                     << ";}"
+                ).str()
+            };
+            tasks.push_back(taskLeft);
+            tasks.push_back(taskRight);
+        }
+        else if (astKind == "Debug")
+        {
+            // Template:
+            // // tagBegin (\n)
+            // ORIGINAL_INVOCATION
+            // // tagEnd (\n)
+            InstrumentationTask taskLeft
+            {
+                .line = line,
+                .col = col,
+                .str = 
+                (
+                    std::stringstream()
+                    << "// "
+                    << tagBegin.stringLiteral()
+                    << "\n"
+                ).str()
+            };
+            InstrumentationTask taskRight
+            {
+                .line = lineEnd,
+                .col = colEnd,
+                .str = 
+                (
+                    std::stringstream()
+                    << "// "
+                    << tagEnd.stringLiteral()
+                    << "\n"
                 ).str()
             };
             tasks.push_back(taskLeft);
@@ -801,7 +835,9 @@ public:
     static std::string run
     (
         std::string_view cpp2cStr,
+        PremiseTree * premiseTree,
         std::string_view srcStr,
+        const std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> & lineMap,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
@@ -869,6 +905,77 @@ public:
         {
             std::list<InstrumentationTask> invocationTasks = invocation.collectInstrumentationTasks(inverseLineMap);
             tasks.splice(tasks.end(), invocationTasks);
+        }
+
+        for (Hayroll::PremiseTree * premiseTreeNode : premiseTree->getDescendants())
+        {
+            // For each premise tree node that is not a macro expansion node,
+            // insert "Debug" instrumentation tasks, with the premise as its name.
+            if (premiseTreeNode->isMacroExpansion())
+            {
+                continue; // Skip macro expansions
+            }
+
+            int lnBegin = premiseTreeNode->programPoint.node.startPoint().row + 1;
+            int colBegin = premiseTreeNode->programPoint.node.startPoint().column + 1;
+            int lnEnd = premiseTreeNode->programPoint.node.endPoint().row + 1;
+            int colEnd = premiseTreeNode->programPoint.node.endPoint().column + 1;
+
+            SPDLOG_DEBUG
+            (
+                "Premise: {} at IncludeTree {}: {}:{}-{}:{}",
+                premiseTreeNode->premise.to_string(),
+                premiseTreeNode->programPoint.includeTree->stacktrace(),
+                lnBegin, colBegin, lnEnd, colEnd
+            );
+
+            if (!lineMap.contains(premiseTreeNode->programPoint.includeTree))
+            {
+                SPDLOG_DEBUG
+                (
+                    "IncludeTree {} not found in lineMap. Skipping premise {}.",
+                    premiseTreeNode->programPoint.includeTree->stacktrace(),
+                    premiseTreeNode->premise.to_string()
+                );
+                continue; // Skip if the IncludeTree is not in the lineMap
+            }
+
+            const std::vector<int> & lineMapSub = lineMap.at(premiseTreeNode->programPoint.includeTree);
+
+            int cuLnBegin = lineMapSub.at(lnBegin);
+            int cuLnEnd = lineMapSub.at(lnEnd);
+            
+            std::string locBegin = makeLocation
+            (
+                premiseTreeNode->programPoint.includeTree->path, // This does not matter
+                cuLnBegin,
+                colBegin
+            );
+
+            std::string locEnd = makeLocation
+            (
+                premiseTreeNode->programPoint.includeTree->path, // This does not matter
+                cuLnEnd,
+                colEnd
+            );
+
+            std::list<InstrumentationTask> premiseTasks = genInstrumentationTasks
+            (
+                locBegin,
+                locEnd,
+                false, // isArg
+                {}, // argNames
+                "Debug",
+                false, // isLvalue
+                premiseTreeNode->premise.to_string(),
+                "", // locDecl
+                "", // locInv
+                "", // spelling
+                false, // canFn
+                inverseLineMap
+            );
+
+            tasks.splice(tasks.end(), premiseTasks);
         }
         
         for (const InstrumentationTask & task : tasks)

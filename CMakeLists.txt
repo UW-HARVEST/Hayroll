@@ -118,7 +118,6 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
 
 add_library(hayroll_exe_config INTERFACE)
 target_compile_definitions(hayroll_exe_config INTERFACE
-    HAYROLL_SEEDER_EXE="$<TARGET_FILE:seeder>"
     HAYROLL_PIONEER_EXE="$<TARGET_FILE:pioneer>"
 )
 
@@ -172,14 +171,6 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
 include_directories(include)
 include_directories(src)
-
-add_executable(seeder src/seeder.cpp)
-target_link_libraries(seeder PRIVATE
-    hayroll_exe_config
-    external_exe_config
-    z3_config
-    tree_sitter_config
-)
 
 add_executable(pioneer src/pioneer.cpp)
 target_link_libraries(pioneer PRIVATE

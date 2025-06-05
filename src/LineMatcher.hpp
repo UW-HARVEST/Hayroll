@@ -108,7 +108,8 @@ public:
             {
                 lines.resize(lines.size() * 2);
             }
-            for (int s = lastSrcLine, t = lastCuLine + 1; t < thisCuLine; ++s, ++t)
+            // t <= thisCuLine : give one more line to lastCuLine
+            for (int s = lastSrcLine, t = lastCuLine + 1; t <= thisCuLine; ++s, ++t)
             {
                 lines[s] = t;
                 inverseLineMap[t] = {lastIncludeTree, s};

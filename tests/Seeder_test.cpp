@@ -68,7 +68,7 @@ int main(const int argc, const char* argv[])
     std::string cpp2cStr = loadFileToString(cpp2cFilePath);
     std::string srcStr = loadFileToString(srcPath);
 
-    std::string output = Seeder::run(cpp2cStr, srcStr, inverseLineMap);
+    std::string output = Seeder::run(cpp2cStr, premiseTree, srcStr, lineMap, inverseLineMap);
 
     // Save the source file to the temporary directory
     std::ofstream tmpDstFile(tmpDstPath);
