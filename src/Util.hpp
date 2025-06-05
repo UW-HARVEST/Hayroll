@@ -25,7 +25,7 @@ struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 
-std::string loadFromFile(const std::filesystem::path & path)
+std::string loadFileToString(const std::filesystem::path & path)
 {
     std::ifstream file(path);
     if (!file.is_open())

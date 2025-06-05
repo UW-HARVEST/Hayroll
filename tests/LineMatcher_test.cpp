@@ -58,7 +58,7 @@ int main(int argc, char **argv)
         std::cout << "Include tree:\n";
         std::cout << includeTree->toString() << std::endl;
 
-        std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> lineMap = LineMatcher::run(includedFilename, includeTree, includePaths);
+        auto [lineMap, inverseLineMap] = LineMatcher::run(includedFilename, includeTree, includePaths);
 
         std::cout << "Line map:\n";
         for (const auto & [includeTreeNode, lines] : lineMap)
@@ -69,6 +69,39 @@ int main(int argc, char **argv)
                 if (lines[i] != 0)
                 {
                     std::cout << "    " << i << " -> " << lines[i] << "\n";
+                }
+            }
+        }
+
+        std::cout << "Inverse line map:\n";
+        for (size_t i = 1; i < inverseLineMap.size(); ++i)
+        {
+            const auto &[includeTreeNode, srcLine] = inverseLineMap[i];
+            if (srcLine != 0)
+            {
+                std::cout << i << " -> " << includeTreeNode->stacktrace() << ": " << srcLine << "\n";
+            }
+        }
+
+        // Check if lineMap and inverseLineMap are consistent
+        // Note: this check will not work backwards, i.e. every line in inverseLineMap must be present in lineMap,
+        // because -frewrite-includes may introduce extra lines in the compilation unit file. 
+        for (const auto & [includeTreeNode, lines] : lineMap)
+        {
+            for (size_t srcLn = 0; srcLn < lines.size(); ++srcLn)
+            {
+                int cuLn = lines[srcLn];
+                if (cuLn == 0) continue; // Skip empty lines
+                auto [expectedIncludeTreeNode, expectedSrcLn] = inverseLineMap[cuLn];
+                if (expectedIncludeTreeNode != includeTreeNode || expectedSrcLn != srcLn)
+                {
+                    throw std::runtime_error
+                    (
+                        "Inconsistent line mapping: "
+                        + includeTreeNode->stacktrace() + ": " + std::to_string(srcLn)
+                        + " -> " + std::to_string(cuLn)
+                        + " but expected " + expectedIncludeTreeNode->stacktrace() + ": " + std::to_string(expectedSrcLn)
+                    );
                 }
             }
         }

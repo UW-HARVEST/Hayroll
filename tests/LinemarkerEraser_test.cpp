@@ -9,7 +9,7 @@ int main(int argc, char **argv)
     using namespace Hayroll;
 
     std::filesystem::path srcPath = "../../libmcs/libm/mathf/sinhf.included.c";
-    std::string source = loadFromFile(srcPath);
+    std::string source = loadFileToString(srcPath);
     std::string result = LinemarkerEraser::run(source);
     std::cout << "Source:\n" << source << "\n";
     std::cout << "Result:\n" << result << "\n";

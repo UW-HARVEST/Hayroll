@@ -802,13 +802,13 @@ public:
 
     static void run
     (
-        std::filesystem::path cpp2cFilePath,
+        std::filesystem::path cpp2cPath,
         std::filesystem::path srcPath,
         std::filesystem::path dstPath,
         const std::optional<std::vector<int>> & lineMap = std::nullopt
     )
     {
-        cpp2cFilePath = std::filesystem::canonical(cpp2cFilePath);
+        cpp2cPath = std::filesystem::canonical(cpp2cPath);
         srcPath = std::filesystem::canonical(srcPath);
         dstPath = std::filesystem::canonical(dstPath);
 
@@ -817,14 +817,19 @@ public:
         // If it is not, then ignore the line.
         std::vector<MakiInvocationInfo> invocations;
         {
-            std::ifstream cpp2cFile(cpp2cFilePath);
-            if (!cpp2cFile.is_open())
+            std::string cpp2cStr = loadFileToString(cpp2cPath);
+
+            std::vector<std::string> cpp2cLines;
             {
-                throw std::runtime_error("Error: Could not open file " + cpp2cFilePath.string());
+                std::istringstream iss(cpp2cStr);
+                std::string line;
+                while (std::getline(iss, line))
+                {
+                    cpp2cLines.push_back(line);
+                }
             }
 
-            std::string line;
-            while (std::getline(cpp2cFile, line))
+            for (const std::string & line : cpp2cLines)
             {
                 std::istringstream iss(line);
                 std::string firstWord;
@@ -848,12 +853,10 @@ public:
                     }
                 }
             }
-
-            cpp2cFile.close();
         }
         
 
-        std::string srcStr = loadFromFile(srcPath);
+        std::string srcStr = loadFileToString(srcPath);
         TextEditor srcEditor{srcStr};
 
         for (MakiInvocationInfo & invocation : invocations)
@@ -879,15 +882,7 @@ public:
             tasks.splice(tasks.end(), invocationTasks);
         }
 
-        std::ifstream dstFile(dstPath);
-        if (!dstFile.is_open()) {
-            throw std::runtime_error("Error: Could not open destination file " + dstPath.string());
-        }
-        std::string dstContent((std::istreambuf_iterator<char>(dstFile)), 
-                              std::istreambuf_iterator<char>());
-        dstFile.close();
-
-        std::string dstStr = loadFromFile(dstPath);
+        std::string dstStr = loadFileToString(dstPath);
         TextEditor dstEditor{dstStr};
         
         for (const InstrumentationTask & task : tasks)
@@ -896,14 +891,14 @@ public:
             task.addToEditor(dstEditor);
         }
         
-        std::string newStr = dstEditor.commit();
+        std::string outStr = dstEditor.commit();
         
         std::ofstream outFile(dstPath);
         if (!outFile.is_open())
         {
             throw std::runtime_error("Error: Could not open file for writing: " + dstPath.string());
         }
-        outFile << newStr;
+        outFile << outStr;
         outFile.close();
     }
 };

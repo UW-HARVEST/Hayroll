@@ -29,7 +29,13 @@ namespace Hayroll
 class LineMatcher
 {
 public:
-    static std::unordered_map<IncludeTreePtr, std::vector<int>> run
+    static
+    std::pair
+    <
+        std::unordered_map<IncludeTreePtr, std::vector<int>>, // lineMap
+        std::vector<std::pair<IncludeTreePtr, int>> // inverseLineMap
+    >
+    run
     (
         std::filesystem::path srcPath,
         IncludeTreePtr includeTree, // IncludeTree from a previous symbolic execution
@@ -42,16 +48,17 @@ public:
         ASTBank astBank{lang};
         astBank.addFileOrFind(srcPath);
 
-        // IncludeTree -> line number in original source -> line number in -frewrite-includes -generated file
-        std::unordered_map<IncludeTreePtr, std::vector<int>> lineMap; 
-
-        lineMap.clear();
-
         const TSTree & tree = astBank.find(srcPath);
         const TSNode root = tree.rootNode();
         assert(root.isSymbol(lang.translation_unit_s));
 
-        int tgtTotalLines = root.endPoint().row + 1;
+        int cuTotalLines = root.endPoint().row + 1;
+
+        // IncludeTree -> line number in original source -> line number in compilation unit file
+        std::unordered_map<IncludeTreePtr, std::vector<int>> lineMap;
+        // Inverse mapping: line number in compilation unit file -> (IncludeTreePtr, line number in original source)
+        std::vector<std::pair<IncludeTreePtr, int>> inverseLineMap(cuTotalLines + 1, {nullptr, 0});
+
 
         std::vector<TSNode> linemarkers;
         // Get all #line directives in the tree
@@ -79,7 +86,6 @@ public:
                 .childByFieldId(lang.preproc_line_s.filename_f)
                 .childByFieldId(lang.string_literal_s.content_f)
                 .textView();
-            // BUG: Always resolving include takes a crazy amount of time, sepecially on system libraries. 
             std::filesystem::path lastCanonicalPath = includeResolver.resolveUserInclude(lastPath, lastIncludeTree->getAncestorDirs());
             if (lastCanonicalPath != lastIncludeTree->path)
             {
@@ -88,9 +94,9 @@ public:
                 lastLinemarker = linemarker;
                 continue;
             }
-            int lastTgtLine = lastLinemarker.startPoint().row + 1;
 
-            int thisTgtLine = linemarker ? linemarker.startPoint().row + 1 : tgtTotalLines;
+            int lastCuLine = lastLinemarker.startPoint().row + 1;
+            int thisCuLine = linemarker ? linemarker.startPoint().row + 1 : cuTotalLines;
 
             if (!lineMap.contains(lastIncludeTree))
             {
@@ -102,12 +108,13 @@ public:
             {
                 lines.resize(lines.size() * 2);
             }
-            for (int s = lastSrcLine, t = lastTgtLine + 1; t < thisTgtLine; ++s, ++t)
+            for (int s = lastSrcLine, t = lastCuLine + 1; t < thisCuLine; ++s, ++t)
             {
                 lines[s] = t;
+                inverseLineMap[t] = {lastIncludeTree, s};
             }
 
-            if (!linemarker) break;
+            if (!linemarker) break; // Sentinel reached, no more linemarkers
 
             // Handle file jumps
             TSNode thisFlagNode = linemarker.childByFieldId(lang.preproc_line_s.flag_f);
@@ -137,7 +144,7 @@ public:
                 }
                 // There might not be a matching child include tree.
                 // That happens when the included file is not in the include tree (concretely executed).
-                // In that case, we will just leave the currentIncludeTree as it is.
+                // In that case, we will just leave the lastIncludeTree as it is.
             }
             if (thisFlag == 2)
             {
@@ -168,7 +175,7 @@ public:
             }
         }
 
-        return lineMap;
+        return {std::move(lineMap), std::move(inverseLineMap)};
     }
 };
 

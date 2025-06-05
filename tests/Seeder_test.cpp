@@ -54,7 +54,7 @@ int main(const int argc, const char* argv[])
     std::cout << "Include tree:\n";
     std::cout << includeTree->toString() << std::endl;
 
-    std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> lineMap = LineMatcher::run(includedFilename, includeTree, includePaths);
+    auto [lineMap, inverseLineMap] = LineMatcher::run(includedFilename, includeTree, includePaths);
     
     std::filesystem::path cpp2cFilePath = "../../libmcs/macro_invocation_analyses/all_results.cpp2c";
     std::filesystem::path srcPath = "../../libmcs/libm/mathf/sinhf.c";
