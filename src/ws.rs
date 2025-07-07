@@ -82,9 +82,6 @@ impl HayrollRegion {
     }
 
     fn arg_names(&self) -> Vec<String> {
-        if !self.is_arg() {
-            return Vec::new();
-        }
         let seed = match self {
             HayrollRegion::Expr(seed) => seed,
             HayrollRegion::Span(seed_begin, _) => seed_begin,
@@ -393,7 +390,8 @@ impl std::fmt::Display for CodeRegion {
 #[derive(Clone)]
 struct HayrollMacroInv {
     region: HayrollRegion,
-    args: Vec<HayrollRegion>,
+    // Args is a list of (argument name, list of HayrollRegion) pairs
+    args: Vec<(String, Vec<HayrollRegion>)>,
 }
 
 impl HayrollMacroInv {
@@ -423,18 +421,20 @@ impl HayrollMacroInv {
                 (region, mutator)
             }
         };
-        for arg_region in self.args.iter() {
-            let arg_code_region = if replace_arg_region_with_deref {
-                arg_region.get_code_region_with_deref()
-            } else {
-                arg_region.get_code_region_no_deref()
-            };
-            let arg_code_region = arg_code_region.make_mut_with_mutator(&mutator);
-            let arg_code_region_range = arg_code_region.syntax_element_range();
-            let new_tokens = substitute(arg_region);
-            delayed_tasks.push(Box::new(move || {
-                ted::replace_all(arg_code_region_range, new_tokens);
-            }));
+        for (_, arg_regions) in self.args.iter() {
+            for arg_region in arg_regions {
+                let arg_code_region = if replace_arg_region_with_deref {
+                    arg_region.get_code_region_with_deref()
+                } else {
+                    arg_region.get_code_region_no_deref()
+                };
+                let arg_code_region = arg_code_region.make_mut_with_mutator(&mutator);
+                let arg_code_region_range = arg_code_region.syntax_element_range();
+                let new_tokens = substitute(arg_region);
+                delayed_tasks.push(Box::new(move || {
+                    ted::replace_all(arg_code_region_range, new_tokens);
+                }));
+            }
         }
         for task in delayed_tasks {
             task();
@@ -447,9 +447,8 @@ impl HayrollMacroInv {
         let macro_name = self.region.name();
         // arg format: ($x:expr) or ($x:stmt)
         let macro_args = self.args.iter()
-            .map(|arg| {
-                let arg_name = arg.name();
-                let arg_type = match arg {
+            .map(|(arg_name, arg_regions)| {
+                let arg_type = match arg_regions[0] {
                     HayrollRegion::Expr(_) => "expr",
                     HayrollRegion::Span(_, _) => "stmt",
                 };
@@ -480,9 +479,10 @@ impl HayrollMacroInv {
     fn macro_call(&self) -> ast::MacroCall {
         let macro_name = self.region.name();
         let args_spelling: String = self.args.iter()
-            .map(|arg| {
+            .map(|(_, arg_regions)| {
+                // For each arg, we take the first HayrollRegion and peel the tag
                 // arg.peel_tag_keep_deref().to_string()
-                let (arg_code_region, _mutator) = arg.peel_tag_keep_deref();
+                let (arg_code_region, _mutator) = arg_regions[0].peel_tag_keep_deref();
                 arg_code_region.to_string()
             })
             .collect::<Vec<String>>()
@@ -501,10 +501,9 @@ impl HayrollMacroInv {
             None => "".to_string(),
         };
         let arg_with_types = self.args.iter()
-            .map(|arg| {
-                let name = arg.name();
-                let t = arg.lrvalue_type().unwrap();
-                format!("{}: {}", name, t)
+            .map(|(arg_name, arg_regions)| {
+                let t = arg_regions[0].lrvalue_type().unwrap();
+                format!("{}: {}", arg_name, t)
             })
             .collect::<Vec<String>>()
             .join(", ");
@@ -530,8 +529,8 @@ impl HayrollMacroInv {
         // stmt: *"";{};*""; -> NAME(*mut (lvalue_spelling), rvalue_spelling); // WE ARE NOT HANDLING IT SEMICOLON HERE
         let fn_name = self.region.name();
         let args_spelling: String = self.args.iter()
-            .map(|arg| {
-                let (arg_code_region, _mutator) = arg.peel_tag_no_deref();
+            .map(|(_, arg_regions)| {
+                let (arg_code_region, _mutator) = arg_regions[0].peel_tag_no_deref();
                 arg_code_region.to_string()
             })
             .collect::<Vec<String>>()
@@ -758,7 +757,14 @@ fn main() -> Result<()> {
                 let mut found = false;
                 for mac in acc.iter_mut().rev() {
                     if mac.region.loc_inv() == region.loc_inv() {
-                        mac.args.push(region.clone());
+                        if mac.args.iter().any(|(name, _)| name == &region.name()) {
+                            // If the arg already exists, just push the region to the existing arg
+                            let arg = mac.args.iter_mut().find(|(name, _)| name == &region.name()).unwrap();
+                            arg.1.push(region.clone());
+                        } else {
+                            // Otherwise, create a new arg with the region
+                            mac.args.push((region.name(), vec![region.clone()]));
+                        }
                         found = true;
                         break;
                     }
@@ -769,8 +775,20 @@ fn main() -> Result<()> {
                 }
             }
             acc
-        }
-    );
+        })
+        .into_iter()
+        .map(|mut mac| {
+            let arg_names = mac.region.arg_names();
+            print!("Sorting according to arg names: ");
+            println!("{:?}", arg_names);
+            mac.args.sort_by_key(|arg| {
+                arg_names.iter().position(|name| name == &arg.0).unwrap_or(usize::MAX)
+            });
+            // Print sorted args
+            println!("Sorted args: {:?}", mac.args.iter().map(|arg| arg.0.clone()).collect::<Vec<String>>());
+            mac
+        })
+        .collect();
 
     // Print all token trees from the macro invs
     for mac in hayroll_macro_invs.iter() {
