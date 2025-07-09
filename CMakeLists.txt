@@ -380,3 +380,16 @@ add_test(
     NAME CompileCommand_test
     COMMAND CompileCommand_test
 )
+
+add_executable(RewriteIncludesWrapper_test tests/RewriteIncludesWrapper_test.cpp)
+target_link_libraries(RewriteIncludesWrapper_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME RewriteIncludesWrapper_test
+    COMMAND RewriteIncludesWrapper_test
+)
