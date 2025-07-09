@@ -14,7 +14,11 @@ int main(int argc, char **argv)
     using json = nlohmann::json;
 
     spdlog::set_level(spdlog::level::debug);
-    json compileCommandsJson = R"(
+
+    std::string libmcsDirStr = LIBMCS_DIR;
+    std::filesystem::path libmcsDir(libmcsDirStr);
+
+    std::string compileCommandsStr = R"(
     [
         {
             "arguments": [
@@ -35,27 +39,28 @@ int main(int argc, char **argv)
                 "-Ilibm/mathf/internal",
                 "-o",
                 "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o",
-                "libm/mathf/sinhf.seed.cu.c"
+                "libm/mathf/sinhf.c"
             ],
-            "directory": "/home/husky/libmcs",
-            "file": "/home/husky/libmcs/libm/mathf/sinhf.seed.cu.c",
-            "output": "/home/husky/libmcs/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
+            "directory": ")" + libmcsDirStr + R"(",
+            "file": ")" + libmcsDirStr + R"(/libm/mathf/sinhf.c",
+            "output": ")" + libmcsDirStr + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
         }
     ]
-    )"_json;
+    )";
+    json compileCommandsJson = json::parse(compileCommandsStr);
 
     std::vector<CompileCommand> commands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
     assert(commands.size() == 1);
-    CompileCommand &command = commands[0];    
-    assert(command.directory == "/home/husky/libmcs");
-    assert(command.file == "/home/husky/libmcs/libm/mathf/sinhf.seed.cu.c");
-    assert(command.output == "/home/husky/libmcs/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o");
+    CompileCommand &command = commands[0];
+    assert(command.directory == libmcsDir);
+    assert(command.file == libmcsDir / "libm/mathf/sinhf.c");
+    assert(command.output == libmcsDir / "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o");
     std::vector<std::filesystem::path> includePaths = command.getIncludePaths();
     assert(includePaths.size() == 4);
-    assert(includePaths[0] == "/home/husky/libmcs/libm/include");
-    assert(includePaths[1] == "/home/husky/libmcs/libm/common");
-    assert(includePaths[2] == "/home/husky/libmcs/libm/mathd/internal");
-    assert(includePaths[3] == "/home/husky/libmcs/libm/mathf/internal");
+    assert(includePaths[0] == libmcsDir / "libm/include");
+    assert(includePaths[1] == libmcsDir / "libm/common");
+    assert(includePaths[2] == libmcsDir / "libm/mathd/internal");
+    assert(includePaths[3] == libmcsDir / "libm/mathf/internal");
 
     return 0;
 }
