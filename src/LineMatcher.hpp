@@ -59,7 +59,6 @@ public:
         // Inverse mapping: line number in compilation unit file -> (IncludeTreePtr, line number in original source)
         std::vector<std::pair<IncludeTreePtr, int>> inverseLineMap(cuTotalLines + 1, {nullptr, 0});
 
-
         std::vector<TSNode> linemarkers;
         // Get all #line directives in the tree
         for (TSNode node : root.iterateDescendants())

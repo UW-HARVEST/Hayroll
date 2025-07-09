@@ -187,7 +187,7 @@ public:
             auto [invPath, invLine, invCol] = parseLocation(locInv);
             auto [invIncludeTree, invSrcLine] = inverseLineMap[invLine];
             assert(invIncludeTree == includeTree);
-            srcLocInv = makeLocation(srcPath, invLine, invCol);
+            srcLocInv = makeLocation(srcPath, invSrcLine, invCol);
         }
 
         Tag tagBegin
@@ -832,16 +832,22 @@ public:
         return true;
     }
 
+    // Tags the srcStr (C source code at compilation unit level) with the instrumentation tasks collected from
+    // 1. the cpp2cStr (.cpp2c invocation summary file produced by Maki)
+    // 2. the premiseTree (optional) (conditional macro information produced by Hayroll)
+    // Also requires the lineMap ((includeTree, line) <-> line in compilation unit file) and inverseLineMap.
+    // Returns the modified (CU) source code as a string.
     static std::string run
     (
         std::string_view cpp2cStr,
-        PremiseTree * premiseTree,
+        std::optional<PremiseTree *> premiseTreeOpt,
         std::string_view srcStr,
         const std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> & lineMap,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        // Open the file. For each line, check the first word before the first whitespace (can be space or tab).
+        // Parse cpp2cStr into MakiInvocationInfo objects.
+        // For each line, check the first word before the first whitespace (can be space or tab).
         // If it is Invocation, then treat the rest of the line as a JSON string and parse it.
         // If it is not, then ignore the line.
         std::vector<MakiInvocationInfo> invocations;
@@ -907,75 +913,81 @@ public:
             tasks.splice(tasks.end(), invocationTasks);
         }
 
-        for (Hayroll::PremiseTree * premiseTreeNode : premiseTree->getDescendants())
+
+        if (premiseTreeOpt.has_value())
         {
-            // For each premise tree node that is not a macro expansion node,
-            // insert "Debug" instrumentation tasks, with the premise as its name.
-            if (premiseTreeNode->isMacroExpansion())
+            PremiseTree * premiseTree = premiseTreeOpt.value();
+            assert(premiseTree != nullptr);
+            for (Hayroll::PremiseTree * premiseTreeNode : premiseTree->getDescendants())
             {
-                continue; // Skip macro expansions
-            }
+                // For each premise tree node that is not a macro expansion node,
+                // insert "Debug" instrumentation tasks, with the premise as its name.
+                if (premiseTreeNode->isMacroExpansion())
+                {
+                    continue; // Skip macro expansions
+                }
 
-            int lnBegin = premiseTreeNode->programPoint.node.startPoint().row + 1;
-            int colBegin = premiseTreeNode->programPoint.node.startPoint().column + 1;
-            int lnEnd = premiseTreeNode->programPoint.node.endPoint().row + 1;
-            int colEnd = premiseTreeNode->programPoint.node.endPoint().column + 1;
+                int lnBegin = premiseTreeNode->programPoint.node.startPoint().row + 1;
+                int colBegin = premiseTreeNode->programPoint.node.startPoint().column + 1;
+                int lnEnd = premiseTreeNode->programPoint.node.endPoint().row + 1;
+                int colEnd = premiseTreeNode->programPoint.node.endPoint().column + 1;
 
-            SPDLOG_DEBUG
-            (
-                "Premise: {} at IncludeTree {}: {}:{}-{}:{}",
-                premiseTreeNode->premise.to_string(),
-                premiseTreeNode->programPoint.includeTree->stacktrace(),
-                lnBegin, colBegin, lnEnd, colEnd
-            );
-
-            if (!lineMap.contains(premiseTreeNode->programPoint.includeTree))
-            {
                 SPDLOG_DEBUG
                 (
-                    "IncludeTree {} not found in lineMap. Skipping premise {}.",
+                    "Premise: {} at IncludeTree {}: {}:{}-{}:{}",
+                    premiseTreeNode->premise.to_string(),
                     premiseTreeNode->programPoint.includeTree->stacktrace(),
-                    premiseTreeNode->premise.to_string()
+                    lnBegin, colBegin, lnEnd, colEnd
                 );
-                continue; // Skip if the IncludeTree is not in the lineMap
+
+                if (!lineMap.contains(premiseTreeNode->programPoint.includeTree))
+                {
+                    SPDLOG_DEBUG
+                    (
+                        "IncludeTree {} not found in lineMap. Skipping premise {}.",
+                        premiseTreeNode->programPoint.includeTree->stacktrace(),
+                        premiseTreeNode->premise.to_string()
+                    );
+                    continue; // Skip if the IncludeTree is not in the lineMap
+                }
+
+                const std::vector<int> & lineMapSub = lineMap.at(premiseTreeNode->programPoint.includeTree);
+
+                int cuLnBegin = lineMapSub.at(lnBegin);
+                int cuLnEnd = lineMapSub.at(lnEnd);
+                
+                std::string locBegin = makeLocation
+                (
+                    premiseTreeNode->programPoint.includeTree->path, // This does not matter
+                    cuLnBegin,
+                    colBegin
+                );
+
+                std::string locEnd = makeLocation
+                (
+                    premiseTreeNode->programPoint.includeTree->path, // This does not matter
+                    cuLnEnd,
+                    colEnd
+                );
+
+                std::list<InstrumentationTask> premiseTasks = genInstrumentationTasks
+                (
+                    locBegin,
+                    locEnd,
+                    false, // isArg
+                    {}, // argNames
+                    "Debug",
+                    false, // isLvalue
+                    premiseTreeNode->premise.to_string(),
+                    "", // locDecl
+                    "", // locInv
+                    "", // spelling
+                    false, // canFn
+                    inverseLineMap
+                );
+
+                tasks.splice(tasks.end(), premiseTasks);
             }
-
-            const std::vector<int> & lineMapSub = lineMap.at(premiseTreeNode->programPoint.includeTree);
-
-            int cuLnBegin = lineMapSub.at(lnBegin);
-            int cuLnEnd = lineMapSub.at(lnEnd);
-            
-            std::string locBegin = makeLocation
-            (
-                premiseTreeNode->programPoint.includeTree->path, // This does not matter
-                cuLnBegin,
-                colBegin
-            );
-
-            std::string locEnd = makeLocation
-            (
-                premiseTreeNode->programPoint.includeTree->path, // This does not matter
-                cuLnEnd,
-                colEnd
-            );
-
-            std::list<InstrumentationTask> premiseTasks = genInstrumentationTasks
-            (
-                locBegin,
-                locEnd,
-                false, // isArg
-                {}, // argNames
-                "Debug",
-                false, // isLvalue
-                premiseTreeNode->premise.to_string(),
-                "", // locDecl
-                "", // locInv
-                "", // spelling
-                false, // canFn
-                inverseLineMap
-            );
-
-            tasks.splice(tasks.end(), premiseTasks);
         }
         
         for (const InstrumentationTask & task : tasks)

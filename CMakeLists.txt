@@ -84,9 +84,6 @@ message(STATUS "AWK_EXE: ${AWK_EXE}")
 find_package(spdlog REQUIRED)
 message(STATUS "spdlog_FOUND: ${spdlog_FOUND}")
 
-# # fmt
-# find_package(fmt REQUIRED)
-
 # Boost
 cmake_policy(SET CMP0167 NEW)
 find_package(Boost 1.65 REQUIRED CONFIG COMPONENTS stacktrace_addr2line)
@@ -101,10 +98,22 @@ set(TREE_SITTER_C_PREPROC_INCLUDE_DIR "${TREE_SITTER_C_PREPROC_DIR}/bindings/c")
 message(STATUS "TREE_SITTER_DIR: ${TREE_SITTER_DIR}")
 message(STATUS "TREE_SITTER_C_PREPROC_DIR: ${TREE_SITTER_C_PREPROC_DIR}")
 
+# Maki dir
+set(MAKI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../Maki")
+if(NOT EXISTS "${MAKI_DIR}/evaluation/analyze_macro_invocations_in_program.py")
+    message(FATAL_ERROR "Maki analysis script not found at ${MAKI_DIR}/evaluation/analyze_macro_invocations_in_program.py")
+endif()
+if(NOT EXISTS "${MAKI_DIR}/build/lib/libcpp2c.so")
+    message(FATAL_ERROR "Maki cpp2c.so library not found at ${MAKI_DIR}/build/lib/libcpp2c.so")
+endif()
+message(STATUS "MAKI_DIR: ${MAKI_DIR}")
+
+# libmcs dir
+set(LIBMCS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../libmcs")
+
 # Common config
 link_libraries(
     spdlog::spdlog
-    # fmt::fmt
     Boost::stacktrace_addr2line
     dl
 )
@@ -119,12 +128,15 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
 add_library(hayroll_exe_config INTERFACE)
 target_compile_definitions(hayroll_exe_config INTERFACE
     HAYROLL_PIONEER_EXE="$<TARGET_FILE:pioneer>"
+    HAYROLL_WS_EXE="${CMAKE_SOURCE_DIR}/ws"
 )
 
 add_library(external_exe_config INTERFACE)
 target_compile_definitions(external_exe_config INTERFACE
     AWK_EXE="${AWK_EXE}"
     CLANG_EXE="${CLANG_EXE}"
+    MAKI_DIR="${MAKI_DIR}"
+    LIBMCS_DIR="${LIBMCS_DIR}"
 )
 
 add_library(z3_config INTERFACE)
@@ -172,8 +184,24 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 include_directories(include)
 include_directories(src)
 
+add_executable(seeder src/seeder.cpp)
+target_link_libraries(seeder PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    tree_sitter_config
+)
+
 add_executable(pioneer src/pioneer.cpp)
 target_link_libraries(pioneer PRIVATE
+hayroll_exe_config
+external_exe_config
+z3_config
+tree_sitter_config
+)
+
+add_executable(pipeline src/pipeline.cpp)
+target_link_libraries(pipeline PRIVATE
     hayroll_exe_config
     external_exe_config
     z3_config
@@ -325,4 +353,30 @@ target_link_libraries(LinemarkerEraser_test PRIVATE
 add_test(
     NAME LinemarkerEraser_test
     COMMAND LinemarkerEraser_test
+)
+
+add_executable(MakiWrapper_test tests/MakiWrapper_test.cpp)
+target_link_libraries(MakiWrapper_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME MakiWrapper_test
+    COMMAND MakiWrapper_test
+)
+
+add_executable(CompileCommand_test tests/CompileCommand_test.cpp)
+target_link_libraries(CompileCommand_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME CompileCommand_test
+    COMMAND CompileCommand_test
 )

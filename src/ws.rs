@@ -508,8 +508,8 @@ impl HayrollMacroInv {
             .collect::<Vec<String>>()
             .join(", ");
         let fn_body = self.replace_arg_regions_into(
-            true,
-            false, 
+            false,
+            false,
             false,
             |arg_region| {
                 let name = arg_region.name();

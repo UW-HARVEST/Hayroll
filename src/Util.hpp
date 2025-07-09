@@ -37,6 +37,17 @@ std::string loadFileToString(const std::filesystem::path & path)
     return content;
 }
 
+void saveStringToFile(const std::string & content, const std::filesystem::path & path)
+{
+    std::ofstream file(path);
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Error: Could not open file " + path.string());
+    }
+    file << content;
+    file.close();
+}
+
 // A string builder that can append std::string, std::string_view, and const char *
 // Reduces copys at best effort
 class StringBuilder
