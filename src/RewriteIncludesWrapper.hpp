@@ -22,39 +22,45 @@ class RewriteIncludesWrapper
 public:
     static std::string runRewriteIncludes(const CompileCommand & compileCommand)
     {
-        std::string args;
-        // Keep only -D and -I arguments.
-        for (const auto & arg : compileCommand.arguments)
-        {
-            if (arg.starts_with("-D") || arg.starts_with("-I"))
-            {
-                args += arg + " ";
-            }
-        }
-
         TempDir tempDir;
         std::filesystem::path outputPath = tempDir.getPath() / "rewrite_includes.cu.c";
         std::filesystem::path sourcePath = compileCommand.file;
 
+        std::vector<std::string> clangArgs =
+        {
+            CLANG_EXE,
+            "-E",
+            "-frewrite-includes"
+        };
+
+        for (const auto& arg : compileCommand.arguments)
+        {
+            if (arg.starts_with("-D") || arg.starts_with("-I"))
+            {
+                clangArgs.push_back(arg);
+            }
+        }
+
+        clangArgs.push_back("-o");
+        clangArgs.push_back(outputPath.string());
+        clangArgs.push_back(sourcePath.string());
+
+        std::string clangArgsStr;
+        for (const auto& arg : clangArgs)
+        {
+            clangArgsStr += arg + " ";
+        }
         SPDLOG_DEBUG
         (
-            "Issuing command: {} -E -frewrite-includes {} -o {} {}",
-            CLANG_EXE,
-            args,
-            outputPath.string(),
-            sourcePath.string()
+            "cwd to {} and issuing command: {}",
+            compileCommand.directory.string(),
+            clangArgsStr
         );
 
         subprocess::Popen clangProcess
         (
-            {
-                CLANG_EXE,
-                "-E", // Preprocess only
-                "-frewrite-includes",
-                args,
-                "-o", outputPath.string(),
-                sourcePath.string()
-            },
+            clangArgs,
+            subprocess::cwd{compileCommand.directory.string().c_str()},
             subprocess::output{subprocess::PIPE},
             subprocess::error{subprocess::PIPE}
         );
