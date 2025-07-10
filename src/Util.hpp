@@ -43,6 +43,8 @@ std::string loadFileToString(const std::filesystem::path & path)
 
 void saveStringToFile(const std::string & content, const std::filesystem::path & path)
 {
+    // Create parent directories if they do not exist
+    std::filesystem::create_directories(path.parent_path());
     std::ofstream file(path);
     if (!file.is_open())
     {

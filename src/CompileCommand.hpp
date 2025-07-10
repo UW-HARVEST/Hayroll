@@ -53,6 +53,15 @@ struct CompileCommand
         return paths;
     }
 
+    std::filesystem::path getFilePathRelativeToDirectory() const
+    {
+        if (file.is_absolute())
+        {
+            return std::filesystem::relative(file, directory);
+        }
+        return file; // If it's not absolute, just return it as is.
+    }
+
     static std::vector<CompileCommand> fromCompileCommandsJson(const nlohmann::json & json)
     {
         if (!json.is_array())

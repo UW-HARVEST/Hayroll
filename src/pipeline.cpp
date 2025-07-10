@@ -20,15 +20,25 @@ int main(const int argc, const char* argv[])
 
     spdlog::set_level(spdlog::level::debug);
 
-    // Take one argument: Path to the compile_commands.json file.
-    if (argc != 2)
+    // Take two arguments
+    // 1. Path to the compile_commands.json file.
+    // 2. Output directory.
+    if (argc != 3)
     {
-        std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory>" << std::endl;
         return 1;
     }
 
     std::filesystem::path compileCommandsJsonPath = argv[1];
     compileCommandsJsonPath = std::filesystem::canonical(compileCommandsJsonPath);
+    std::filesystem::path outputDir = argv[2];
+    // Wipe the output directory if it exists
+    if (std::filesystem::exists(outputDir))
+    {
+        std::filesystem::remove_all(outputDir);
+    }
+    std::filesystem::create_directories(outputDir);
+    outputDir = std::filesystem::canonical(outputDir);
 
     // Load compile_commands.json
     // compileCommandJsonPath -> compileCommands
@@ -58,7 +68,7 @@ int main(const int argc, const char* argv[])
     // Analyze macro invocations using Maki
     // compileCommands + src --Maki-> cpp2cStr
 
-    std::string cpp2cStr = MakiWrapper::runCpp2c(compileCommands, projDir);
+    std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(compileCommands);
     SPDLOG_INFO("Maki analysis completed.");
     SPDLOG_DEBUG("cpp2cStr:\n{}", cpp2cStr);
 
@@ -144,7 +154,15 @@ int main(const int argc, const char* argv[])
     }
     assert(cuSeededStrs.size() == numTasks);
 
-    // WIP
+    // Write seeded sources to output directory
+    for (int i = 0; i < numTasks; ++i)
+    {
+        const CompileCommand & command = compileCommands[i];
+        const std::string & cuSeededStr = cuSeededStrs[i];
+        std::filesystem::path outputPath = outputDir / command.getFilePathRelativeToDirectory();
+        saveStringToFile(cuSeededStr, outputPath);
+        SPDLOG_INFO("Seeded source written to: {}", outputPath.string());
+    }
 
     return 0;
 }
