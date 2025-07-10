@@ -25,8 +25,6 @@ int main(const int argc, const char* argv[])
 
     TempDir tmpDir(false);
     std::filesystem::path tmpPath = tmpDir.getPath();
-    std::string libmcsDirStr = LIBMCS_DIR;
-    std::filesystem::path libmcsDir(libmcsDirStr);
 
     std::string compileCommandsStr = R"(
     [
@@ -51,9 +49,9 @@ int main(const int argc, const char* argv[])
                 "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o",
                 "libm/mathf/sinhf.c"
             ],
-            "directory": ")" + libmcsDirStr + R"(",
-            "file": ")" + libmcsDirStr + R"(/libm/mathf/sinhf.c",
-            "output": ")" + libmcsDirStr + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
+            "directory": ")" + LibmcsDir.string() + R"(",
+            "file": ")" + LibmcsDir.string() + R"(/libm/mathf/sinhf.c",
+            "output": ")" + LibmcsDir.string() + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
         }
     ]
     )";
@@ -67,11 +65,11 @@ int main(const int argc, const char* argv[])
 
     SymbolicExecutor executor
     (
-        libmcsDir / "libm/mathf/sinhf.c",
-        libmcsDir,
-        {libmcsDir , libmcsDir / "libm/include/"}
+        LibmcsDir / "libm/mathf/sinhf.c",
+        LibmcsDir,
+        {LibmcsDir , LibmcsDir / "libm/include/"}
     );
-    std::filesystem::path cuPath = libmcsDir / "libm/mathf/sinhf.cu.c";
+    std::filesystem::path cuPath = LibmcsDir / "libm/mathf/sinhf.cu.c";
 
     std::vector<std::filesystem::path> includePaths = command.getIncludePaths();
     

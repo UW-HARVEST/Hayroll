@@ -79,3 +79,4 @@ trace*.txt
 /remove-comments
 /remove-non-preprocessor
 /macro-skeleton
+/pipeline

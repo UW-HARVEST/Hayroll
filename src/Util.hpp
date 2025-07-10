@@ -20,6 +20,10 @@
 namespace Hayroll
 {
 
+const std::filesystem::path ClangExe = std::filesystem::canonical(std::filesystem::path(CLANG_EXE));
+const std::filesystem::path MakiDir = std::filesystem::canonical(std::filesystem::path(MAKI_DIR));
+const std::filesystem::path LibmcsDir = std::filesystem::canonical(std::filesystem::path(LIBMCS_DIR));
+
 template<class... Ts>
 struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts>

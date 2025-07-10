@@ -9,17 +9,13 @@
 #include "TempDir.hpp"
 #include "IncludeResolver.hpp"
 
-#ifndef CLANG_EXE
-    #error "CLANG_EXE must be defined"
-#endif
-
 int main(int argc, char **argv)
 {
     using namespace Hayroll;
 
     spdlog::set_level(spdlog::level::debug);
 
-    IncludeResolver resolver(CLANG_EXE, {});
+    IncludeResolver resolver(ClangExe, {});
 
     std::cout << "Predefined macros:\n" << resolver.getBuiltinMacros() << std::endl;
 

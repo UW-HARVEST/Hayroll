@@ -3,16 +3,56 @@
 #include <z3++.h>
 
 #include <spdlog/spdlog.h>
+#include "json.hpp"
 
 #include "Util.hpp"
 #include "SymbolicExecutor.hpp"
 #include "LineMatcher.hpp"
+#include "TempDir.hpp"
+#include "CompileCommand.hpp"
+#include "RewriteIncludesWrapper.hpp"
 
 int main(int argc, char **argv)
 {
     using namespace Hayroll;
+    using json = nlohmann::json;
 
     spdlog::set_level(spdlog::level::debug);
+
+    std::string compileCommandsStr = R"(
+    [
+        {
+            "arguments": [
+                "/usr/bin/gcc",
+                "-c",
+                "-Wall",
+                "-std=c99",
+                "-pedantic",
+                "-Wextra",
+                "-frounding-math",
+                "-g",
+                "-fno-builtin",
+                "-DLIBMCS_FPU_DAZ",
+                "-DLIBMCS_WANT_COMPLEX",
+                "-Ilibm/include",
+                "-Ilibm/common",
+                "-Ilibm/mathd/internal",
+                "-Ilibm/mathf/internal",
+                "-o",
+                "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o",
+                "libm/mathf/sinhf.c"
+            ],
+            "directory": ")" + LibmcsDir.string() + R"(",
+            "file": ")" + LibmcsDir.string() + R"(/libm/mathf/sinhf.c",
+            "output": ")" + LibmcsDir.string() + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
+        }
+    ]
+    )";
+    json compileCommandsJson = json::parse(compileCommandsStr);
+    std::vector<CompileCommand> compileCommands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
+    assert(compileCommands.size() == 1);
+    const CompileCommand & compileCommand = compileCommands[0];
+    std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(compileCommand);
 
     TempDir tmpDir(false);
     std::filesystem::path tmpPath = tmpDir.getPath();
@@ -33,16 +73,16 @@ int main(int argc, char **argv)
         (
             SymbolicExecutor
             (
-                "../../libmcs/libm/mathf/sinhf.c",
-                "../../libmcs/",
-                {"../../libmcs/", "../../libmcs/libm/include/"}
+                LibmcsDir / "libm/mathf/sinhf.c",
+                LibmcsDir / "",
+                {LibmcsDir / "", LibmcsDir / "libm/include/"}
             ),
-            "../../libmcs/libm/mathf/sinhf.cu.c",
-            std::vector<std::string>{"../../libmcs/", "../../libmcs/libm/include/"}
+            cuStr,
+            std::vector<std::string>{LibmcsDir / "", LibmcsDir / "libm/include/"}
         )
     );
     
-    for (auto &[executor, cuPath, includePathStrs] : tasks)
+    for (auto &[executor, cuStr, includePathStrs] : tasks)
     {
         std::vector<std::filesystem::path> includePaths(includePathStrs.begin(), includePathStrs.end());
 
@@ -58,7 +98,6 @@ int main(int argc, char **argv)
         std::cout << "Include tree:\n";
         std::cout << includeTree->toString() << std::endl;
 
-        std::string cuStr = loadFileToString(cuPath);
         auto [lineMap, inverseLineMap] = LineMatcher::run(cuStr, includeTree, includePaths);
 
         std::cout << "Line map:\n";

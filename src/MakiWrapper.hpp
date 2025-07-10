@@ -134,7 +134,7 @@ public:
     }
 };
 
-std::filesystem::path MakiWrapper::MakiDir = MAKI_DIR;
+std::filesystem::path MakiWrapper::MakiDir = Hayroll::MakiDir;
 std::filesystem::path MakiWrapper::MakiLibcpp2cPath = MakiDir / "build/lib/libcpp2c.so";
 std::filesystem::path MakiWrapper::MakiAnalysisScriptPath = MakiDir / "evaluation/analyze_macro_invocations_in_program.py";
 

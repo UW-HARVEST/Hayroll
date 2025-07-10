@@ -99,16 +99,16 @@ int main(int argc, char **argv)
 
     executors.push_back(std::move(SymbolicExecutor(entryPath, tmpPath)));
 
-    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/include/complex.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
-    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/include/config.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
-    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/include/fenv.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
-    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/include/internal_config.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
-    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/include/math.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/include/complex.h", LibmcsDir / "", {LibmcsDir / "libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/include/config.h", LibmcsDir / "", {LibmcsDir / "libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/include/fenv.h", LibmcsDir / "", {LibmcsDir / "libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/include/internal_config.h", LibmcsDir / "", {LibmcsDir / "libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/include/math.h", LibmcsDir / "", {LibmcsDir / "libm/include/"})));
 
-    executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/common/tools.h", "../../libmcs/", {"../../libmcs/libm/include/"})));
+    executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/common/tools.h", LibmcsDir / "", {LibmcsDir / "libm/include/"})));
 
-    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/mathf/sinhf.c", "../../libmcs/", {"../../libmcs/libm/include/"})));
-    // executors.push_back(std::move(SymbolicExecutor("../../libmcs/libm/complexd/cabsd.c", "../../libmcs/", {"../../libmcs/libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/mathf/sinhf.c", LibmcsDir / "", {LibmcsDir / "libm/include/"})));
+    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/complexd/cabsd.c", LibmcsDir / "", {LibmcsDir / "libm/include/"})));
     
     bool allPass = true;
 

@@ -28,7 +28,7 @@ public:
 
         std::vector<std::string> clangArgs =
         {
-            CLANG_EXE,
+            ClangExe.string(),
             "-E",
             "-frewrite-includes"
         };

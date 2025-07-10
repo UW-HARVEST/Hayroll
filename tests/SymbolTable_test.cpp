@@ -6,16 +6,11 @@
 
 #include <spdlog/spdlog.h>
 
+#include "Util.hpp"
 #include "TreeSitter.hpp"
 #include "TreeSitterCPreproc.hpp"
 #include "SymbolTable.hpp"
 #include "IncludeResolver.hpp"
-
-#ifdef CLANG_EXE
-const char * clang_exe_path = CLANG_EXE;
-#else
-const char * clang_exe_path = "clang";
-#endif
 
 int main()
 {
@@ -25,7 +20,7 @@ int main()
 
     IncludeTreePtr includeTree = IncludeTree::make(TSNode{}, "<built-in>");
     SymbolSegmentPtr symbolSegment = SymbolSegment::make();
-    IncludeResolver resolver(clang_exe_path, {});
+    IncludeResolver resolver(ClangExe, {});
     CPreproc lang = CPreproc();
     TSParser parser(lang);
 

@@ -131,7 +131,7 @@ public:
 
     SymbolicExecutor(std::filesystem::path srcPath, std::filesystem::path projPath, const std::vector<std::filesystem::path> & includePaths = {})
         : lang(CPreproc()), ctx(std::make_unique<z3::context>()), srcPath(std::filesystem::canonical(srcPath)),
-          projPath(std::filesystem::canonical(projPath)), includeResolver(CLANG_EXE, includePaths),
+          projPath(std::filesystem::canonical(projPath)), includeResolver(ClangExe, includePaths),
           astBank(lang), macroExpander(lang, ctx.get()),
           includeTree(IncludeTree::make(TSNode{}, std::filesystem::canonical(srcPath))),
           symbolTableRoot(SymbolTable::make()), scribe()

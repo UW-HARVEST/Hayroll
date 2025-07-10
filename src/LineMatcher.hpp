@@ -43,7 +43,7 @@ public:
     )
     {
         const CPreproc lang{CPreproc()};
-        IncludeResolver includeResolver{CLANG_EXE, includePaths};
+        IncludeResolver includeResolver{ClangExe, includePaths};
         ASTBank astBank{lang};
         const TSTree & tree = astBank.addAnonymousSource(std::move(cuStr));
         const TSNode root = tree.rootNode();

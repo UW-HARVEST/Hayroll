@@ -18,9 +18,6 @@ int main(int argc, char **argv)
 
     spdlog::set_level(spdlog::level::debug);
 
-    std::string libmcsDirStr = LIBMCS_DIR;
-    std::filesystem::path libmcsDir(libmcsDirStr);
-
     std::string compileCommandsStr = R"(
     [
         {
@@ -44,9 +41,9 @@ int main(int argc, char **argv)
                 "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o",
                 "libm/mathf/sinhf.c"
             ],
-            "directory": ")" + libmcsDirStr + R"(",
-            "file": ")" + libmcsDirStr + R"(/libm/mathf/sinhf.c",
-            "output": ")" + libmcsDirStr + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
+            "directory": ")" + LibmcsDir.string() + R"(",
+            "file": ")" + LibmcsDir.string() + R"(/libm/mathf/sinhf.c",
+            "output": ")" + LibmcsDir.string() + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
         }
     ]
     )";

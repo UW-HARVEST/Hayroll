@@ -15,10 +15,6 @@ int main(int argc, char **argv)
 
     spdlog::set_level(spdlog::level::debug);
 
-    std::string libmcsDirStr = LIBMCS_DIR;
-    std::filesystem::path libmcsDir(libmcsDirStr);
-    libmcsDir = std::filesystem::canonical(libmcsDir);
-
     std::string compileCommandsStr = R"(
     [
         {
@@ -42,9 +38,9 @@ int main(int argc, char **argv)
                 "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o",
                 "libm/mathf/sinhf.c"
             ],
-            "directory": ")" + libmcsDirStr + R"(",
-            "file": ")" + libmcsDirStr + R"(/libm/mathf/sinhf.c",
-            "output": ")" + libmcsDirStr + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
+            "directory": ")" + LibmcsDir.string() + R"(",
+            "file": ")" + LibmcsDir.string() + R"(/libm/mathf/sinhf.c",
+            "output": ")" + LibmcsDir.string() + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
         }
     ]
     )";
@@ -53,16 +49,16 @@ int main(int argc, char **argv)
     std::vector<CompileCommand> commands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
     assert(commands.size() == 1);
     CompileCommand &command = commands[0];
-    assert(command.directory == libmcsDir);
-    assert(command.file == libmcsDir / "libm/mathf/sinhf.c");
-    assert(command.output == libmcsDir / "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o");
+    assert(command.directory == LibmcsDir);
+    assert(command.file == LibmcsDir / "libm/mathf/sinhf.c");
+    assert(command.output == LibmcsDir / "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o");
     std::vector<std::filesystem::path> includePaths = command.getIncludePaths();
     assert(includePaths.size() == 5);
-    assert(includePaths[0] == libmcsDir); // Include the command's directory as well.
-    assert(includePaths[1] == libmcsDir / "libm/include");
-    assert(includePaths[2] == libmcsDir / "libm/common");
-    assert(includePaths[3] == libmcsDir / "libm/mathd/internal");
-    assert(includePaths[4] == libmcsDir / "libm/mathf/internal");
+    assert(includePaths[0] == LibmcsDir); // Include the command's directory as well.
+    assert(includePaths[1] == LibmcsDir / "libm/include");
+    assert(includePaths[2] == LibmcsDir / "libm/common");
+    assert(includePaths[3] == LibmcsDir / "libm/mathd/internal");
+    assert(includePaths[4] == LibmcsDir / "libm/mathf/internal");
 
     return 0;
 }

@@ -21,7 +21,7 @@ namespace Hayroll
 class IncludeResolver
 {
 public:
-    IncludeResolver(const std::string & ccExePath, const std::vector<std::filesystem::path> & includePaths)
+    IncludeResolver(const std::filesystem::path & ccExePath, const std::vector<std::filesystem::path> & includePaths)
         : ccExePath(ccExePath)
     {
         for (const auto & includePath : includePaths)
@@ -134,7 +134,7 @@ public:
     std::string getConcretelyExecutedMacros(const std::string & includePath) const
     {
         // cc -dM -E {includePath}
-        std::vector<std::string> ccArgs = {ccExePath, "-dM", "-E", includePath};
+        std::vector<std::string> ccArgs = {ccExePath.string(), "-dM", "-E", includePath};
         subprocess::Popen proc
         (
             ccArgs,
@@ -146,7 +146,7 @@ public:
     }
 
 private:
-    std::string ccExePath;
+    std::filesystem::path ccExePath;
     std::vector<std::filesystem::path> includePaths;
 
     // Parse the included filename from the first line of a "clang -H" output
