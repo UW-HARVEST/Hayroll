@@ -76,7 +76,7 @@ output/
 /seeder
 /pioneer
 /analyzer
-/ws
+/reaper
 /remove-comments
 /remove-non-preprocessor
 /macro-skeleton

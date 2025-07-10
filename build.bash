@@ -55,6 +55,6 @@ ln -sf "${BUILD_DIR}/seeder" ../seeder
 ln -sf "${BUILD_DIR}/pioneer" ../pioneer
 ln -sf "${BUILD_DIR}/pipeline" ../pipeline
 # Rust binaries are in debug subdirectory
-ln -sf "${BUILD_DIR}/debug/ws" ../ws
+ln -sf "${BUILD_DIR}/debug/reaper" ../reaper
 
 echo "Build completed successfully!"

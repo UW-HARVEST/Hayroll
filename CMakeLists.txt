@@ -129,7 +129,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
 add_library(hayroll_exe_config INTERFACE)
 target_compile_definitions(hayroll_exe_config INTERFACE
     HAYROLL_PIONEER_EXE="$<TARGET_FILE:pioneer>"
-    HAYROLL_WS_EXE="${CMAKE_SOURCE_DIR}/ws"
+    HAYROLL_REAPER_EXE="${CMAKE_SOURCE_DIR}/reaper"
 )
 
 add_library(external_exe_config INTERFACE)
