@@ -89,7 +89,7 @@ public:
         col = std::stoi(std::string(loc.substr(nextColonPos + 1)));
 
         std::filesystem::path path(pathStr);
-        path = std::filesystem::canonical(path);
+        path = std::filesystem::weakly_canonical(path);
 
         return {path, line, col};
     }
@@ -179,7 +179,7 @@ public:
         std::filesystem::path srcPath = includeTree->path;
 
         std::string srcLocBegin = makeLocation(srcPath, srcLine, col);
-
+        
         std::string srcLocInv = "";
         if (isArg)
         {
@@ -190,6 +190,25 @@ public:
             srcLocInv = makeLocation(srcPath, invSrcLine, invCol);
         }
 
+        std::string srcLocDecl = "";
+        if (locDecl != "")
+        {
+            SPDLOG_DEBUG
+            (
+                "Translating locDecl for non-arg {}: {}",
+                name, locDecl
+            );
+            auto [declPath, declLine, declCol] = parseLocation(locDecl);
+            auto [declIncludeTree, declSrcLine] = inverseLineMap[declLine];
+            std::filesystem::path declSrcPath = declIncludeTree->path;
+            srcLocDecl = makeLocation(declSrcPath, declSrcLine, declCol);
+            SPDLOG_DEBUG
+            (
+                "Translated locDecl for non-arg {}: {}",
+                name, srcLocDecl
+            );
+        }
+
         Tag tagBegin
         {
             .begin = true,
@@ -198,7 +217,7 @@ public:
             .astKind = std::string(astKind),
             .isLvalue = isLvalue,
             .name = std::string(name),
-            .locDecl = std::string(locDecl),
+            .locDecl = std::string(srcLocDecl),
             .locInv = isArg ? std::string(srcLocInv) : std::string(srcLocBegin),
             .locArg = isArg ? std::string(srcLocBegin) : "",
 
@@ -213,7 +232,7 @@ public:
             .astKind = "",
             .isLvalue = isLvalue,
             .name = std::string(name),
-            .locDecl = std::string(locDecl),
+            .locDecl = std::string(srcLocDecl),
             .locInv = isArg ? std::string(srcLocInv) : std::string(srcLocBegin),
             .locArg = isArg ? std::string(srcLocBegin) : "",
 
@@ -894,12 +913,26 @@ public:
         {
             auto [path, line, col] = parseLocation(invocation.InvocationLocation);
             auto [pathEnd, lineEnd, colEnd] = parseLocation(invocation.InvocationLocationEnd);
+            SPDLOG_DEBUG
+            (
+                "Extracting spelling for invocation {} at {}: {}:{}-{}:{}",
+                invocation.Name,
+                path.string(),
+                line, col, lineEnd, colEnd
+            );
             invocation.Spelling = srcEditor.get(line, col, colEnd - col);
 
             for (ArgInfo & arg : invocation.Args)
             {
                 auto [argPath, argLine, argCol] = parseLocation(arg.ActualArgLocBegin);
                 auto [argPathEnd, argLineEnd, argColEnd] = parseLocation(arg.ActualArgLocEnd);
+                SPDLOG_DEBUG
+                (
+                    "Extracting spelling for argument {} at {}: {}:{}-{}:{}",
+                    arg.Name,
+                    argPath.string(),
+                    argLine, argCol, argLineEnd, argColEnd
+                );
                 arg.Spelling = srcEditor.get(argLine, argCol, argColEnd - argCol);
                 arg.InvocationLocation = invocation.InvocationLocation;
             }

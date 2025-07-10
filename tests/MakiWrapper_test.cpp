@@ -2,6 +2,7 @@
 #include <filesystem>
 
 #include <spdlog/spdlog.h>
+#include "json.hpp"
 
 #include "Util.hpp"
 #include "TempDir.hpp"
@@ -11,20 +12,45 @@
 int main(int argc, char **argv)
 {
     using namespace Hayroll;
+    using json = nlohmann::json;
 
     spdlog::set_level(spdlog::level::debug);
 
-    std::filesystem::path libmcsDir(LIBMCS_DIR);
+    std::string libmcsDirStr = LIBMCS_DIR;
+    std::filesystem::path libmcsDir(libmcsDirStr);
     libmcsDir = std::filesystem::canonical(libmcsDir);
+
+    std::string compileCommandsStr = R"(
+    [
+        {
+            "arguments": [
+                "/usr/bin/gcc",
+                "-c",
+                "-Wall",
+                "-std=c99",
+                "-pedantic",
+                "-Wextra",
+                "-frounding-math",
+                "-g",
+                "-fno-builtin",
+                "-DLIBMCS_FPU_DAZ",
+                "-DLIBMCS_WANT_COMPLEX",
+                "-Ilibm/include",
+                "-Ilibm/common",
+                "-Ilibm/mathd/internal",
+                "-Ilibm/mathf/internal",
+                "-o",
+                "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o",
+                "libm/mathf/sinhf.c"
+            ],
+            "directory": ")" + libmcsDirStr + R"(",
+            "file": ")" + libmcsDirStr + R"(/libm/mathf/sinhf.c",
+            "output": ")" + libmcsDirStr + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
+        }
+    ]
+    )";
+    json compileCommandsJson = json::parse(compileCommandsStr);
     
-    std::filesystem::path compileCommandsJsonPath = libmcsDir / "compile_commands.json";
-    if (!std::filesystem::exists(compileCommandsJsonPath))
-    {
-        std::cerr << "Error: compile_commands.json not found at " << compileCommandsJsonPath.string() << std::endl;
-        return 1;
-    }
-    std::string compileCommandsJsonStr = loadFileToString(compileCommandsJsonPath);
-    nlohmann::json compileCommandsJson = nlohmann::json::parse(compileCommandsJsonStr);
     std::vector<CompileCommand> compileCommands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
 
     std::string cpp2cStr = MakiWrapper::runCpp2c
@@ -35,6 +61,14 @@ int main(int argc, char **argv)
     );
 
     std::cout << "Maki cpp2c output:\n" << cpp2cStr << std::endl;
+
+    std::string cpp2cCuStr = MakiWrapper::runCpp2cOnCu
+    (
+        compileCommands,
+        16
+    );
+
+    std::cout << "Maki cpp2c on CU output:\n" << cpp2cCuStr << std::endl;
 
     return 0;
 }

@@ -53,9 +53,7 @@ fi
 # Add soft links to binaries, from here (build directory) to the root directory
 ln -sf "${BUILD_DIR}/seeder" ../seeder
 ln -sf "${BUILD_DIR}/pioneer" ../pioneer
-ln -sf "${BUILD_DIR}/remove-comments" ../remove-comments
-ln -sf "${BUILD_DIR}/remove-non-preprocessor" ../remove-non-preprocessor
-ln -sf "${BUILD_DIR}/macro-skeleton" ../macro-skeleton
+ln -sf "${BUILD_DIR}/pipeline" ../pipeline
 # Rust binaries are in debug subdirectory
 ln -sf "${BUILD_DIR}/debug/analyzer" ../analyzer
 ln -sf "${BUILD_DIR}/debug/ws" ../ws

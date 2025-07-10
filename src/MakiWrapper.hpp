@@ -11,6 +11,8 @@
 #include "Util.hpp"
 #include "TempDir.hpp"
 #include "CompileCommand.hpp"
+#include "RewriteIncludesWrapper.hpp"
+#include "LinemarkerEraser.hpp"
 
 namespace Hayroll
 {
@@ -43,6 +45,9 @@ public:
             CompileCommand::compileCommandsToJson(compileCommands).dump(4),
             compileCommandsPath
         );
+        SPDLOG_DEBUG("Saved compile_commands.json to: {}\n content:\n{}",
+                     compileCommandsPath.string(),
+                     CompileCommand::compileCommandsToJson(compileCommands).dump(4));
         
         projDir = std::filesystem::canonical(projDir);
         
@@ -73,7 +78,11 @@ public:
         );
 
         // Wait for the process to finish
-        cpp2c.communicate();
+        auto [out, err] = cpp2c.communicate();
+
+        // Print out the output and error streams
+        SPDLOG_DEBUG("Maki cpp2c output:\n{}", out.buf.data());
+        SPDLOG_DEBUG("Maki cpp2c error:\n{}", err.buf.data());
 
         // Should appear: outputDir/all_results.cpp2c
         // Confirm that the file exists and return its content
@@ -83,7 +92,45 @@ public:
             throw std::runtime_error("Maki cpp2c did not produce the expected output file: " + cpp2cFilePath.string());
         }
 
-        return loadFileToString(cpp2cFilePath);
+        std::string cpp2cStr = loadFileToString(cpp2cFilePath);
+
+        if (cpp2cStr.empty())
+        {
+            throw std::runtime_error("Maki cpp2c produced an empty output file.");
+        }
+
+        return cpp2cStr;
+    }
+
+    // Automatically aggregate each compile command into a single compilation unit file,
+    // erase its line markers, and save it to a temporary directory.
+    // and then run Maki's cpp2c on it.
+    // This gives an absolute line:col number w.r.t. the CU file.
+    static std::string runCpp2cOnCu
+    (
+        std::vector<CompileCommand> compileCommands,
+        int numThreads = 16
+    )
+    {
+        TempDir cuDir(false); // Do not auto-delete, we want to keep the CU files
+        std::filesystem::path cuDirPath = cuDir.getPath();
+        for (int i = 0; i < compileCommands.size(); ++i)
+        {
+            CompileCommand & command = compileCommands[i];
+            std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
+            std::string cuNolmStr = LinemarkerEraser::run(cuStr);
+            std::string cuFileName = std::to_string(i) + ".cu.c";
+            SPDLOG_DEBUG("Saved compilation unit {} to: {}", i, cuFileName);
+            std::filesystem::path cuFilePath = cuDirPath / cuFileName;
+            saveStringToFile(cuNolmStr, cuFilePath);
+
+            // Update the command to use the CU file as the source
+            command.arguments.back() = cuFilePath.string(); // The last argument is usually the source file
+            command.directory = cuDirPath; // Set the directory to the CU directory
+            command.file = cuFilePath;
+        }
+
+        return runCpp2c(compileCommands, cuDirPath, numThreads);
     }
 };
 

@@ -84,10 +84,23 @@ public:
 
     std::string get(std::size_t ln, std::size_t col, std::size_t length) const
     {
-        if (ln >= lines.size() || col == 0 || col > lines[ln].size())
+        if (ln >= lines.size())
         {
-            throw std::out_of_range("Line or column out of range");
+            throw std::out_of_range(fmt::format
+            (
+                "Line out of range: target {}:{}, limit {}",
+                ln, col, lines.size()
+            ));
         }
+        if (col == 0 || col > lines[ln].size())
+        {
+            throw std::out_of_range(fmt::format
+            (
+                "Column out of range: target {}:{}, limit {}",
+                ln, col, lines[ln].size()
+            ));
+        }
+        
         std::size_t start = col - 1; // Convert to 0-based index
         std::size_t end = start + length;
         if (end > lines[ln].size())

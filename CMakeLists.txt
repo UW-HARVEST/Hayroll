@@ -120,6 +120,7 @@ link_libraries(
 add_compile_definitions(
     BOOST_STACKTRACE_USE_ADDR2LINE
     BOOST_STACKTRACE_LINK
+    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG
 )
 
 # For backtraces

@@ -37,18 +37,15 @@ public:
     >
     run
     (
-        std::filesystem::path srcPath,
+        std::string cuStr, // Compilation unit source code as a string
         IncludeTreePtr includeTree, // IncludeTree from a previous symbolic execution
         const std::vector<std::filesystem::path> & includePaths = {}
     )
     {
         const CPreproc lang{CPreproc()};
-        srcPath = std::filesystem::canonical(srcPath);
         IncludeResolver includeResolver{CLANG_EXE, includePaths};
         ASTBank astBank{lang};
-        astBank.addFileOrFind(srcPath);
-
-        const TSTree & tree = astBank.find(srcPath);
+        const TSTree & tree = astBank.addAnonymousSource(std::move(cuStr));
         const TSNode root = tree.rootNode();
         assert(root.isSymbol(lang.translation_unit_s));
 

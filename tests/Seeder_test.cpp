@@ -8,10 +8,14 @@
 
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 
 #include "SymbolicExecutor.hpp"
 #include "LineMatcher.hpp"
 #include "Seeder.hpp"
+#include "CompileCommand.hpp"
+#include "RewriteIncludesWrapper.hpp"
+#include "MakiWrapper.hpp"
 
 int main(const int argc, const char* argv[])
 {
@@ -21,53 +25,83 @@ int main(const int argc, const char* argv[])
 
     TempDir tmpDir(false);
     std::filesystem::path tmpPath = tmpDir.getPath();
+    std::string libmcsDirStr = LIBMCS_DIR;
+    std::filesystem::path libmcsDir(libmcsDirStr);
 
-    auto saveSource = [&tmpPath](const std::string & source, const std::string & filename) -> std::filesystem::path
-    {
-        std::filesystem::path srcPath = tmpPath / filename;
-        std::ofstream srcFile(srcPath);
-        srcFile << source;
-        srcFile.close();
-        return srcPath;
-    };
+    std::string compileCommandsStr = R"(
+    [
+        {
+            "arguments": [
+                "/usr/bin/gcc",
+                "-c",
+                "-Wall",
+                "-std=c99",
+                "-pedantic",
+                "-Wextra",
+                "-frounding-math",
+                "-g",
+                "-fno-builtin",
+                "-DLIBMCS_FPU_DAZ",
+                "-DLIBMCS_WANT_COMPLEX",
+                "-Ilibm/include",
+                "-Ilibm/common",
+                "-Ilibm/mathd/internal",
+                "-Ilibm/mathf/internal",
+                "-o",
+                "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o",
+                "libm/mathf/sinhf.c"
+            ],
+            "directory": ")" + libmcsDirStr + R"(",
+            "file": ")" + libmcsDirStr + R"(/libm/mathf/sinhf.c",
+            "output": ")" + libmcsDirStr + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
+        }
+    ]
+    )";
+    json compileCommandsJson = json::parse(compileCommandsStr);
+
+    std::vector<CompileCommand> commands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
+    assert(commands.size() == 1);
+    CompileCommand &command = commands[0];
 
     std::vector<std::tuple<SymbolicExecutor, std::string, std::vector<std::string>>> tasks;
 
     SymbolicExecutor executor
     (
-        "../../libmcs/libm/mathf/sinhf.c",
-        "../../libmcs/",
-        {"../../libmcs/", "../../libmcs/libm/include/"}
+        libmcsDir / "libm/mathf/sinhf.c",
+        libmcsDir,
+        {libmcsDir , libmcsDir / "libm/include/"}
     );
-    std::filesystem::path includedFilename = "../../libmcs/libm/mathf/sinhf.cu.c";
-    std::vector<std::string> includePathStrs = {"../../libmcs/", "../../libmcs/libm/include/"};
+    std::filesystem::path cuPath = libmcsDir / "libm/mathf/sinhf.cu.c";
 
-    std::vector<std::filesystem::path> includePaths(includePathStrs.begin(), includePathStrs.end());
-
+    std::vector<std::filesystem::path> includePaths = command.getIncludePaths();
+    
     Warp endWarp = executor.run();
     PremiseTree * premiseTree = executor.scribe.borrowTree();
     IncludeTreePtr includeTree = executor.includeTree;
     const CPreproc & lang = executor.lang;
-
+    
     premiseTree->refine();
     std::cout << "Refined premise tree:\n";
     std::cout << premiseTree->toString() << std::endl;
-
+    
     std::cout << "Include tree:\n";
     std::cout << includeTree->toString() << std::endl;
-
-    auto [lineMap, inverseLineMap] = LineMatcher::run(includedFilename, includeTree, includePaths);
     
-    std::filesystem::path cpp2cFilePath = "../../libmcs/macro_invocation_analyses/all_results.cpp2c";
-    std::filesystem::path srcPath = "../../libmcs/libm/mathf/sinhf.cu.c";
+    std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
 
+    std::cout << "Rewritten source code CU file:\n" << cuStr << std::endl;
+
+    auto [lineMap, inverseLineMap] = LineMatcher::run(cuStr, includeTree, includePaths);
+    
     // Copy dstPath to a temporary file
     std::filesystem::path tmpDstPath = tmpPath / "sinhf.cu.c";
 
-    std::string cpp2cStr = loadFileToString(cpp2cFilePath);
-    std::string srcStr = loadFileToString(srcPath);
+    std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commands);
 
-    std::string output = Seeder::run(cpp2cStr, premiseTree, srcStr, lineMap, inverseLineMap);
+    std::cout << "Maki analysis completed." << std::endl;
+    std::cout << "cpp2cStr:\n" << cpp2cStr << std::endl;
+
+    std::string output = Seeder::run(cpp2cStr, premiseTree, cuStr, lineMap, inverseLineMap);
 
     // Save the source file to the temporary directory
     std::ofstream tmpDstFile(tmpDstPath);
@@ -78,7 +112,7 @@ int main(const int argc, const char* argv[])
     tmpDstFile << output;
     tmpDstFile.close();
 
-    std::cout << "Seeder completed. Instrumentation tasks generated in " << tmpDstPath << std::endl;
+    std::cout << "Seeder completed. Instrumented CU file saved to: " << tmpDstPath << std::endl;
 
     return 0;
 }

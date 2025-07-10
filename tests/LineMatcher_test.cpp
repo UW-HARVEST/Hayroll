@@ -42,7 +42,7 @@ int main(int argc, char **argv)
         )
     );
     
-    for (auto &[executor, includedFilename, includePathStrs] : tasks)
+    for (auto &[executor, cuPath, includePathStrs] : tasks)
     {
         std::vector<std::filesystem::path> includePaths(includePathStrs.begin(), includePathStrs.end());
 
@@ -58,7 +58,8 @@ int main(int argc, char **argv)
         std::cout << "Include tree:\n";
         std::cout << includeTree->toString() << std::endl;
 
-        auto [lineMap, inverseLineMap] = LineMatcher::run(includedFilename, includeTree, includePaths);
+        std::string cuStr = loadFileToString(cuPath);
+        auto [lineMap, inverseLineMap] = LineMatcher::run(cuStr, includeTree, includePaths);
 
         std::cout << "Line map:\n";
         for (const auto & [includeTreeNode, lines] : lineMap)

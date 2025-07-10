@@ -36,6 +36,7 @@ struct CompileCommand
     std::vector<std::filesystem::path> getIncludePaths() const
     {
         std::vector<std::filesystem::path> paths;
+        paths.push_back(directory); // Include the command's directory as well.
         for (const auto & arg : arguments)
         {
             if (!arg.starts_with("-I")) continue;
@@ -50,14 +51,6 @@ struct CompileCommand
             paths.push_back(absolutePath);
         }
         return paths;
-    }
-
-    CompileCommand substituteSourceFilename(const std::filesystem::path & newSourceFile) const
-    {
-        CompileCommand newCommand = *this;
-        newCommand.file = newSourceFile;
-        newCommand.output = newSourceFile.parent_path() / "build" / newSourceFile.filename();
-        return newCommand;
     }
 
     static std::vector<CompileCommand> fromCompileCommandsJson(const nlohmann::json & json)
@@ -75,23 +68,11 @@ struct CompileCommand
             CompileCommand command;
             command.arguments = item["arguments"].get<std::vector<std::string>>();
             command.directory = item["directory"].get<std::filesystem::path>();
+            command.directory = std::filesystem::canonical(command.directory);
             command.file = item["file"].get<std::filesystem::path>();
+            command.file = std::filesystem::canonical(command.file);
             command.output = item["output"].get<std::filesystem::path>();
-            if (!command.directory.is_absolute())
-            {
-                SPDLOG_ERROR("Expected absolute path for directory in compile_commands.json, but got: {}", command.directory.string());
-                throw std::runtime_error("Invalid directory path in compile_commands.json");
-            }
-            if (!command.file.is_absolute())
-            {
-                SPDLOG_ERROR("Expected absolute path for file in compile_commands.json, but got: {}", command.file.string());
-                throw std::runtime_error("Invalid file path in compile_commands.json");
-            }
-            if (!command.output.is_absolute())
-            {
-                SPDLOG_ERROR("Expected absolute path for output in compile_commands.json, but got: {}", command.output.string());
-                throw std::runtime_error("Invalid output path in compile_commands.json");
-            }
+            command.output = std::filesystem::canonical(command.output);
             commands.push_back(command);
         }
 

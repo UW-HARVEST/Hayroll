@@ -17,6 +17,7 @@ int main(int argc, char **argv)
 
     std::string libmcsDirStr = LIBMCS_DIR;
     std::filesystem::path libmcsDir(libmcsDirStr);
+    libmcsDir = std::filesystem::canonical(libmcsDir);
 
     std::string compileCommandsStr = R"(
     [
@@ -56,11 +57,12 @@ int main(int argc, char **argv)
     assert(command.file == libmcsDir / "libm/mathf/sinhf.c");
     assert(command.output == libmcsDir / "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o");
     std::vector<std::filesystem::path> includePaths = command.getIncludePaths();
-    assert(includePaths.size() == 4);
-    assert(includePaths[0] == libmcsDir / "libm/include");
-    assert(includePaths[1] == libmcsDir / "libm/common");
-    assert(includePaths[2] == libmcsDir / "libm/mathd/internal");
-    assert(includePaths[3] == libmcsDir / "libm/mathf/internal");
+    assert(includePaths.size() == 5);
+    assert(includePaths[0] == libmcsDir); // Include the command's directory as well.
+    assert(includePaths[1] == libmcsDir / "libm/include");
+    assert(includePaths[2] == libmcsDir / "libm/common");
+    assert(includePaths[3] == libmcsDir / "libm/mathd/internal");
+    assert(includePaths[4] == libmcsDir / "libm/mathf/internal");
 
     return 0;
 }
