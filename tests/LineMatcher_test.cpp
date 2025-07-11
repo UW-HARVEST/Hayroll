@@ -74,11 +74,11 @@ int main(int argc, char **argv)
             SymbolicExecutor
             (
                 LibmcsDir / "libm/mathf/sinhf.c",
-                LibmcsDir / "",
-                {LibmcsDir / "", LibmcsDir / "libm/include/"}
+                LibmcsDir,
+                {LibmcsDir, LibmcsDir / "libm/include/"}
             ),
             cuStr,
-            std::vector<std::string>{LibmcsDir / "", LibmcsDir / "libm/include/"}
+            std::vector<std::string>{LibmcsDir, LibmcsDir / "libm/include/"}
         )
     );
     

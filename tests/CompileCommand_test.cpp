@@ -60,5 +60,17 @@ int main(int argc, char **argv)
     assert(includePaths[3] == LibmcsDir / "libm/mathd/internal");
     assert(includePaths[4] == LibmcsDir / "libm/mathf/internal");
 
+    CompileCommand updatedCommandCu = command
+        .withUpdatedDirectory("/tmp/hayroll")
+        .withUpdatedExtension(".cu.c");
+    assert(updatedCommandCu.directory == "/tmp/hayroll");
+    assert(updatedCommandCu.file == "/tmp/hayroll/libm/mathf/sinhf.cu.c");
+    assert(updatedCommandCu.output == "/tmp/hayroll/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o");
+
+    CompileCommand updatedCommandSeedCu = updatedCommandCu.withUpdatedExtension(".seed.cu.c");
+    assert(updatedCommandSeedCu.directory == "/tmp/hayroll");
+    assert(updatedCommandSeedCu.file == "/tmp/hayroll/libm/mathf/sinhf.seed.cu.c");
+    assert(updatedCommandSeedCu.output == "/tmp/hayroll/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o");
+
     return 0;
 }

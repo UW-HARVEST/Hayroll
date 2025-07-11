@@ -62,6 +62,49 @@ struct CompileCommand
         return file; // If it's not absolute, just return it as is.
     }
 
+    CompileCommand withUpdatedDirectory(const std::filesystem::path & newDirectory) const
+    {
+        CompileCommand updatedCommand = *this;
+        std::filesystem::path relativeFile = std::filesystem::relative(this->file, this->directory);
+        updatedCommand.file = newDirectory / relativeFile;
+        std::filesystem::path relativeOutput = std::filesystem::relative(this->output, this->directory);
+        updatedCommand.output = newDirectory / relativeOutput;
+        updatedCommand.directory = newDirectory;
+        return updatedCommand;
+    }
+
+    // Update the file extension of the command's file and arguments.
+    // Multiple extensions are considered the extension of the file.
+    // e.g. in "xxx.cu.c" the extension is ".cu.c".
+    CompileCommand withUpdatedExtension
+    (
+        const std::string & newExtension
+    ) const
+    {
+        CompileCommand updatedCommand = *this;
+        std::string filename = file.filename().string();
+        std::string newFilename = filename.substr(0, filename.find('.')) + newExtension;
+        updatedCommand.file = updatedCommand.file.replace_filename(newFilename);
+        // If the last argument is also a file path, update it as well.
+        // Do filtering on whether the last argument is a file path.
+        std::string lastArg = updatedCommand.arguments.back();
+        try
+        {
+            std::filesystem::path lastArgPath(lastArg);
+            std::string lastArgFilename = lastArgPath.filename().string();
+            if (lastArgFilename == filename)
+            {
+                lastArgPath = lastArgPath.replace_filename(newFilename);
+                updatedCommand.arguments.back() = lastArgPath.string();
+            }
+        }
+        catch (const std::exception & e)
+        {
+            SPDLOG_DEBUG("Last argument is not a valid path: {}", e.what());
+        }
+        return updatedCommand;
+    }
+
     static std::vector<CompileCommand> fromCompileCommandsJson(const nlohmann::json & json)
     {
         if (!json.is_array())
