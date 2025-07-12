@@ -76,9 +76,9 @@ message(STATUS "Z3_FOUND: ${Z3_FOUND}")
 message(STATUS "Found Z3 ${Z3_VERSION_STRING}")
 message(STATUS "Z3_DIR: ${Z3_DIR}")
 
-# awk
-find_program(AWK_EXE awk REQUIRED)
-message(STATUS "AWK_EXE: ${AWK_EXE}")
+# c2rust
+find_program(C2RUST_EXE c2rust REQUIRED)
+message(STATUS "C2RUST_EXE: ${C2RUST_EXE}")
 
 # spdlog
 find_package(spdlog REQUIRED)
@@ -134,7 +134,7 @@ target_compile_definitions(hayroll_exe_config INTERFACE
 
 add_library(external_exe_config INTERFACE)
 target_compile_definitions(external_exe_config INTERFACE
-    AWK_EXE="${AWK_EXE}"
+    C2RUST_EXE="${C2RUST_EXE}"
     CLANG_EXE="${CLANG_EXE}"
     MAKI_DIR="${MAKI_DIR}"
     LIBMCS_DIR="${LIBMCS_DIR}"
@@ -393,4 +393,17 @@ target_link_libraries(RewriteIncludesWrapper_test PRIVATE
 add_test(
     NAME RewriteIncludesWrapper_test
     COMMAND RewriteIncludesWrapper_test
+)
+
+add_executable(C2RustWrapper_test tests/C2RustWrapper_test.cpp)
+target_link_libraries(C2RustWrapper_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME C2RustWrapper_test
+    COMMAND C2RustWrapper_test
 )

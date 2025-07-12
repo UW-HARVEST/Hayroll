@@ -105,6 +105,33 @@ struct CompileCommand
         return updatedCommand;
     }
 
+    // Update the file using absolute path.
+    // This does not just change the filename, but also ignores the original file path.
+    CompileCommand withUpdatedFile
+    (
+        std::filesystem::path newFile
+    ) const
+    {
+        newFile = std::filesystem::weakly_canonical(newFile);
+        CompileCommand updatedCommand = *this;
+        updatedCommand.file = newFile;
+        // If the last argument is also a file path, update it as well.
+        std::string lastArg = updatedCommand.arguments.back();
+        try
+        {
+            std::filesystem::path lastArgPath(lastArg);
+            if (lastArgPath.filename() == this->file.filename())
+            {
+                updatedCommand.arguments.back() = std::filesystem::relative(newFile, this->directory).string();
+            }
+        }
+        catch (const std::exception & e)
+        {
+            SPDLOG_DEBUG("Last argument is not a valid path: {}", e.what());
+        }
+        return updatedCommand;
+    }
+
     static std::vector<CompileCommand> fromCompileCommandsJson(const nlohmann::json & json)
     {
         if (!json.is_array())

@@ -20,6 +20,7 @@
 namespace Hayroll
 {
 
+const std::filesystem::path C2RustExe = std::filesystem::canonical(std::filesystem::path(C2RUST_EXE));
 const std::filesystem::path ClangExe = std::filesystem::canonical(std::filesystem::path(CLANG_EXE));
 const std::filesystem::path MakiDir = std::filesystem::canonical(std::filesystem::path(MAKI_DIR));
 const std::filesystem::path LibmcsDir = std::filesystem::canonical(std::filesystem::path(LIBMCS_DIR));
@@ -41,10 +42,17 @@ std::string loadFileToString(const std::filesystem::path & path)
     return content;
 }
 
-void saveStringToFile(const std::string & content, const std::filesystem::path & path)
+void saveStringToFile(std::string_view content, const std::filesystem::path & path)
 {
     // Create parent directories if they do not exist
     std::filesystem::create_directories(path.parent_path());
+
+    // Warn if writing into LibmcsDir
+    if (path.string().starts_with(LibmcsDir.string()))
+    {
+        throw std::runtime_error("Error: Attempting to write into LibmcsDir, which may be unintended. Please check the path: " + path.string());
+    }
+
     std::ofstream file(path);
     if (!file.is_open())
     {
