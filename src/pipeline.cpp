@@ -67,13 +67,35 @@ int main(const int argc, const char* argv[])
         }
     }
 
+    // Copy all source files to the output directory
+    // compileCommands + src -> outputDir
+
+    for (const CompileCommand & command : compileCommands)
+    {
+        std::filesystem::path srcPath = command.file;
+        CompileCommand outputCommand = command.withUpdatedDirectory(outputDir);
+        std::filesystem::path outputPath = outputCommand.file;
+        std::string srcStr = loadFileToString(srcPath);
+        saveStringToFile(srcStr, outputPath);
+        SPDLOG_INFO("Source file {} copied to: {}", srcPath.string(), outputPath.string());
+    }
+
     // Analyze macro invocations using Maki
     // compileCommands + src --Maki-> cpp2cStr
 
-    std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(compileCommands);
-    std::filesystem::path makiOutputPath = outputDir / "all_results.cpp2c";
-    saveStringToFile(cpp2cStr, makiOutputPath);
-    SPDLOG_INFO("Maki analysis results saved to: {}", makiOutputPath.string());
+    std::vector<std::string> cpp2cStrs;
+    for (const CompileCommand & command : compileCommands)
+    {
+        std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command);
+        CompileCommand outputCommand = command
+            .withUpdatedDirectory(outputDir)
+            .withUpdatedExtension(".cpp2c");
+        std::filesystem::path outputPath = outputCommand.file;
+        saveStringToFile(cpp2cStr, outputPath);
+        SPDLOG_INFO("Maki cpp2c output for {} saved to: {}", command.file.string(), outputPath.string());
+        cpp2cStrs.push_back(cpp2cStr);
+    }
+    assert(cpp2cStrs.size() == numTasks);
 
     // Aggregate sources into compilation units
     // compileCommands + src --clang-frewrite-includes-> cuStrs
@@ -93,7 +115,7 @@ int main(const int argc, const char* argv[])
     }
     assert(cuStrs.size() == numTasks);
 
-    // Symbolic execution
+    // Hayroll Pioneer symbolic execution
     // compileCommands + cpp2cStr --SymbolicExecutor-> includeTree + premiseTree
 
     std::vector<SymbolicExecutor> symbolicExecutors;
@@ -107,7 +129,7 @@ int main(const int argc, const char* argv[])
     {
         executor.run();
         // Results are in the executor's member variables
-        SPDLOG_INFO("Symbolic execution completed for: {}", executor.srcPath.string());
+        SPDLOG_INFO("Hayroll Pioneer symbolic execution completed for: {}", executor.srcPath.string());
     }
     assert(symbolicExecutors.size() == numTasks);
 
@@ -126,7 +148,7 @@ int main(const int argc, const char* argv[])
         lineMaps.push_back(std::move(lineMap));
         inverseLineMaps.push_back(std::move(inverseLineMap));
 
-        SPDLOG_INFO("Line mapping completed for {}", compileCommands[i].file.string());
+        SPDLOG_INFO("Hayroll Line mapping completed for {}", compileCommands[i].file.string());
     }
     assert(lineMaps.size() == numTasks);
     assert(inverseLineMaps.size() == numTasks);
@@ -137,6 +159,7 @@ int main(const int argc, const char* argv[])
     for (int i = 0; i < numTasks; ++i)
     {
         const CompileCommand & command = compileCommands[i];
+        const std::string & cpp2cStr = cpp2cStrs[i];
         const std::string & cuStr = cuStrs[i];
         const auto & lineMap = lineMaps[i];
         const auto & inverseLineMap = inverseLineMaps[i];
@@ -150,7 +173,7 @@ int main(const int argc, const char* argv[])
             .withUpdatedExtension(".seeded.cu.c");
         std::filesystem::path outputPath = outputCommand.file;
         saveStringToFile(cuSeededStr, outputPath);
-        SPDLOG_INFO("Seeded compilation unit for {} saved to: {}", command.file.string(), outputPath.string());
+        SPDLOG_INFO("Hayroll Seeded compilation unit for {} saved to: {}", command.file.string(), outputPath.string());
     }
     assert(cuSeededStrs.size() == numTasks);
 
@@ -169,7 +192,7 @@ int main(const int argc, const char* argv[])
             .withUpdatedExtension(".seeded.rs");
         std::filesystem::path outputPath = outputCommand.file;
         saveStringToFile(c2rustStr, outputPath);
-        SPDLOG_INFO("Seeded C2Rust output for {} saved to: {}", command.file.string(), outputPath.string());
+        SPDLOG_INFO("C2Rust output for {} saved to: {}", command.file.string(), outputPath.string());
     }
     assert(c2rustStrs.size() == numTasks);
 
@@ -188,7 +211,7 @@ int main(const int argc, const char* argv[])
             .withUpdatedExtension(".rs");
         std::filesystem::path outputPath = outputCommand.file;
         saveStringToFile(reaperStr, outputPath);
-        SPDLOG_INFO("Reaper output for {} saved to: {}", command.file.string(), outputPath.string());
+        SPDLOG_INFO("hayroll Reaper output for {} saved to: {}", command.file.string(), outputPath.string());
     }
     assert(reaperStrs.size() == numTasks);
 

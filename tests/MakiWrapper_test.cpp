@@ -51,7 +51,7 @@ int main(int argc, char **argv)
 
     std::string cpp2cStr = MakiWrapper::runCpp2c
     (
-        compileCommands,
+        compileCommands[0],
         LibmcsDir,
         16
     );
@@ -60,7 +60,7 @@ int main(int argc, char **argv)
 
     std::string cpp2cCuStr = MakiWrapper::runCpp2cOnCu
     (
-        compileCommands,
+        compileCommands[0],
         16
     );
 

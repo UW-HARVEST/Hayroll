@@ -26,7 +26,7 @@ public:
 
     static std::string runCpp2c
     (
-        const std::vector<CompileCommand> & compileCommands,
+        const CompileCommand & compileCommand,
         std::filesystem::path projDir,
         int numThreads = 16
     )
@@ -42,12 +42,12 @@ public:
         // Write compile_commands.json to projDir
         saveStringToFile
         (
-            CompileCommand::compileCommandsToJson(compileCommands).dump(4),
+            CompileCommand::compileCommandsToJson({compileCommand}).dump(4),
             compileCommandsPath
         );
         SPDLOG_DEBUG("Saved compile_commands.json to: {}\n content:\n{}",
                      compileCommandsPath.string(),
-                     CompileCommand::compileCommandsToJson(compileCommands).dump(4));
+                     CompileCommand::compileCommandsToJson({compileCommand}).dump(4));
         
         projDir = std::filesystem::canonical(projDir);
         
@@ -108,27 +108,21 @@ public:
     // This gives an absolute line:col number w.r.t. the CU file.
     static std::string runCpp2cOnCu
     (
-        const std::vector<CompileCommand> & compileCommands,
+        const CompileCommand & compileCommand,
         int numThreads = 16
     )
     {
-        std::vector<CompileCommand> newCompileCommands;
-        TempDir cuDir(false); // Do not auto-delete, we want to keep the CU files
+        TempDir cuDir;
         std::filesystem::path cuDirPath = cuDir.getPath();
-        for (int i = 0; i < compileCommands.size(); ++i)
-        {
-            const CompileCommand & command = compileCommands[i];
-            // Update the command to use the CU file as the source
-            CompileCommand newCommand = command
-                .withUpdatedDirectory(cuDirPath)
-                .withUpdatedExtension(".cu.c");
-            newCompileCommands.push_back(newCommand);
-            std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
-            std::string cuNolmStr = LinemarkerEraser::run(cuStr);
-            saveStringToFile(cuNolmStr, newCommand.file);
-        }
+        // Update the command to use the CU file as the source
+        std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(compileCommand);
+        std::string cuNolmStr = LinemarkerEraser::run(cuStr);
+        CompileCommand newCompileCommand = compileCommand
+            .withUpdatedDirectory(cuDirPath)
+            .withUpdatedExtension(".cu.c");
+        saveStringToFile(cuNolmStr, newCompileCommand.file);
 
-        return runCpp2c(newCompileCommands, cuDirPath, numThreads);
+        return runCpp2c(newCompileCommand, cuDirPath, numThreads);
     }
 };
 
