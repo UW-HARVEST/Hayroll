@@ -13,6 +13,7 @@
 #include "LineMatcher.hpp"
 #include "Seeder.hpp"
 #include "C2RustWrapper.hpp"
+#include "ReaperWrapper.hpp"
 
 int main(const int argc, const char* argv[])
 {
@@ -130,7 +131,7 @@ int main(const int argc, const char* argv[])
     assert(lineMaps.size() == numTasks);
     assert(inverseLineMaps.size() == numTasks);
 
-    // Seeder
+    // Hayroll Seeder
     // compileCommands + cuStrs + includeTree + premiseTree --Seeder-> seed
     std::vector<std::string> cuSeededStrs;
     for (int i = 0; i < numTasks; ++i)
@@ -171,6 +172,28 @@ int main(const int argc, const char* argv[])
         SPDLOG_INFO("Seeded C2Rust output for {} saved to: {}", command.file.string(), outputPath.string());
     }
     assert(c2rustStrs.size() == numTasks);
+
+    // Hayroll Reaper
+    std::vector<std::string> reaperStrs;
+    for (int i = 0; i < numTasks; ++i)
+    {
+        const CompileCommand & command = compileCommands[i];
+        const std::string & c2rustStr = c2rustStrs[i];
+        std::string reaperStr = ReaperWrapper::runReaper(c2rustStr);
+        reaperStrs.push_back(reaperStr);
+
+        // Save the Reaper output to a file
+        CompileCommand outputCommand = command
+            .withUpdatedDirectory(outputDir)
+            .withUpdatedExtension(".rs");
+        std::filesystem::path outputPath = outputCommand.file;
+        saveStringToFile(reaperStr, outputPath);
+        SPDLOG_INFO("Reaper output for {} saved to: {}", command.file.string(), outputPath.string());
+    }
+    assert(reaperStrs.size() == numTasks);
+
+    // Print final results
+    SPDLOG_INFO("Hayroll Pipeline completed. See output directory: {}", outputDir.string());
 
     return 0;
 }

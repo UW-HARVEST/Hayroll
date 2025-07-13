@@ -11,7 +11,8 @@
 #include <tuple>
 #include <filesystem>
 
-#include <json.hpp>
+#include <spdlog/spdlog.h>
+#include "json.hpp"
 
 #include "SymbolicExecutor.hpp"
 #include "LineMatcher.hpp"
@@ -1025,7 +1026,7 @@ public:
         
         for (const InstrumentationTask & task : tasks)
         {
-            std::cout << task.toString() << std::endl;
+            SPDLOG_DEBUG(task.toString());
             task.addToEditor(srcEditor);
         }
         
