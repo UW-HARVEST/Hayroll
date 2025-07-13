@@ -1,0 +1,82 @@
+#ifndef HAYROLL_REAPERWRAPPER_HPP
+#define HAYROLL_REAPERWRAPPER_HPP
+
+#include <string>
+#include <filesystem>
+
+#include <spdlog/spdlog.h>
+#include "subprocess.hpp"
+#include "json.hpp"
+
+#include "Util.hpp"
+#include "TempDir.hpp"
+
+namespace Hayroll
+{
+
+class ReaperWrapper
+{
+public:
+    static const std::string dummyCargoToml;
+
+    static std::string runReaper
+    (
+        std::string_view seededRustStr
+    )
+    {
+        // Example
+        // reaper ./dir
+
+        TempDir tempDir; // The input and output share the same directory
+        std::filesystem::path tempDirPath = tempDir.getPath();
+        std::filesystem::path inputFilePath = tempDirPath / "src/main.rs";
+        std::filesystem::path cargoPath = tempDirPath / "Cargo.toml";
+        saveStringToFile(dummyCargoToml, cargoPath);
+        saveStringToFile(seededRustStr, inputFilePath);
+
+        SPDLOG_DEBUG
+        (
+            "Issuing command: {} {}",
+            HayrollReaperExe.string(),
+            tempDirPath.string()
+        );
+        
+        subprocess::Popen reaperProcess
+        (
+            {
+                HayrollReaperExe.string(),
+                tempDirPath.string(),
+            },
+            subprocess::output{subprocess::PIPE},
+            subprocess::error{subprocess::PIPE},
+            subprocess::cwd{tempDirPath.string().c_str()}
+        );
+
+        auto [out, err] = reaperProcess.communicate();
+        SPDLOG_DEBUG("Reaper output:\n{}", out.buf.data());
+        SPDLOG_DEBUG("Reaper error:\n{}", err.buf.data());
+
+        // Reaper rewrites the input file in place
+        std::string rustStr = loadFileToString(inputFilePath);
+        if (rustStr.empty())
+        {
+            throw std::runtime_error("Reaper produced an empty output file.");
+        }
+        return rustStr;
+    }
+};
+
+const std::string ReaperWrapper::dummyCargoToml = R"(
+[package]
+name = "test"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "test"
+path = "src/main.rs"
+)";
+
+} // namespace Hayroll
+
+#endif // HAYROLL_REAPERWRAPPER_HPP

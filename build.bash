@@ -7,7 +7,7 @@ BUILD_TYPE="Debug"
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -d|--debug) BUILD_TYPE="Debug" ;;
-        -c|--clean) CLEAN=true ;;
+        -c|--clean) CLEAN=false ;;
         -h|--help)
             echo "Usage: ./build.bash [options]"
             echo "Options:"
@@ -57,4 +57,4 @@ ln -sf "${BUILD_DIR}/pipeline" ../pipeline
 # Rust binaries are in debug subdirectory
 ln -sf "${BUILD_DIR}/debug/reaper" ../reaper
 
-echo "Build completed successfully!"
+echo "Build completed"

@@ -24,6 +24,7 @@ const std::filesystem::path C2RustExe = std::filesystem::canonical(std::filesyst
 const std::filesystem::path ClangExe = std::filesystem::canonical(std::filesystem::path(CLANG_EXE));
 const std::filesystem::path MakiDir = std::filesystem::canonical(std::filesystem::path(MAKI_DIR));
 const std::filesystem::path LibmcsDir = std::filesystem::canonical(std::filesystem::path(LIBMCS_DIR));
+const std::filesystem::path HayrollReaperExe = std::filesystem::canonical(std::filesystem::path(HAYROLL_REAPER_EXE));
 
 template<class... Ts>
 struct overloaded : Ts... { using Ts::operator()...; };

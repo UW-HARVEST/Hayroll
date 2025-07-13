@@ -407,3 +407,16 @@ add_test(
     NAME C2RustWrapper_test
     COMMAND C2RustWrapper_test
 )
+
+add_executable(ReaperWrapper_test tests/ReaperWrapper_test.cpp)
+target_link_libraries(ReaperWrapper_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME ReaperWrapper_test
+    COMMAND ReaperWrapper_test
+)
