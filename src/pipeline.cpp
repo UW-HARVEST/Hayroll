@@ -12,13 +12,14 @@
 #include "SymbolicExecutor.hpp"
 #include "LineMatcher.hpp"
 #include "Seeder.hpp"
+#include "C2RustWrapper.hpp"
 
 int main(const int argc, const char* argv[])
 {
     using namespace Hayroll;
     using json = nlohmann::json;
 
-    spdlog::set_level(spdlog::level::debug);
+    spdlog::set_level(spdlog::level::info);
 
     // Take two arguments
     // 1. Path to the compile_commands.json file.
@@ -69,8 +70,9 @@ int main(const int argc, const char* argv[])
     // compileCommands + src --Maki-> cpp2cStr
 
     std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(compileCommands);
-    SPDLOG_INFO("Maki analysis completed.");
-    SPDLOG_DEBUG("cpp2cStr:\n{}", cpp2cStr);
+    std::filesystem::path makiOutputPath = outputDir / "all_results.cpp2c";
+    saveStringToFile(cpp2cStr, makiOutputPath);
+    SPDLOG_INFO("Maki analysis results saved to: {}", makiOutputPath.string());
 
     // Aggregate sources into compilation units
     // compileCommands + src --clang-frewrite-includes-> cuStrs
@@ -81,8 +83,12 @@ int main(const int argc, const char* argv[])
         std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
         cuStrs.push_back(cuStr);
 
-        SPDLOG_INFO("Rewritten includes for {}", command.file.string());
-        SPDLOG_DEBUG("Compilation unit source:\n{}", cuStr);
+        CompileCommand outputCommand = command
+            .withUpdatedDirectory(outputDir)
+            .withUpdatedExtension(".cu.c");
+        std::filesystem::path outputPath = outputCommand.file;
+        saveStringToFile(cuStr, outputPath);
+        SPDLOG_INFO("Compilation unit file for {} saved to: {}", command.file.string(), outputPath.string());
     }
     assert(cuStrs.size() == numTasks);
 
@@ -98,9 +104,7 @@ int main(const int argc, const char* argv[])
     }
     for (SymbolicExecutor & executor : symbolicExecutors)
     {
-        spdlog::set_level(spdlog::level::info);
         executor.run();
-        spdlog::set_level(spdlog::level::debug);
         // Results are in the executor's member variables
         SPDLOG_INFO("Symbolic execution completed for: {}", executor.srcPath.string());
     }
@@ -122,17 +126,6 @@ int main(const int argc, const char* argv[])
         inverseLineMaps.push_back(std::move(inverseLineMap));
 
         SPDLOG_INFO("Line mapping completed for {}", compileCommands[i].file.string());
-
-        SPDLOG_DEBUG("Line map for task {}:", i);
-        for (const auto & [includeTreePtr, lines] : lineMaps.back())
-        {
-            SPDLOG_DEBUG("IncludeTree: {}, lines: {}", includeTreePtr->path.string(), lines.size());
-            for (size_t j = 0; j < lines.size(); ++j)
-            {
-                SPDLOG_DEBUG("  Line {}: {}", j, lines[j]);
-                SPDLOG_DEBUG("  Inverse Line {}: {}", lines[j], j);
-            }
-        }
     }
     assert(lineMaps.size() == numTasks);
     assert(inverseLineMaps.size() == numTasks);
@@ -142,27 +135,42 @@ int main(const int argc, const char* argv[])
     std::vector<std::string> cuSeededStrs;
     for (int i = 0; i < numTasks; ++i)
     {
-        // Seeder::run(cpp2cStr, premiseTree, srcStr, lineMap, inverseLineMap);
+        const CompileCommand & command = compileCommands[i];
         const std::string & cuStr = cuStrs[i];
         const auto & lineMap = lineMaps[i];
         const auto & inverseLineMap = inverseLineMaps[i];
 
         std::string cuSeededStr = Seeder::run(cpp2cStr, std::nullopt, cuStr, lineMap, inverseLineMap);
-        cuSeededStrs.push_back(std::move(cuSeededStr));
+        cuSeededStrs.push_back(cuSeededStr);
 
-        SPDLOG_INFO("Seeded source for task {}: {}", i, cuSeededStrs.back());
+        // Save the seeded source to a file
+        CompileCommand outputCommand = command
+            .withUpdatedDirectory(outputDir)
+            .withUpdatedExtension(".seeded.cu.c");
+        std::filesystem::path outputPath = outputCommand.file;
+        saveStringToFile(cuSeededStr, outputPath);
+        SPDLOG_INFO("Seeded compilation unit for {} saved to: {}", command.file.string(), outputPath.string());
     }
     assert(cuSeededStrs.size() == numTasks);
 
-    // Write seeded sources to output directory
+    // c2rust
+    std::vector<std::string> c2rustStrs;
     for (int i = 0; i < numTasks; ++i)
     {
         const CompileCommand & command = compileCommands[i];
         const std::string & cuSeededStr = cuSeededStrs[i];
-        std::filesystem::path outputPath = outputDir / command.getFilePathRelativeToDirectory();
-        saveStringToFile(cuSeededStr, outputPath);
-        SPDLOG_INFO("Seeded source written to: {}", outputPath.string());
+        std::string c2rustStr = C2RustWrapper::runC2Rust(cuSeededStr, command);
+        c2rustStrs.push_back(c2rustStr);
+
+        // Save the C2Rust output to a file
+        CompileCommand outputCommand = command
+            .withUpdatedDirectory(outputDir)
+            .withUpdatedExtension(".seeded.rs");
+        std::filesystem::path outputPath = outputCommand.file;
+        saveStringToFile(c2rustStr, outputPath);
+        SPDLOG_INFO("Seeded C2Rust output for {} saved to: {}", command.file.string(), outputPath.string());
     }
+    assert(c2rustStrs.size() == numTasks);
 
     return 0;
 }
