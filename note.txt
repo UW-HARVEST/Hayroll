@@ -227,3 +227,4 @@ The final expansion result should not have any "no further expansion" identifier
 
 ./pipeline /home/hurrypeng/libmcs/compile_commands.json ./output/ &> trace.txt
 ./pipeline /home/hurrypeng/libmcs/compile_commands_4.json ./output/ &> trace.txt
+./pipeline /home/hurrypeng/libmcs/compile_commands_130.json ./output/ &> trace.txt
