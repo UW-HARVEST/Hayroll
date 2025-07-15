@@ -37,7 +37,7 @@ The original [Maki](https://dl.acm.org/doi/abs/10.1145/3597503.3623323) is a C m
 
 Do not install the docker version according to its original README. Instead, please install it locally by following the normal CMake installaton workflow. You can find a `CMakeLists.txt` at its root folder. 
 
-Maki requires the Clang toolchain: `sudo apt install clang-17 llvm-17 libclang-17-dev`.
+Maki requires the Clang toolchain: `sudo apt install clang-14 llvm-14 libclang-14-dev`.
 
 ### Tree-sitter
 

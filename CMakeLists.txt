@@ -1,58 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(Hayroll LANGUAGES C CXX)
 
-# Clang and LLVM
+# Clang executable
 
-#===============================================================================
-# 1. VERIFY CLANG INSTALLATION DIR
-#===============================================================================
-# Set this to a valid Clang installation dir
-#set(CT_LLVM_INSTALL_DIR "" CACHE PATH "LLVM installation directory")
-set(CT_LLVM_INSTALL_DIR "/usr")
-
-# A bit of a sanity checking
-set(CT_LLVM_INCLUDE_DIR "${CT_LLVM_INSTALL_DIR}/include/llvm-17")
-if(NOT EXISTS "${CT_LLVM_INCLUDE_DIR}")
-message(FATAL_ERROR
-    " CT_LLVM_INSTALL_DIR (${CT_LLVM_INCLUDE_DIR}) is invalid.")
-endif()
-
-set(CT_LLVM_CMAKE_FILE "${CT_LLVM_INSTALL_DIR}/lib/cmake/clang-17/ClangConfig.cmake")
-if(NOT EXISTS "${CT_LLVM_CMAKE_FILE}")
-message(FATAL_ERROR
-    " CT_LLVM_CMAKE_FILE (${CT_LLVM_CMAKE_FILE}) is invalid.")
-endif()
-
-#===============================================================================
-# 2. LOAD CLANG CONFIGURATION
-#    For more: http://llvm.org/docs/CMake.html#embedding-llvm-in-your-project
-#===============================================================================
-set(CLANG_VERSION 17)
-list(APPEND CMAKE_PREFIX_PATH "${CT_LLVM_INSTALL_DIR}/lib/cmake/llvm-${CLANG_VERSION}/")
-list(APPEND CMAKE_PREFIX_PATH "${CT_LLVM_INSTALL_DIR}/lib/cmake/clang-${CLANG_VERSION}/")
-
-find_package(Clang REQUIRED CONFIG)
-
-# Sanity check. As Clang does not expose e.g. `CLANG_VERSION_MAJOR` through
-# AddClang.cmake, we have to use LLVM_VERSION_MAJOR instead.
-# TODO: Revisit when next version is released.
-if(NOT "${CLANG_VERSION}" VERSION_EQUAL "${LLVM_VERSION_MAJOR}")
-    message(FATAL_ERROR "Found LLVM ${LLVM_VERSION_MAJOR}, but need LLVM ${CLANG_VERSION}")
-endif()
-
-set(CLANG_C_COMPILER "clang-${CLANG_VERSION}")
-message(STATUS "Found Clang ${LLVM_PACKAGE_VERSION}")
-message(STATUS "Using ClangConfig.cmake in: ${CT_LLVM_INSTALL_DIR}")
-
-
-message("CLANG STATUS:
-    Includes (clang)    ${CLANG_INCLUDE_DIRS}
-    Includes (llvm)     ${LLVM_INCLUDE_DIRS}"
-)
-
-#===============================================================================
-# 3. FIND CLANG EXECUTABLE
-#===============================================================================
 find_program(CLANG_EXE 
     NAMES clang-${CLANG_VERSION} clang
     HINTS "${CT_LLVM_INSTALL_DIR}/bin"
