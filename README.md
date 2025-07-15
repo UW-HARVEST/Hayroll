@@ -79,7 +79,7 @@ Recommended version: tag 0.1.0
 Hayroll's core functionalities. Please install it after clearing all the above dependencies, and some minor dependencies: 
 
 - The Rust toolchain: https://www.rust-lang.org/tools/install
-- `sudo apt install clang-17 llvm-17 libclang-17-dev libz3-dev libspdlog-dev libboost-stacktrace-dev`
+- `sudo apt install pkg-config libz3-dev libspdlog-dev libboost-stacktrace-dev`
 
 Then run `./build.bash`. After that, you can optionally run tests with `cd ./build; ctest`, which should take less than a minuite to finish. 
 

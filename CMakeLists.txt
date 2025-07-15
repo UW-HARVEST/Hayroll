@@ -13,18 +13,22 @@ if(NOT CLANG_EXE)
 endif()
 message(STATUS "CLANG_EXE: ${CLANG_EXE}")
 
-# Set the LLVM and Clang header and library paths
-include_directories(SYSTEM "${LLVM_INCLUDE_DIRS};${CLANG_INCLUDE_DIRS}")
+# PkgConfig
+find_package(PkgConfig REQUIRED)
+if(NOT PKG_CONFIG_FOUND)
+    message(FATAL_ERROR "PkgConfig not found. Please install it.")
+endif()
 
 # Z3
-find_package(Z3
-    REQUIRED
-    CONFIG
-)
-
-message(STATUS "Z3_FOUND: ${Z3_FOUND}")
-message(STATUS "Found Z3 ${Z3_VERSION_STRING}")
-message(STATUS "Z3_DIR: ${Z3_DIR}")
+pkg_check_modules(Z3 REQUIRED IMPORTED_TARGET z3)
+if(NOT Z3_FOUND)
+    message(FATAL_ERROR "Z3 not found. Please install the Z3 development package.")
+endif()
+set(Z3_CXX_INCLUDE_DIRS ${Z3_INCLUDE_DIRS})
+set(Z3_LIBRARIES PkgConfig::Z3)
+set(Z3_COMPONENT_CXX_FLAGS ${Z3_CXX_FLAGS})
+message(STATUS "Z3_CXX_INCLUDE_DIRS: ${Z3_CXX_INCLUDE_DIRS}")
+message(STATUS "Z3_LIBRARIES: ${Z3_LIBRARIES}")
 
 # c2rust
 find_program(C2RUST_EXE c2rust REQUIRED)
