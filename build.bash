@@ -7,7 +7,7 @@ BUILD_TYPE="Debug"
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -d|--debug) BUILD_TYPE="Debug" ;;
-        -c|--clean) CLEAN=false ;;
+        -c|--clean) CLEAN=true ;;
         -h|--help)
             echo "Usage: ./build.bash [options]"
             echo "Options:"
