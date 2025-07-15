@@ -35,9 +35,19 @@ Recommended version: tag 0.1.0
 
 The original [Maki](https://dl.acm.org/doi/abs/10.1145/3597503.3623323) is a C macro analysis tool. Hayroll modifies it and depends on that modified version. 
 
-Do not install the docker version according to its original README. Instead, please install it locally by following the normal CMake installaton workflow. You can find a `CMakeLists.txt` at its root folder. 
+Do not install the docker version according to its original README. Instead, please install it locally by following the common CMake build workflow. You can find a `CMakeLists.txt` at its root folder. 
 
-Maki requires the Clang toolchain: `sudo apt install clang-14 llvm-14 libclang-14-dev`.
+Maki requires the Clang toolchain `sudo apt install clang-14 llvm-14 libclang-14-dev` and the Rust toolchain https://www.rust-lang.org/tools/install. 
+
+### Z3
+
+https://github.com/Z3Prover/z3
+
+Recommended version: 4.13.4
+
+Z3 is a solver which the Hayroll Pioneer symbolic executor relies on.
+
+Please follow the common CMake installation workflow, or read `README-CMake.md` which can be found at Z3's root folder. Do not forget to run `sudo make install` as the last step. Hayroll does not need to see Z3's folder, but looks for required libraries in system paths. 
 
 ### Tree-sitter
 
@@ -76,10 +86,7 @@ https://github.com/UW-HARVEST/Hayroll
 
 Recommended version: tag 0.1.0
 
-Hayroll's core functionalities. Please install it after clearing all the above dependencies, and some minor dependencies: 
-
-- The Rust toolchain: https://www.rust-lang.org/tools/install
-- `sudo apt install pkg-config libz3-dev libspdlog-dev libboost-stacktrace-dev`
+Hayroll's core functionalities. Please install it after clearing all the above dependencies, and some minor dependencies: `sudo apt install libspdlog-dev libboost-stacktrace-dev`
 
 Then run `./build.bash`. After that, you can optionally run tests with `cd ./build; ctest`, which should take less than a minuite to finish. 
 
@@ -93,7 +100,7 @@ The `./pipeline` executable (a soft link to `./build/pipeline`) offers a turn-ke
 
 To build a project, a C build system typically makes multiple calls to the compiler with a long list of arguments. A `compile_commands.json` records these commands and arguments for the convenience of downstream analysis. 
 
-There are multiple ways to generate a `compile_commands.json`, and `bear` (`sudo apt install bear`) is one easy way. For example, to generate for Libmcs, simply run `bear -- make` instead of `make`. Then you will see a `compile_commands.json` like:
+There are multiple ways to generate a `compile_commands.json`, and `bear` (`sudo apt install bear`) is one easy way. For example, to generate for Libmcs, simply run `make clean; bear -- make`. Then you will see a `compile_commands.json` like:
 
 ```
 [
