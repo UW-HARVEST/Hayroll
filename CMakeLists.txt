@@ -38,10 +38,10 @@ message(STATUS "C2RUST_EXE: ${C2RUST_EXE}")
 find_package(spdlog REQUIRED)
 message(STATUS "spdlog_FOUND: ${spdlog_FOUND}")
 
-# Boost
-cmake_policy(SET CMP0167 NEW)
+# Boost stacktrace_addr2line
 find_package(Boost 1.65 REQUIRED CONFIG COMPONENTS stacktrace_addr2line)
 include_directories(${Boost_INCLUDE_DIRS})
+message(STATUS "Boost stacktrace_addr2line found: ${Boost_STACKTRACE_ADDR2LINE_FOUND}")
 
 # tree-sitter
 set(TREE_SITTER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tree-sitter")
