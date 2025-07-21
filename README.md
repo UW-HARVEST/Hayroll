@@ -4,8 +4,11 @@ Hayroll: HARVEST Annotator for Yielding Regions of Lexical Logic
 
 ## Installation
 
+### Dependencies
+
 Hayroll has several major dependencies. Please install them before starting to install Hayroll.
-After following the below instructions, the directory structure should look like this:
+You can either use our automated script `prerequisites.bash`, of follow the following steps manually. 
+After that, the directory structure should look like this:
 
 ```
 installation_folder/
@@ -15,7 +18,7 @@ installation_folder/
 └── tree-sitter-c_preproc/
 ```
 
-### C2Rust
+#### C2Rust
 
 Tested version: 0.19.0
 
@@ -23,15 +26,15 @@ Tested version: 0.19.0
 
 Please follow the steps on their [README](https://github.com/immunant/c2rust/blob/master/README.md#installation) to install it.  You may need to use the "Installing from Git" instructions rather than the "Installing from crates.io" instructions.  Hayroll does not need to see C2Rust's installation folder, but the `c2rust` command must be on your PATH.
 
-### Maki (Hayroll-modified Version):
+#### Maki (Hayroll-modified Version):
 
-Tested version: tag 0.1.0
+Tested version: tag 0.1.1
 
 [Maki](https://github.com/UW-HARVEST/Maki) is a C macro analysis tool. Hayroll uses a modified version.
 
 Please follow the "Local Setup (Required by Hayroll)" section in Maki's README. Do not use the docker version. 
 
-### Z3
+#### Z3
 
 Tested version: 4.13.4
 
@@ -39,7 +42,7 @@ Tested version: 4.13.4
 
 Please follow the common CMake installation workflow, or read `README-CMake.md` which can be found at Z3's root folder. Do not forget to run `sudo make install` as the last step. Hayroll does not need to see Z3's folder, but looks for required libraries in system paths.
 
-### Tree-sitter
+#### Tree-sitter
 
 Tested version: 0.25.3
 
@@ -50,9 +53,9 @@ git clone https://github.com/tree-sitter/tree-sitter.git
 make -C tree-sitter
 ```
 
-### Hayroll Tree-sitter-c_preproc
+#### Hayroll Tree-sitter-c_preproc
 
-Tested version: tag 0.1.0
+Tested version: tag 0.1.1
 
 [tree-sitter-c_preproc](https://github.com/UW-HARVEST/tree-sitter-c_preproc) is a parser for C macros.
 
@@ -61,7 +64,7 @@ git clone https://github.com/UW-HARVEST/tree-sitter-c_preproc.git
 make -C tree-sitter-c_preproc
 ```
 
-### Libmcs
+#### Libmcs
 
 Tested version: 1.2.0
 
@@ -80,7 +83,7 @@ make
 
 https://github.com/UW-HARVEST/Hayroll
 
-Tested version: tag 0.1.0
+Tested version: tag 0.1.1
 
 Hayroll's core functionalities. Please install it after installing all the above dependencies, and some minor dependencies: `sudo apt install libspdlog-dev libboost-stacktrace-dev`
 
