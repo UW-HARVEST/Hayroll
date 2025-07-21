@@ -73,15 +73,13 @@ if ! command -v c2rust >/dev/null 2>&1; then
 fi
 
 # --- Z3 ----------------------------------------------------------------------
-if ! ldconfig -p | grep -q libz3; then
-  git_clone_or_checkout "z3" "${Z3_GIT}" "${Z3_TAG}"
-  pushd z3 >/dev/null
-    mkdir -p build && cd build
-    cmake -DCMAKE_BUILD_TYPE=Release -DZ3_BUILD_PYTHON_BINDINGS=OFF ..
-    make -j"$(nproc)"
-    sudo make install
-  popd >/dev/null
-fi
+git_clone_or_checkout "z3" "${Z3_GIT}" "${Z3_TAG}"
+pushd z3 >/dev/null
+  mkdir -p build && cd build
+  cmake -DCMAKE_BUILD_TYPE=Release -DZ3_BUILD_PYTHON_BINDINGS=OFF ..
+  make -j"$(nproc)"
+  sudo make install
+popd >/dev/null
 
 # --- tree-sitter core --------------------------------------------------------
 git_clone_or_checkout "tree-sitter" "${TS_GIT}" "${TS_TAG}"
