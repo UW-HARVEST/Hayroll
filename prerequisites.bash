@@ -57,7 +57,7 @@ sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   build-essential git cmake ninja-build pkg-config python3 \
   libspdlog-dev libboost-stacktrace-dev \
-  clang-14 llvm-14 libclang-14-dev curl autoconf automake libtool
+  clang-14 llvm-14 libclang-14-dev llvm-14-dev curl autoconf automake libtool
 
 # --- Rust tool-chain (for c2rust & Maki) -------------------------------------
 if ! command -v cargo >/dev/null 2>&1; then
