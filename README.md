@@ -17,34 +17,31 @@ installation_folder/
 
 ### C2Rust
 
+Tested version: 0.19.0
+
 [C2Rust](https://github.com/immunant/c2rust) is a static-analysis-based C-to-Rust translation tool.
 
 Please follow the steps on their [README](https://github.com/immunant/c2rust/blob/master/README.md#installation) to install it.  You may need to use the "Installing from Git" instructions rather than the "Installing from crates.io" instructions.  Hayroll does not need to see C2Rust's installation folder, but the `c2rust` command must be on your PATH.
 
 ### Maki (Hayroll-modified Version):
 
+Tested version: tag 0.1.0
+
 [Maki](https://github.com/UW-HARVEST/Maki) is a C macro analysis tool. Hayroll uses a modified version.
 
-***HAORAN***:  This text should be moved into the Maki repository, and this text should refer the user to its README.
-
-Do not install the docker version according to its original README.  Instead, do this:
-
-```
-git clone https://github.com/UW-HARVEST/Maki.git
-cd Maki
-cmake -B build
-cmake --build build
-```
-
-Maki requires the Clang toolchain (on Ubuntu/Debian, do `sudo apt install clang-14 llvm-14 libclang-14-dev`) and the Rust toolchain https://www.rust-lang.org/tools/install.
+Please follow the "Local Setup (Required by Hayroll)" section in Maki's README. Do not use the docker version. 
 
 ### Z3
+
+Tested version: 4.13.4
 
 [Z3](https://github.com/Z3Prover/z3) is an automated theorem prover and a SAT solver.
 
 Please follow the common CMake installation workflow, or read `README-CMake.md` which can be found at Z3's root folder. Do not forget to run `sudo make install` as the last step. Hayroll does not need to see Z3's folder, but looks for required libraries in system paths.
 
 ### Tree-sitter
+
+Tested version: 0.25.3
 
 [tree-sitter](https://github.com/tree-sitter/tree-sitter) is a lightweight parser generator.
 
@@ -55,6 +52,8 @@ make -C tree-sitter
 
 ### Hayroll Tree-sitter-c_preproc
 
+Tested version: tag 0.1.0
+
 [tree-sitter-c_preproc](https://github.com/UW-HARVEST/tree-sitter-c_preproc) is a parser for C macros.
 
 ```
@@ -64,11 +63,11 @@ make -C tree-sitter-c_preproc
 
 ### Libmcs
 
+Tested version: 1.2.0
+
 [Libmcs](https://gitlab.com/gtd-gmbh/libmcs) is a math library. Hayroll's test suite uses it.
 
-It is recommended to turn off complex number support when running `./configure`, because C2Rust does not fully support complex number functionalities.
-
-**HAORAN: Show the command that does that.**
+It is recommended to turn off complex number support when running `./configure`, because C2Rust does not fully support complex number functionalities. `./configure` opens an interactive menu that leads you through such options. 
 
 ```
 git clone https://gitlab.com/gtd-gmbh/libmcs.git
@@ -80,6 +79,8 @@ make
 ### Hayroll
 
 https://github.com/UW-HARVEST/Hayroll
+
+Tested version: tag 0.1.0
 
 Hayroll's core functionalities. Please install it after installing all the above dependencies, and some minor dependencies: `sudo apt install libspdlog-dev libboost-stacktrace-dev`
 
