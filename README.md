@@ -2,6 +2,8 @@
 
 # The HARVEST Hayroll C Macro to Rust Translation System
 
+<br clear="left"/>
+
 Hayroll is a system that wraps the [c2rust](https://github.com/immunant/c2rust) tool for converting code written in C to the Rust programming language.  Hayroll does a better job of translating C preprocessor macros and conditional compilation.  Hayroll is a drop-in replacement for c2rust.  "Hayroll" stands for "*H*ARVEST *A*nnotator for *Y*ielding *R*egions *O*f *L*exical *L*ogic".
 
 
