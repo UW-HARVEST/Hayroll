@@ -46,16 +46,21 @@ cd ./build && ctest
 The `prerequisites.bash` script has been tested on Ubuntu.
 For installation on other operating systems, follow the instructions in [prerequisites.md](prerequisites.md), and contribute back your instructions or a pull request to make `prerequisites.bash` work on more operating systems.
 
-
 ## Usage
 
-The `./hayroll` executable offers a turn-key solution from C source files to Rust files, with macros (partially) preserving their structures.
+The `./hayroll` executable offers a turn-key solution from C source
+files to Rust files, with macros (partially) preserving their 
+structures.
 
-` ./hayroll <path_to_compile_commands.json> <output_directory>`
+```
+ ./hayroll <path_to_compile_commands.json> <output_directory>
+```
 
 ### `compile_commands.json`
 
-To build a project, a C build system typically makes multiple calls to the compiler with a long list of arguments. A `compile_commands.json` records these commands and arguments for the convenience of downstream analysis.
+To build a project, a C build system typically makes multiple calls to the
+compiler with a long list of arguments. A `compile_commands.json` records these
+commands and arguments for the convenience of downstream analysis.
 
 An easy way to generate a `compile_commands.json` file is to run
 ```
@@ -69,7 +74,8 @@ You should manually delete any source files that you do not want to translate.
 
 ### Output
 
-`./hayroll` overwrites the output directory. You will see several intermediate files for each original C file.
+`./hayroll` overwrites the output directory. You will see several intermediate
+files for each original C file.
 
 - `xxx.c`: The C source file.
 - `xxx.cu.c`: The C compilation unit source file. This is `xxx.c` with all necessary `#include`s copy-pasted into a single file, which we call the compilation unit file. A compilation unit file is standalone compilable.
@@ -156,6 +162,3 @@ rm -rf libm/complexf/
 
 In the `hayroll-output/` directory, you will find files such as `XXX.rs`.
 
-
-<!--  LocalWords:  img src px hayroll ARVEST nnotator ielding egions exical ogic cd ctest md json sudo LibmCS c99 Wextra frounding fno DLIBMCS FPU DAZ Ilibm linux libm complexf cpp2c Maki C2Rust
- -->
