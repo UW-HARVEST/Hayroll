@@ -18,7 +18,7 @@ $\color{Green}{\textsf{Normal, colored text}} \\$
 $\color{Green}{\textsf{Normal, colored text}}$
 
 
-$\tt float sinhf(float x) \{$
+$\tt float sinhf(float x) \char"6771\char"4EAC$
 
 ```
 #ifdef __LIBMCS_FPU_DAZ
