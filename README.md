@@ -12,7 +12,6 @@ The `c2rust` program runs the C preprocessor before translating from C to Rust. 
 For example, consider translating this C code:
 
 <pre><code>
-```
 float sinhf(float x) {
 <font color="red">#ifdef __LIBMCS_FPU_DAZ
     x *= __volatile_onef;
