@@ -11,21 +11,67 @@ The `c2rust` program runs the C preprocessor before translating from C to Rust. 
 
 For example, consider translating this C code:
 
-%```
-#ifdef __LIBMCS_FPU_DAZ
-    x *= __volatile_onef;
-#endif /* defined(__LIBMCS_FPU_DAZ) */
+```c
+float sinhf(float x) {
+#ifdef __LIBMCS_FPU_DAZ   // conditional compilation
+    x *= __volatile_onef; // conditional compilation
+#endif                    // conditional compilation
     float t, w, h;
     int32_t ix, jx;
-    GET_FLOAT_WORD(jx, x);
+    GET_FLOAT_WORD(jx, x); // statement macro
     ix = jx & 0x7fffffff;
     /* x is INF or NaN */
-    if (!FLT_UWORD_IS_FINITE(ix)) {
+    if (!FLT_UWORD_IS_FINITE(ix)) { // expression macro
         return x + x;
     }
 
     h = 0.5f;
     ...
+```
+
+The output of `c2rust` is:
+
+```rust
+pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
+                                    // conditionally compiled code is lost
+    let mut t: libc::c_float = 0.;
+    let mut w: libc::c_float = 0.;
+    let mut h: libc::c_float = 0.;
+    let mut ix: int32_t = 0;
+    let mut jx: int32_t = 0;
+    loop {                          // statement macro is expanded
+        let mut gf_u = ieee_float_shape_type { value: 0. };
+        gf_u.value = x;
+        jx = gf_u.word as int32_t;
+        if !(0 as libc::c_int == 1 as libc::c_int) {
+            break;
+        }
+    }                              // ... end of statement macro expansion
+    ix = jx & 0x7fffffff as libc::c_int;
+    if !((ix as libc::c_long) < 0x7f800000 as libc::c_long) { // expr macro is expanded
+        return x + x;
+    }
+    h = 0.5f32;
+    ...
+```
+
+By contrast, the output of Hayroll is:
+
+```rust
+pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
+    #[cfg(feature = "__LIBMCS_FPU_DAZ")] // conditional compilation is retained
+    { x *= __volatile_onef; }            // conditional compilation is retained
+    let mut t: libc::c_float = 0.;
+    let mut w: libc::c_float = 0.;
+    let mut h: libc::c_float = 0.;
+    let mut ix: int32_t = 0;
+    let mut jx: int32_t = 0;
+    GET_FLOAT_WORD(&mut jx, &mut x);     // statement macro becomes a function
+    ix = jx & 0x7fffffff as libc::c_int;
+    if FLT_UWORD_IS_FINITE(&mut ix as *mut int32_t) == 0 { // expr macro is a function
+        return x + x;
+    }
+    h = 0.5f32;
 ```
 
 
