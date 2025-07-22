@@ -21,9 +21,9 @@ For example, consider translating this C code:
 
 ```c
 float sinhf(float x) {
-<font color="red">#ifdef __LIBMCS_FPU_DAZ
+[.red]++#ifdef __LIBMCS_FPU_DAZ
     x *= __volatile_onef;
-#endif /* defined(__LIBMCS_FPU_DAZ) */</font>
+#endif /* defined(__LIBMCS_FPU_DAZ) */++
     float t, w, h;
     int32_t ix, jx;
     <font color="brown">GET_FLOAT_WORD(jx, x);</font>
