@@ -9,7 +9,7 @@ ROOT_DIR=${ROOT_DIR:-"${PWD}"}            # default to current dir if not overri
 INSTALL_DIR="${ROOT_DIR}/.."              # clone/build here
 
 # --- third-party folders we expect under $INSTALL_DIR ----------------------------------
-THIRD_PARTY_DIRS=(Maki tree-sitter tree-sitter-c_preproc c2rust z3 libmcs)
+THIRD_PARTY_DIRS=(Maki tree-sitter tree-sitter-c_preproc c2rust z3)
 
 # --- Git URLs + tags -------------------------------------------------------------------
 C2RUST_GIT="https://github.com/immunant/c2rust.git";
@@ -22,8 +22,6 @@ TSC_PREPROC_GIT="https://github.com/UW-HARVEST/tree-sitter-c_preproc.git";
 TSC_PREPROC_TAG="0.1.1"
 Z3_GIT="https://github.com/Z3Prover/z3.git";
 Z3_TAG="z3-4.13.4"
-LIBMCS_GIT="https://gitlab.com/gtd-gmbh/libmcs.git"
-LIBMCS_TAG="1.2.0"
 
 echo "=========================================================="
 echo "Hayroll prerequisites installer"
@@ -58,6 +56,7 @@ sudo apt-get install -y --no-install-recommends \
   build-essential git cmake ninja-build pkg-config python3 \
   libspdlog-dev libboost-stacktrace-dev \
   clang-14 llvm-14 libclang-14-dev llvm-14-dev curl autoconf automake libtool \
+  bear
 
 # --- Rust tool-chain (for c2rust & Maki) -------------------------------------
 if ! command -v cargo >/dev/null 2>&1; then
@@ -95,26 +94,6 @@ pushd Maki >/dev/null
   mkdir -p build && cd build
   cmake ..
   make -j"$(nproc)"
-popd >/dev/null
-
-### --- Libmcs --------------------------------------------------------------
-# Clone + build LibmCS v1.2.0 completely non-interactive.
-git_clone_or_checkout "libmcs" "${LIBMCS_GIT}" "${LIBMCS_TAG}"
-pushd libmcs >/dev/null
-  if [[ ! -f lib/libmcs.a && ! -f build/libmcs.a ]]; then
-    echo "[*] Configuring LibmCS (non-interactive)…"
-    # Passing an explicit empty string to --cross-compile prevents the script
-    # from prompting for a tool-chain path; all other options are disabled to
-    # match Hayroll’s requirements.
-    ./configure \
-        --cross-compile="" \
-        --compilation-flags="" \
-        --disable-denormal-handling \
-        --disable-long-double-procedures \
-        --disable-complex-procedures \
-        --little-endian
-    make -j"$(nproc)"
-  fi
 popd >/dev/null
 
 echo "=========================================================="
