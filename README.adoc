@@ -21,6 +21,13 @@ conditionally-compiled code is lost.
 
 For example, consider translating this C code:
 
+<b>This is bold.</b>
+
++++<b>This is also bold.</b>+++
+
+
+
+
 [source,c,subs="+macros"]
 ----
 +++<b>This has to be interpreted as HTML</b>+++
