@@ -5,7 +5,7 @@
 Hayroll converts C macros into Rust code.  Hayroll wraps the [c2rust](https://github.com/immunant/c2rust) tool for converting code written in C to the Rust programming language, improving c2rust's translation of C preprocessor macros and conditional compilation.  The `hayroll` command is a drop-in replacement for c2rust.  "Hayroll" stands for "**H**ARVEST **A**nnotator for **Y**ielding **R**egions **O**f **L**exical **L**ogic".
 
 
-## Example
+## Example output of c2rust and Hayroll
 
 The `c2rust` program runs the C preprocessor before translating from C to Rust.  This means that macros are expanded (which destroys abstractions that the programmer put in the code) and that conditionally-compiled code is lost.
 
@@ -130,7 +130,7 @@ files for each original C file.
 - `xxx.rs`: The final output, Rust code with previously expanded C macro sections reverted into Rust functions or Rust macros.
 
 
-### Example
+### Example of running Hayroll
 
 This section shows how to run Hayroll on version 1.2.0 of the [LibmCS mathematical library](https://gitlab.com/gtd-gmbh/libmcs).
 
