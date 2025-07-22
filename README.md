@@ -45,7 +45,7 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
         if !(0 as libc::c_int == 1 as libc::c_int) {
             break;
         }
-    }                                // ... end of statement macro expansion
+    }                                 // ... end of statement macro expansion
     ix = jx & 0x7fffffff as libc::c_int;
     if !((ix as libc::c_long) < 0x7f800000 as libc::c_long) { // expr macro expanded
         return x + x;
