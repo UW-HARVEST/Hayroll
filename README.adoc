@@ -23,6 +23,8 @@ For example, consider translating this C code:
 
 [source,c,subs="+macros"]
 ----
++++<b>This has to be interpreted as HTML</b>+++
+<span>This has not to be interpreted as HTML but as TEXT</span>
 float sinhf(float x) {
 [.red]++#ifdef __LIBMCS_FPU_DAZ++
     x *= __volatile_onef;
