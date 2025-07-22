@@ -23,10 +23,9 @@ For example, consider translating this C code:
 
 <b>This is bold.</b>
 
-+++<code><pre>
-Here is text
++++<code><pre>Here is text
 more text
-always <b>more</b> text.+++
+always <b>more</b> text.</pre></code>+++
 
 
 [source,c,subs="+macros"]
