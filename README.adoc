@@ -27,6 +27,26 @@ For example, consider translating this C code:
 more text
 always <b>more</b> text.</pre></code>+++
 
++++
+<pre><code>
+float sinhf(float x) {
+[.red]++#ifdef __LIBMCS_FPU_DAZ++
+    x *= __volatile_onef;
+#endif /* defined(__LIBMCS_FPU_DAZ) */++
+    +_float_+ t, w, h;
+    int32_t ix, jx;
+    <font color="brown">GET_FLOAT_WORD(jx, x);</font>
+    ix = jx & 0x7fffffff;
+    /* x is INF or NaN */
+    if (!<font color="blue">FLT_UWORD_IS_FINITE(ix)</font>) {
+        return x + x;
+    }
+pass:[<del>strike this</del>]
++++<del>    h = 0.5f;</del>+++
+    ...
+</code></pre>
++++
+
 
 [source,c,subs="+macros"]
 ----
