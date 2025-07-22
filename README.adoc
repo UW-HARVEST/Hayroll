@@ -41,7 +41,6 @@ float sinhf(float x) {
     if (!<font color="blue">FLT_UWORD_IS_FINITE(ix)</font>) {
         return x + x;
     }
-pass:[<del>strike this</del>]
 +++<del>    h = 0.5f;</del>+++
     ...
 </code></pre>
