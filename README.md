@@ -11,24 +11,24 @@ The `c2rust` program runs the C preprocessor before translating from C to Rust. 
 
 For example, consider translating this C code:
 
+<pre><code>
 ```
-float sinhf(float x)
-{
+float sinhf(float x) {
 <font color="red">#ifdef __LIBMCS_FPU_DAZ
     x *= __volatile_onef;
 #endif /* defined(__LIBMCS_FPU_DAZ) */</font>
     float t, w, h;
     int32_t ix, jx;
-    GET_FLOAT_WORD(jx, x);
+    <font color="brown">GET_FLOAT_WORD(jx, x);</font>
     ix = jx & 0x7fffffff;
     /* x is INF or NaN */
-    if (!FLT_UWORD_IS_FINITE(ix)) {
+    if (!<font color="blue">FLT_UWORD_IS_FINITE(ix)</font>) {
         return x + x;
     }
 
     h = 0.5f;
     ...
-```
+</code></pre>
 
 
 ## Installation
