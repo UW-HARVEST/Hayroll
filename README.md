@@ -11,8 +11,7 @@ The `c2rust` program runs the C preprocessor before translating from C to Rust. 
 
 For example, consider translating this C code:
 
-$\color{Green}{\textsf{Normal, colored text}}$
-
+$\color{Green}{\textsf{Normal, colored text}}$<br/>
 $\color{Green}{\textsf{Normal, colored text}}$
 
 $\color{Green}{\textsf{Normal, colored text}} \\$
