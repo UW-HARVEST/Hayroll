@@ -48,7 +48,7 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
         }
     }                              // ... end of statement macro expansion
     ix = jx & 0x7fffffff as libc::c_int;
-    if !((ix as libc::c_long) < 0x7f800000 as libc::c_long) { // expr macro is expanded
+    if !((ix as libc::c_long) < 0x7f800000 as libc::c_long) { // expr macro expanded
         return x + x;
     }
     h = 0.5f32;
@@ -68,7 +68,7 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
     let mut jx: int32_t = 0;
     GET_FLOAT_WORD(&mut jx, &mut x);     // statement macro becomes a function
     ix = jx & 0x7fffffff as libc::c_int;
-    if FLT_UWORD_IS_FINITE(&mut ix as *mut int32_t) == 0 { // expr macro is a function
+    if FLT_UWORD_IS_FINITE(&mut ix as *mut int32_t) == 0 { // expr macro is function
         return x + x;
     }
     h = 0.5f32;
