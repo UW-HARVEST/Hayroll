@@ -30,9 +30,9 @@ always <b>more</b> text.</pre></code>+++
 +++
 <pre><code>
 float sinhf(float x) {
-[.red]++#ifdef __LIBMCS_FPU_DAZ++
+#ifdef __LIBMCS_FPU_DAZ
     x *= __volatile_onef;
-#endif /* defined(__LIBMCS_FPU_DAZ) */++
+#endif /* defined(__LIBMCS_FPU_DAZ) */
     +_float_+ t, w, h;
     int32_t ix, jx;
     <font color="brown">GET_FLOAT_WORD(jx, x);</font>
