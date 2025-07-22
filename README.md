@@ -18,7 +18,7 @@ $\color{Green}{\textsf{Normal, colored text}} \\$
 $\color{Green}{\textsf{Normal, colored text}}$
 
 
-$\tt float sinhf(float x)$<br/>
+$\textttt{float sinhf(float x)}$<br/>
 $\tt float sinhf(float x) \{$
 
 ```
