@@ -1,4 +1,6 @@
+++++
 <img src="images/hayroll-200x200.png" align="right" width="200px"/>
+++++
 
 == The HARVEST Hayroll C macro to Rust translator
 
@@ -19,7 +21,7 @@ conditionally-compiled code is lost.
 
 For example, consider translating this C code:
 
-[source,c,subs="verbatim,quotes"]
+[source,c,subs="+macros"]
 ----
 float sinhf(float x) {
 [.red]++#ifdef __LIBMCS_FPU_DAZ++
@@ -33,8 +35,8 @@ float sinhf(float x) {
     if (!<font color="blue">FLT_UWORD_IS_FINITE(ix)</font>) {
         return x + x;
     }
-
-    h = 0.5f;
+pass:[<del>strike this</del>]
++++<del>    h = 0.5f;</del>+++
     ...
 ----
 
