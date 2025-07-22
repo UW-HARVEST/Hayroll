@@ -23,6 +23,9 @@ For example, consider translating this C code:
 
 <b>This is bold.</b>
 
++++
+$\color{Green}{\textsf{Normal, colored text}}$
++++
 
 +++
 <pre><code>float sinhf(float x) {
