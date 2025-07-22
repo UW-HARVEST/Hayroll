@@ -1,104 +1,30 @@
 <img src="images/hayroll-200x200.png" align="right" width="200px"/>
 
-# The HARVEST Hayroll C Macro to Rust Translation System
+# The HARVEST Hayroll C macro to Rust translation system
 
-<br clear="left"/>
-
-Hayroll is a system that wraps the [c2rust](https://github.com/immunant/c2rust) tool for converting code written in C to the Rust programming language.  Hayroll does a better job of translating C preprocessor macros and conditional compilation.  Hayroll is a drop-in replacement for c2rust.  "Hayroll" stands for "*H*ARVEST *A*nnotator for *Y*ielding *R*egions *O*f *L*exical *L*ogic".
-
-
+Hayroll is a system that wraps the [c2rust](https://github.com/immunant/c2rust) tool for converting code written in C to the Rust programming language.  Hayroll does a better job of translating C preprocessor macros and conditional compilation.  The `hayroll` command is a drop-in replacement for c2rust.  "Hayroll" stands for "*H*ARVEST *A*nnotator for *Y*ielding *R*egions *O*f *L*exical *L*ogic".
 
 
 ## Installation
 
-### Dependencies
-
-Hayroll has several major dependencies. Please install them before starting to install Hayroll.
-You can either use our automated script `prerequisites.bash`, of follow the following steps manually. 
-After that, the directory structure should look like this:
+To install Hayroll:
 
 ```
-installation_folder/
-├── Hayroll/
-├── Maki/
-├── tree-sitter/
-└── tree-sitter-c_preproc/
+git clone https://github.com/UW-HARVEST/Hayroll
+cd Hayroll
+./prerequisites.bash
+./build.bash
+# Optionally, run tests (takes less than one minute):
+cd ./build && ctest
 ```
 
-#### C2Rust
+The `prerequisites.bash` script has been tested on Ubuntu.
+For installation on other operating systems, follow the instructions in [prerequisites.md](prerequisites.md), and contribute back your instructions or a pull request to make `prerequisites.bash` work on more operating systems.
 
-Tested version: 0.19.0
-
-[C2Rust](https://github.com/immunant/c2rust) is a static-analysis-based C-to-Rust translation tool.
-
-Please follow the steps on their [README](https://github.com/immunant/c2rust/blob/master/README.md#installation) to install it.  You may need to use the "Installing from Git" instructions rather than the "Installing from crates.io" instructions.  Hayroll does not need to see C2Rust's installation folder, but the `c2rust` command must be on your PATH.
-
-#### Maki (Hayroll-modified Version):
-
-Tested version: tag 0.1.1
-
-[Maki](https://github.com/UW-HARVEST/Maki) is a C macro analysis tool. Hayroll uses a modified version.
-
-Please follow the "Local Setup (Required by Hayroll)" section in Maki's README. Do not use the docker version. 
-
-#### Z3
-
-Tested version: 4.13.4
-
-[Z3](https://github.com/Z3Prover/z3) is an automated theorem prover and a SAT solver.
-
-Please follow the common CMake installation workflow, or read `README-CMake.md` which can be found at Z3's root folder. Do not forget to run `sudo make install` as the last step. Hayroll does not need to see Z3's folder, but looks for required libraries in system paths.
-
-#### Tree-sitter
-
-Tested version: 0.25.3
-
-[tree-sitter](https://github.com/tree-sitter/tree-sitter) is a lightweight parser generator.
-
-```
-git clone https://github.com/tree-sitter/tree-sitter.git
-make -C tree-sitter
-```
-
-#### Hayroll Tree-sitter-c_preproc
-
-Tested version: tag 0.1.1
-
-[tree-sitter-c_preproc](https://github.com/UW-HARVEST/tree-sitter-c_preproc) is a parser for C macros.
-
-```
-git clone https://github.com/UW-HARVEST/tree-sitter-c_preproc.git
-make -C tree-sitter-c_preproc
-```
-
-#### Libmcs
-
-Tested version: 1.2.0
-
-[Libmcs](https://gitlab.com/gtd-gmbh/libmcs) is a math library. Hayroll's test suite uses it.
-
-It is recommended to turn off complex number support when running `./configure`, because C2Rust does not fully support complex number functionalities. `./configure` opens an interactive menu that leads you through such options. 
-
-```
-git clone https://gitlab.com/gtd-gmbh/libmcs.git
-cd libmcs
-./configure
-make
-```
-
-### Hayroll
-
-https://github.com/UW-HARVEST/Hayroll
-
-Tested version: tag 0.1.1
-
-Hayroll's core functionalities. Please install it after installing all the above dependencies, and some minor dependencies: `sudo apt install libspdlog-dev libboost-stacktrace-dev`
-
-Then run `./build.bash`. After that, you can optionally run tests with `cd ./build; ctest`, which should take less than a minuite to finish.
 
 ## Usage
 
-The `./pipeline` executable (a soft link to `./build/pipeline`) offers a turn-key solution from C source files to Rust files, with macros (partially) preserving their structures.
+The `./pipeline` executable offers a turn-key solution from C source files to Rust files, with macros (partially) preserving their structures.
 
 ` ./pipeline <path_to_compile_commands.json> <output_directory>`
 
