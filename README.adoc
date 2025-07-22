@@ -23,24 +23,25 @@ For example, consider translating this C code:
 
 [source,c]
 ----
-float sinhf(float x)
-{
-#ifdef __LIBMCS_FPU_DAZ
-    x *= __volatile_onef;
-#endif /* defined(__LIBMCS_FPU_DAZ) */
+float sinhf(float x) {
+#ifdef __LIBMCS_FPU_DAZ                 <1>
+    x *= __volatile_onef;               <1>
+#endif                                  <1>
     float t, w, h;
     int32_t ix, jx;
-    GET_FLOAT_WORD(jx, x);
+    GET_FLOAT_WORD(jx, x);              <2>
     ix = jx & 0x7fffffff;
     /* x is INF or NaN */
-    if (!FLT_UWORD_IS_FINITE(ix)) {
+    if (!FLT_UWORD_IS_FINITE(ix)) {     <3>
         return x + x;
     }
 
     h = 0.5f;
     ...
 ----
-
+<1> conditional compilation
+<2> use of macro with arguments
+<3> use of identifier-like macro 
 
 === Installation
 
