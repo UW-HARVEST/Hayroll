@@ -20,7 +20,6 @@ float sinhf(float x) {
     int32_t ix, jx;
     GET_FLOAT_WORD(jx, x);            // statement macro
     ix = jx & 0x7fffffff;
-    /* x is INF or NaN */
     if (!FLT_UWORD_IS_FINITE(ix)) {   // expression macro
         return x + x;
     }
