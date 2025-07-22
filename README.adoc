@@ -19,6 +19,7 @@ conditionally-compiled code is lost.
 
 For example, consider translating this C code:
 
+[source,c,subs="verbatim,quotes"]
 ----
 float sinhf(float x) {
 [.red]++#ifdef __LIBMCS_FPU_DAZ++
