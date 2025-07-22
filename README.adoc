@@ -41,7 +41,7 @@ float sinhf(float x) {
     if (!<font color="blue">FLT_UWORD_IS_FINITE(ix)</font>) {
         return x + x;
     }
-+++<del>    h = 0.5f;</del>+++
+    h = 0.5f;
     ...
 </code></pre>
 +++
