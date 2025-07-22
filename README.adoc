@@ -23,13 +23,9 @@ For example, consider translating this C code:
 
 <b>This is bold.</b>
 
-+++<code><pre>Here is text
-more text
-always <b>more</b> text.</pre></code>+++
 
 +++
-<pre><code>
-float sinhf(float x) {
+<pre><code>float sinhf(float x) {
 #ifdef __LIBMCS_FPU_DAZ
     x *= __volatile_onef;
 #endif /* defined(__LIBMCS_FPU_DAZ) */
@@ -37,7 +33,7 @@ float sinhf(float x) {
     int32_t ix, jx;
     <font color="brown">GET_FLOAT_WORD(jx, x);</font>
     ix = jx & 0x7fffffff;
-    /* x is INF or NaN */
+    <span style="color: brown">/* x is INF or NaN */</span>
     if (!<font color="blue">FLT_UWORD_IS_FINITE(ix)</font>) {
         return x + x;
     }
