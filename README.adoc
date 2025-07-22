@@ -2,7 +2,7 @@
 <img src="images/hayroll-200x200.png" align="right" width="200px"/>
 ++++
 
-== The HARVEST Hayroll C macro to Rust translator
+== Hayroll: translate C macros to Rust
 
 Hayroll converts C macros into Rust code. Hayroll wraps the
 https://github.com/immunant/c2rust[c2rust] tool for converting code
@@ -20,8 +20,6 @@ abstractions that the programmer put in the code) and that
 conditionally-compiled code is lost.
 
 For example, consider translating this C code:
-
-<b>This is bold.</b>
 
 +++
 $\color{Green}{\textsf{Normal, colored text}}$

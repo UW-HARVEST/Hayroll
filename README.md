@@ -1,6 +1,6 @@
 <img src="images/hayroll-200x200.png" align="right" width="200px"/>
 
-# The HARVEST Hayroll C macro to Rust translator
+# Hayroll: translate C macros to Rust
 
 Hayroll converts C macros into Rust code.  Hayroll wraps the [c2rust](https://github.com/immunant/c2rust) tool for converting code written in C to the Rust programming language, improving c2rust's translation of C preprocessor macros and conditional compilation.  The `hayroll` command is a drop-in replacement for c2rust.  "Hayroll" stands for "**H**ARVEST **A**nnotator for **Y**ielding **R**egions **O**f **L**exical **L**ogic".
 
@@ -11,17 +11,20 @@ The `c2rust` program runs the C preprocessor before translating from C to Rust. 
 
 For example, consider translating this C code:
 
+$\color{Green}{\textsf{Normal, colored text}}$
+
+
 <pre><code>
 float sinhf(float x) {
-<font color="red">#ifdef __LIBMCS_FPU_DAZ
+#ifdef __LIBMCS_FPU_DAZ
     x *= __volatile_onef;
-#endif /* defined(__LIBMCS_FPU_DAZ) */</font>
+#endif /* defined(__LIBMCS_FPU_DAZ) */
     float t, w, h;
     int32_t ix, jx;
-    <font color="brown">GET_FLOAT_WORD(jx, x);</font>
+    GET_FLOAT_WORD(jx, x);
     ix = jx & 0x7fffffff;
     /* x is INF or NaN */
-    if (!<font color="blue">FLT_UWORD_IS_FINITE(ix)</font>) {
+    if (!FLT_UWORD_IS_FINITE(ix)) {
         return x + x;
     }
 
@@ -161,4 +164,3 @@ rm -rf libm/complexf/
 ```
 
 In the `hayroll-output/` directory, you will find files such as `XXX.rs`.
-
