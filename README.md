@@ -18,8 +18,9 @@ $\color{Green}{\textsf{Normal, colored text}} \\$
 $\color{Green}{\textsf{Normal, colored text}}$
 
 
-<pre><code>
-float sinhf(float x) {
+$\tt float sinhf(float x) \{$
+
+```
 #ifdef __LIBMCS_FPU_DAZ
     x *= __volatile_onef;
 #endif /* defined(__LIBMCS_FPU_DAZ) */
@@ -34,7 +35,7 @@ float sinhf(float x) {
 
     h = 0.5f;
     ...
-</code></pre>
+```
 
 
 ## Installation
