@@ -92,14 +92,6 @@ For installation on other operating systems, follow the instructions in [prerequ
 
 ## Usage
 
-The `./hayroll` executable offers a turn-key solution from C source
-files to Rust files, with macros (partially) preserving their 
-structures.
-
-```
- ./hayroll <path_to_compile_commands.json> <output_directory>
-```
-
 ### `compile_commands.json`
 
 To build a project, a C build system typically makes multiple calls to the
@@ -111,10 +103,19 @@ An easy way to generate a `compile_commands.json` file is to run
 make clean && bear -- make
 ```
 
-
 ### Skipping some C files
 
 You should manually delete any source files that you do not want to translate.
+
+### Calling Hayroll
+
+The `./hayroll` executable offers a turn-key solution from C source
+files to Rust files, with macros (partially) preserving their
+structure.
+
+```
+ ./hayroll <path_to_compile_commands.json> <output_directory>
+```
 
 ### Output
 
