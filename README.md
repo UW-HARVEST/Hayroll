@@ -5,6 +5,32 @@
 Hayroll converts C macros into Rust code.  Hayroll wraps the [c2rust](https://github.com/immunant/c2rust) tool for converting code written in C to the Rust programming language, improving c2rust's translation of C preprocessor macros and conditional compilation.  The `hayroll` command is a drop-in replacement for c2rust.  "Hayroll" stands for "**H**ARVEST **A**nnotator for **Y**ielding **R**egions **O**f **L**exical **L**ogic".
 
 
+## Example
+
+The `c2rust` program runs the C preprocessor before translating from C to Rust.  This means that macros are expanded (which destroys abstractions that the programmer put in the code) and that conditionally-compiled code is lost.
+
+For example, consider translating this C code:
+
+```
+float sinhf(float x)
+{
+<font color="red">#ifdef __LIBMCS_FPU_DAZ
+    x *= __volatile_onef;
+#endif /* defined(__LIBMCS_FPU_DAZ) */</font>
+    float t, w, h;
+    int32_t ix, jx;
+    GET_FLOAT_WORD(jx, x);
+    ix = jx & 0x7fffffff;
+    /* x is INF or NaN */
+    if (!FLT_UWORD_IS_FINITE(ix)) {
+        return x + x;
+    }
+
+    h = 0.5f;
+    ...
+```
+
+
 ## Installation
 
 To install Hayroll:
@@ -58,36 +84,30 @@ You should manually delete any source files that you do not want to translate.
 
 This section shows how to run Hayroll on version 1.2.0 of the [LibmCS mathematical library](https://gitlab.com/gtd-gmbh/libmcs).
 
-#### Clone and build LibmCS
+#### Clone and configure LibmCS
 
 ```
 git clone --branch 1.2.0 https://gitlab.com/gtd-gmbh/libmcs.git
-pushd libmcs >/dev/null
-  if [[ ! -f lib/libmcs.a && ! -f build/libmcs.a ]]; then
-    echo "[*] Configuring LibmCS (non-interactive)…"
-    # Passing an explicit empty string to --cross-compile prevents the script
-    # from prompting for a tool-chain path; all other options are disabled to
-    # match Hayroll’s requirements.
-    ./configure \
-        --cross-compile="" \
-        --compilation-flags="" \
-        --disable-denormal-handling \
-        --disable-long-double-procedures \
-        --disable-complex-procedures \
-        --little-endian
-    make -j"$(nproc)"
-  fi
-popd >/dev/null
+cd libmcs
+# Passing an explicit empty string to --cross-compile prevents the script
+# from prompting for a tool-chain path; all other options are disabled to
+# match Hayroll’s requirements.
+./configure \
+    --cross-compile="" \
+    --compilation-flags="" \
+    --disable-denormal-handling \
+    --disable-long-double-procedures \
+    --disable-complex-procedures \
+    --little-endian
 ```
 
-####
+#### Create `compile_commands.json`
 
+```
+make clean && bear -- make
+```
 
-, which uses complex numbers.
-Since c2rust does not have full support for complex numbers, delete source files under `libm/complexf/` before running `./hayroll`.
-
-
-
+This command creates a `compile_commands.json` file of this form:
 
 ```
 [
@@ -119,6 +139,24 @@ Since c2rust does not have full support for complex numbers, delete source files
   ...
 ]
 ```
+
+#### Remove some files
+
+LibmCS uses complex numbers, but c2rust does not have full support for complex numbers.
+Therefore, delete the source files under `libm/complexf/`:
+
+```
+rm -rf libm/complexf/
+```
+
+#### Run Hayroll
+
+```
+/PATH/TO/hayroll compile_commands.json hayroll-output/
+```
+
+In the `hayroll-output/` directory, you will find files such as `XXX.rs`.
+
 
 <!--  LocalWords:  img src px hayroll ARVEST nnotator ielding egions exical ogic cd ctest md json sudo LibmCS c99 Wextra frounding fno DLIBMCS FPU DAZ Ilibm linux libm complexf cpp2c Maki C2Rust
  -->
