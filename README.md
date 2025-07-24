@@ -1,105 +1,163 @@
-# The HARVEST Hayroll C Macro to Rust Translation System
+<img src="images/hayroll-200x200.png" align="right" width="200px"/>
 
-Hayroll: HARVEST Annotator for Yielding Regions of Lexical Logic
+# Hayroll: translate C macros to Rust
+
+Hayroll converts C macros into Rust code.  Hayroll wraps the [c2rust](https://github.com/immunant/c2rust) tool for converting code written in C to the Rust programming language, improving c2rust's translation of C preprocessor macros and conditional compilation.  The `hayroll` command is a drop-in replacement for c2rust.  "Hayroll" stands for "**H**ARVEST **A**nnotator for **Y**ielding **R**egions **O**f **L**exical **L**ogic".
+
+
+## Example output of c2rust and Hayroll
+
+The `c2rust` program runs the C preprocessor before translating from C to Rust.  This means that macros are expanded (which destroys abstractions that the programmer put in the code) and that conditionally-compiled code is lost.
+
+For example, consider translating this C code:
+
+```c
+float sinhf(float x) {
+#ifdef __LIBMCS_FPU_DAZ               // conditional compilation
+    x *= __volatile_onef;             // conditional compilation
+#endif                                // conditional compilation
+    float t, w, h;
+    int32_t ix, jx;
+    GET_FLOAT_WORD(jx, x);            // statement macro
+    ix = jx & 0x7fffffff;
+    if (!FLT_UWORD_IS_FINITE(ix)) {   // expression macro
+        return x + x;
+    }
+
+    h = 0.5f;
+    ...
+```
+
+The output of `c2rust` is:
+
+```rust
+pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
+                                      // conditionally compiled code is lost
+    let mut t: libc::c_float = 0.;
+    let mut w: libc::c_float = 0.;
+    let mut h: libc::c_float = 0.;
+    let mut ix: int32_t = 0;
+    let mut jx: int32_t = 0;
+    loop {                            // statement macro is expanded
+        let mut gf_u = ieee_float_shape_type { value: 0. };
+        gf_u.value = x;
+        jx = gf_u.word as int32_t;
+        if !(0 as libc::c_int == 1 as libc::c_int) {
+            break;
+        }
+    }                                 // ... end of statement macro expansion
+    ix = jx & 0x7fffffff as libc::c_int;
+    if !((ix as libc::c_long) < 0x7f800000 as libc::c_long) { // expr macro expanded
+        return x + x;
+    }
+    h = 0.5f32;
+    ...
+```
+
+By contrast, the output of Hayroll is:
+
+```rust
+pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
+    #[cfg(feature = "__LIBMCS_FPU_DAZ")] // conditional compilation is retained
+    { x *= __volatile_onef; }            // conditional compilation is retained
+    let mut t: libc::c_float = 0.;
+    let mut w: libc::c_float = 0.;
+    let mut h: libc::c_float = 0.;
+    let mut ix: int32_t = 0;
+    let mut jx: int32_t = 0;
+    GET_FLOAT_WORD(&mut jx, &mut x);     // statement macro becomes a function
+    ix = jx & 0x7fffffff as libc::c_int;
+    if FLT_UWORD_IS_FINITE(&mut ix as *mut int32_t) == 0 { // expr macro is function
+        return x + x;
+    }
+    h = 0.5f32;
+```
+
 
 ## Installation
 
-### Dependencies
-
-Hayroll has several major dependencies. Please install them before starting to install Hayroll.
-You can either use our automated script `prerequisites.bash`, of follow the following steps manually. 
-After that, the directory structure should look like this:
+To install Hayroll:
 
 ```
-installation_folder/
-├── Hayroll/
-├── Maki/
-├── tree-sitter/
-└── tree-sitter-c_preproc/
+git clone https://github.com/UW-HARVEST/Hayroll
+cd Hayroll
+./prerequisites.bash
+./build.bash
+# Optionally, run tests (takes less than one minute):
+cd ./build && ctest
 ```
 
-#### C2Rust
-
-Tested version: 0.19.0
-
-[C2Rust](https://github.com/immunant/c2rust) is a static-analysis-based C-to-Rust translation tool.
-
-Please follow the steps on their [README](https://github.com/immunant/c2rust/blob/master/README.md#installation) to install it.  You may need to use the "Installing from Git" instructions rather than the "Installing from crates.io" instructions.  Hayroll does not need to see C2Rust's installation folder, but the `c2rust` command must be on your PATH.
-
-#### Maki (Hayroll-modified Version):
-
-Tested version: tag 0.1.1
-
-[Maki](https://github.com/UW-HARVEST/Maki) is a C macro analysis tool. Hayroll uses a modified version.
-
-Please follow the "Local Setup (Required by Hayroll)" section in Maki's README. Do not use the docker version. 
-
-#### Z3
-
-Tested version: 4.13.4
-
-[Z3](https://github.com/Z3Prover/z3) is an automated theorem prover and a SAT solver.
-
-Please follow the common CMake installation workflow, or read `README-CMake.md` which can be found at Z3's root folder. Do not forget to run `sudo make install` as the last step. Hayroll does not need to see Z3's folder, but looks for required libraries in system paths.
-
-#### Tree-sitter
-
-Tested version: 0.25.3
-
-[tree-sitter](https://github.com/tree-sitter/tree-sitter) is a lightweight parser generator.
-
-```
-git clone https://github.com/tree-sitter/tree-sitter.git
-make -C tree-sitter
-```
-
-#### Hayroll Tree-sitter-c_preproc
-
-Tested version: tag 0.1.1
-
-[tree-sitter-c_preproc](https://github.com/UW-HARVEST/tree-sitter-c_preproc) is a parser for C macros.
-
-```
-git clone https://github.com/UW-HARVEST/tree-sitter-c_preproc.git
-make -C tree-sitter-c_preproc
-```
-
-#### Libmcs
-
-Tested version: 1.2.0
-
-[Libmcs](https://gitlab.com/gtd-gmbh/libmcs) is a math library. Hayroll's test suite uses it.
-
-It is recommended to turn off complex number support when running `./configure`, because C2Rust does not fully support complex number functionalities. `./configure` opens an interactive menu that leads you through such options. 
-
-```
-git clone https://gitlab.com/gtd-gmbh/libmcs.git
-cd libmcs
-./configure
-make
-```
-
-### Hayroll
-
-https://github.com/UW-HARVEST/Hayroll
-
-Tested version: tag 0.1.1
-
-Hayroll's core functionalities. Please install it after installing all the above dependencies, and some minor dependencies: `sudo apt install libspdlog-dev libboost-stacktrace-dev`
-
-Then run `./build.bash`. After that, you can optionally run tests with `cd ./build; ctest`, which should take less than a minuite to finish.
+The `prerequisites.bash` script has been tested on Ubuntu.
+For installation on other operating systems, follow the instructions in [prerequisites.md](prerequisites.md), and contribute back your instructions or a pull request to make `prerequisites.bash` work on more operating systems.
 
 ## Usage
 
-The `./pipeline` executable (a soft link to `./build/pipeline`) offers a turn-key solution from C source files to Rust files, with macros (partially) preserving their structures.
-
-` ./pipeline <path_to_compile_commands.json> <output_directory>`
-
 ### `compile_commands.json`
 
-To build a project, a C build system typically makes multiple calls to the compiler with a long list of arguments. A `compile_commands.json` records these commands and arguments for the convenience of downstream analysis.
+To build a project, a C build system typically makes multiple calls to the
+compiler with a long list of arguments. A `compile_commands.json` records these
+commands and arguments for the convenience of downstream analysis.
 
-There are multiple ways to generate a `compile_commands.json`, and `bear` (`sudo apt install bear`) is one easy way. For example, to generate for Libmcs, simply run `make clean; bear -- make`. Then you will see a `compile_commands.json` like:
+An easy way to generate a `compile_commands.json` file is to run
+```
+make clean && bear -- make
+```
+
+### Skipping some C files
+
+You should manually delete any source files that you do not want to translate.
+
+### Calling Hayroll
+
+The `./hayroll` executable offers a turn-key solution from C source
+files to Rust files, with macros (partially) preserving their
+structure.
+
+```
+ ./hayroll <path_to_compile_commands.json> <output_directory>
+```
+
+### Output
+
+`./hayroll` overwrites the output directory. You will see several intermediate
+files for each original C file.
+
+- `xxx.c`: The C source file.
+- `xxx.cu.c`: The C compilation unit source file. This is `xxx.c` with all necessary `#include`s copy-pasted into a single file, which we call the compilation unit file. A compilation unit file is standalone compilable.
+- `xxx.cpp2c`: Maki's macro analysis result on `xxx.cu.c`.
+- `xxx.seeded.cu.c`: `xxx.cu.c` with Hayroll's macro info tags (seeds) inserted (seeded).
+- `xxx.seeded.rs`: `xxx.seeded.cu.c` translated to Rust by C2Rust, where C macros were expanded and translated as-is, together with Hayroll's seeds.
+- `xxx.rs`: The final output, Rust code with previously expanded C macro sections reverted into Rust functions or Rust macros.
+
+
+### Example of running Hayroll
+
+This section shows how to run Hayroll on version 1.2.0 of the [LibmCS mathematical library](https://gitlab.com/gtd-gmbh/libmcs).
+
+#### Clone and configure LibmCS
+
+```
+git clone --branch 1.2.0 https://gitlab.com/gtd-gmbh/libmcs.git
+cd libmcs
+# Passing an explicit empty string to --cross-compile prevents the script
+# from prompting for a tool-chain path; all other options are disabled to
+# match Hayroll’s requirements.
+./configure \
+    --cross-compile="" \
+    --compilation-flags="" \
+    --disable-denormal-handling \
+    --disable-long-double-procedures \
+    --disable-complex-procedures \
+    --little-endian
+```
+
+#### Create `compile_commands.json`
+
+```
+make clean && bear -- make
+```
+
+This command creates a `compile_commands.json` file of this form:
 
 ```
 [
@@ -132,15 +190,19 @@ There are multiple ways to generate a `compile_commands.json`, and `bear` (`sudo
 ]
 ```
 
-It's recommended to manually keep only the source files that you want to translate before sending the `compile_commands.json` to Hayroll `./pipeline`. In the Libmcs case, since Hayroll (C2Rust underneath) does not have full support for complex numbers, it's recommended to delete entires for any source files under `libm/complexf/`.
+#### Remove some files
 
-### Output
+LibmCS uses complex numbers, but c2rust does not have full support for complex numbers.
+Therefore, delete the source files under `libm/complexf/`:
 
-`./pipeline` overwrites the output directory. You will see several intermediate files for each translation task.
+```
+rm -rf libm/complexf/
+```
 
-- `xxx.c`: The C source file.
-- `xxx.cu.c`: The C compilation unit source file. This is `xxx.c` with all necessary `#include`s copy-pasted into a single file, which we call the compilation unit file. A compilation unit file is standalone compilable.
-- `xxx.cpp2c`: Maki's macro analysis result on `xxx.cu.c`.
-- `xxx.seeded.cu.c`: `xxx.cu.c` with Hayroll's macro info tags (seeds) inserted (seeded).
-- `xxx.seeded.rs`: `xxx.seeded.cu.c` translated to Rust by C2Rust, where C macros were expanded and translated as-is, together with Hayroll's seeds.
-- `xxx.rs`: The final output, Rust code with previously expanded C macro sections reverted into Rust functions or Rust macros.
+#### Run Hayroll
+
+```
+/PATH/TO/hayroll compile_commands.json hayroll-output/
+```
+
+In the `hayroll-output/` directory, you will find files such as `XXX.rs`.
