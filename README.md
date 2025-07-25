@@ -105,7 +105,8 @@ make clean && bear -- make
 
 ### Skipping some C files
 
-You should manually delete any source files that you do not want to translate.
+You should manually delete entires in `compile_commands.json`
+that point to any source files that you do not want to translate.
 
 ### Calling Hayroll
 
@@ -190,14 +191,10 @@ This command creates a `compile_commands.json` file of this form:
 ]
 ```
 
-#### Remove some files
+#### Remove some entires from `compile_commands.json`
 
 LibmCS uses complex numbers, but c2rust does not have full support for complex numbers.
-Therefore, delete the source files under `libm/complexf/`:
-
-```
-rm -rf libm/complexf/
-```
+Therefore, delete entires in `compile_commands.json` that point to source files under `libm/complexf/`.
 
 #### Run Hayroll
 
@@ -205,4 +202,4 @@ rm -rf libm/complexf/
 /PATH/TO/hayroll compile_commands.json hayroll-output/
 ```
 
-In the `hayroll-output/` directory, you will find files such as `XXX.rs`.
+In the `hayroll-output/` directory, you will find files such as `xxx.rs`.
