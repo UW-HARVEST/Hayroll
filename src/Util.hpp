@@ -14,6 +14,7 @@
 #include <vector>
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 
 #include <z3++.h>
 

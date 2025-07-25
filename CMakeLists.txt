@@ -117,7 +117,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         message(FATAL_ERROR "GCC version must be 13 or above. Current version: ${CMAKE_CXX_COMPILER_VERSION}")
     endif()
 endif()
-# You may also use clang, but make sure you have libstdc++ 13 or above
+# You may also use clang, but make sure you link to libstdc++ 3.4.32 or above
 
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -gdwarf-2")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
