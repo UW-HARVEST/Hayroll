@@ -27,16 +27,21 @@ LIBMCS_TAG="1.2.0"
 
 # --- Parse arguments --------------------------------------------------------
 USE_LATEST=false
+USE_SUDO=true
 if [[ $# -gt 0 ]]; then
   case "$1" in
     --latest)
       USE_LATEST=true
       ;;
+    --no-sudo)
+      USE_SUDO=false
+      ;;
     -h|--help)
-      echo "Usage: $0 [--latest] [-h|--help]"
+      echo "Usage: $0 [--latest] [--no-sudo] [-h|--help]"
       echo
       echo "Options:"
       echo "  --latest   Fetch the latest main/HEAD versions of Maki and tree-sitter-c_preproc."
+      echo "  --no-sudo  Run the script without using sudo for package installation."
       echo "  -h, --help Show this help message."
       exit 0
       ;;
@@ -85,9 +90,9 @@ git_clone_or_checkout () {
   fi
 }
 
-echo "[*] Installing system packages via apt (sudo maybe required)"
-sudo apt-get update
-sudo apt-get install -y --no-install-recommends \
+echo "[*] Installing system packages via apt"
+${USE_SUDO:+sudo} apt-get update
+${USE_SUDO:+sudo} apt-get install -y --no-install-recommends \
   build-essential git cmake ninja-build pkg-config python3 \
   libspdlog-dev libboost-stacktrace-dev \
   clang libclang-dev llvm llvm-dev curl autoconf automake libtool \
@@ -112,7 +117,7 @@ pushd z3 >/dev/null
   mkdir -p build && cd build
   cmake -DCMAKE_BUILD_TYPE=Release -DZ3_BUILD_PYTHON_BINDINGS=OFF ..
   make -j"$(nproc)"
-  sudo make install
+  ${USE_SUDO:+sudo} make install
 popd >/dev/null
 
 # --- tree-sitter core --------------------------------------------------------
@@ -146,10 +151,7 @@ popd >/dev/null
 git_clone_or_checkout "libmcs" "${LIBMCS_GIT}" "${LIBMCS_TAG}"
 pushd libmcs >/dev/null
   if [[ ! -f lib/libmcs.a && ! -f build/libmcs.a ]]; then
-    echo "[*] Configuring LibmCS (non-interactive)…"
-    # Passing an explicit empty string to --cross-compile prevents the script
-    # from prompting for a tool-chain path; all other options are disabled to
-    # match Hayroll’s requirements.
+    echo "[*] Configuring LibmCS (non-interactive)..."
     ./configure \
         --cross-compile="" \
         --compilation-flags="" \
@@ -163,5 +165,13 @@ popd >/dev/null
 
 echo "=========================================================="
 echo "All prerequisites installed."
-echo "Add \$HOME/.cargo/bin to your PATH if missing."
 echo "=========================================================="
+
+# Check if ~/.cargo/bin is in PATH
+if ! echo "$PATH" | grep -q "$HOME/.cargo/bin"; then
+  echo "=========================================================="
+  echo "Warning: \$HOME/.cargo/bin is not in your PATH."
+  echo "Please add the following line to your shell configuration file (e.g., ~/.bashrc or ~/.zshrc):"
+  echo "export PATH=\"\$HOME/.cargo/bin:\$PATH\""
+  echo "=========================================================="
+fi
