@@ -25,6 +25,29 @@ Z3_TAG="z3-4.13.4"
 LIBMCS_GIT="https://gitlab.com/gtd-gmbh/libmcs.git"
 LIBMCS_TAG="1.2.0"
 
+# --- Parse arguments --------------------------------------------------------
+USE_LATEST=false
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    --latest)
+      USE_LATEST=true
+      ;;
+    -h|--help)
+      echo "Usage: $0 [--latest] [-h|--help]"
+      echo
+      echo "Options:"
+      echo "  --latest   Fetch the latest main/HEAD versions of Maki and tree-sitter-c_preproc."
+      echo "  -h, --help Show this help message."
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Use -h or --help for usage information."
+      exit 1
+      ;;
+  esac
+fi
+
 echo "=========================================================="
 echo "Hayroll prerequisites installer"
 echo "Target root directory : ${INSTALL_DIR}"
@@ -86,19 +109,29 @@ popd >/dev/null
 git_clone_or_checkout "tree-sitter" "${TS_GIT}" "${TS_TAG}"
 make -C tree-sitter -j"$(nproc)"
 
-# --- tree-sitter-c_preproc ----------------------------------------------------
-git_clone_or_checkout "tree-sitter-c_preproc" "${TSC_PREPROC_GIT}" "${TSC_PREPROC_TAG}"
+# --- tree-sitter-c_preproc ---------------------------------------------------
+if [[ "${USE_LATEST}" == true ]]; then
+  echo "[*] Fetching latest tree-sitter-c_preproc (main/HEAD)"
+  git_clone_or_checkout "tree-sitter-c_preproc" "${TSC_PREPROC_GIT}" "main"
+else
+  git_clone_or_checkout "tree-sitter-c_preproc" "${TSC_PREPROC_GIT}" "${TSC_PREPROC_TAG}"
+fi
 make -C tree-sitter-c_preproc -j"$(nproc)"
 
 # --- Maki --------------------------------------------------------------------
-git_clone_or_checkout "Maki" "${MAKI_GIT}" "${MAKI_TAG}"
+if [[ "${USE_LATEST}" == true ]]; then
+  echo "[*] Fetching latest Maki (main/HEAD)"
+  git_clone_or_checkout "Maki" "${MAKI_GIT}" "main"
+else
+  git_clone_or_checkout "Maki" "${MAKI_GIT}" "${MAKI_TAG}"
+fi
 pushd Maki >/dev/null
   mkdir -p build && cd build
   cmake ..
   make -j"$(nproc)"
 popd >/dev/null
 
-# --- LibmCS --------------------------------------------------------------
+# --- LibmCS ------------------------------------------------------------------
 # Clone + build LibmCS v1.2.0 completely non-interactive.
 git_clone_or_checkout "libmcs" "${LIBMCS_GIT}" "${LIBMCS_TAG}"
 pushd libmcs >/dev/null
