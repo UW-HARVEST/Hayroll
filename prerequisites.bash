@@ -68,11 +68,21 @@ git_clone_or_checkout () {
   if [[ -d "${dir}/.git" ]]; then
     echo "[*] ${dir} exists – fetching & checking out ${tag}"
     git -C "${dir}" fetch --tags --quiet
+    if [[ "${tag}" == "main" ]]; then
+      git -C "${dir}" fetch origin main --quiet
+      git -C "${dir}" reset --hard origin/main --quiet
+    else
+      git -C "${dir}" checkout --quiet "${tag}"
+    fi
   else
     echo "[*] Cloning ${url} into ${dir}"
     git clone --quiet "${url}" "${dir}"
+    if [[ "${tag}" == "main" ]]; then
+      git -C "${dir}" checkout --quiet main
+    else
+      git -C "${dir}" checkout --quiet "${tag}"
+    fi
   fi
-  git -C "${dir}" checkout --quiet "${tag}"
 }
 
 echo "[*] Installing system packages via apt (sudo maybe required)"
@@ -80,7 +90,7 @@ sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   build-essential git cmake ninja-build pkg-config python3 \
   libspdlog-dev libboost-stacktrace-dev \
-  clang-14 llvm-14 libclang-14-dev llvm-14-dev curl autoconf automake libtool \
+  clang libclang-dev llvm llvm-dev curl autoconf automake libtool \
   bear
 
 # --- Rust tool-chain (for c2rust & Maki) -------------------------------------
