@@ -8,6 +8,7 @@ After that, the directory structure should look like this:
 installation_folder/
 ├── Hayroll/
 ├── Maki/
+├── libmcs/
 ├── tree-sitter/
 └── tree-sitter-c_preproc/
 ```

@@ -222,7 +222,7 @@ int main(const int argc, const char* argv[])
             .withUpdatedExtension(".rs");
         std::filesystem::path outputPath = outputCommand.file;
         saveStringToFile(reaperStr, outputPath);
-        SPDLOG_INFO("hayroll Reaper output for {} saved to: {}", command.file.string(), outputPath.string());
+        SPDLOG_INFO("Hayroll Reaper output for {} saved to: {}", command.file.string(), outputPath.string());
     }
     assert(reaperStrs.size() == numTasks);
 
