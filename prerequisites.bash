@@ -68,6 +68,9 @@ read -rp "Proceed? [y/N] " yn
 mkdir -p "${INSTALL_DIR}"
 cd "${INSTALL_DIR}"
 
+# Create a temporary directory for logs
+LOG_DIR=$(mktemp -d /tmp/hayroll-prereq-logs-XXXXXX)
+
 git_clone_or_checkout () {
   local dir=$1 url=$2 tag=$3
   if [[ -d "${dir}/.git" ]]; then
@@ -101,9 +104,21 @@ check_version() {
   fi
 }
 
+run_quiet() {
+  local log="$LOG_DIR/$1"
+  shift
+  if ! "$@" >"$log" 2>&1; then
+    echo "Error: Command failed: $*"
+    echo "========== Output from $log =========="
+    cat "$log"
+    echo "======================================"
+    exit 1
+  fi
+}
+
 echo "[*] Installing system packages via apt"
-${USE_SUDO:+sudo} apt-get update
-${USE_SUDO:+sudo} apt-get install -y --no-install-recommends \
+run_quiet apt-get.log ${USE_SUDO:+sudo} apt-get update
+run_quiet apt-install.log ${USE_SUDO:+sudo} apt-get install -y --no-install-recommends \
   build-essential git cmake ninja-build pkg-config python3 \
   libspdlog-dev libboost-stacktrace-dev \
   clang libclang-dev llvm llvm-dev \
@@ -117,28 +132,28 @@ check_version llvm-dev 17
 # --- Rust tool-chain (for c2rust & Maki) -------------------------------------
 if ! command -v cargo >/dev/null 2>&1; then
   echo "[*] rustup not found – installing stable Rust tool-chain"
-  curl https://sh.rustup.rs -sSf | sh -s -- -y
+  run_quiet rustup-install.log curl https://sh.rustup.rs -sSf | sh -s -- -y
   export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
 # --- C2Rust ------------------------------------------------------------------
 if ! command -v c2rust >/dev/null 2>&1; then
   echo "[*] Installing c2rust ${C2RUST_TAG}"
-  cargo install --git "${C2RUST_GIT}" --tag "${C2RUST_TAG}" --locked c2rust
+  run_quiet c2rust-install.log cargo install --git "${C2RUST_GIT}" --tag "${C2RUST_TAG}" --locked c2rust
 fi
 
 # --- Z3 ----------------------------------------------------------------------
 git_clone_or_checkout "z3" "${Z3_GIT}" "${Z3_TAG}"
 pushd z3 >/dev/null
   mkdir -p build && cd build
-  cmake -DCMAKE_BUILD_TYPE=Release -DZ3_BUILD_PYTHON_BINDINGS=OFF ..
-  make -j"$(nproc)"
-  ${USE_SUDO:+sudo} make install
+  run_quiet z3-cmake.log cmake -DCMAKE_BUILD_TYPE=Release -DZ3_BUILD_PYTHON_BINDINGS=OFF ..
+  run_quiet z3-make.log make -j"$(nproc)"
+  run_quiet z3-install.log ${USE_SUDO:+sudo} make install
 popd >/dev/null
 
 # --- tree-sitter core --------------------------------------------------------
 git_clone_or_checkout "tree-sitter" "${TS_GIT}" "${TS_TAG}"
-make -C tree-sitter -j"$(nproc)"
+run_quiet tree-sitter-make.log make -C tree-sitter -j"$(nproc)"
 
 # --- tree-sitter-c_preproc ---------------------------------------------------
 if [[ "${USE_LATEST}" == true ]]; then
@@ -147,7 +162,7 @@ if [[ "${USE_LATEST}" == true ]]; then
 else
   git_clone_or_checkout "tree-sitter-c_preproc" "${TSC_PREPROC_GIT}" "${TSC_PREPROC_TAG}"
 fi
-make -C tree-sitter-c_preproc -j"$(nproc)"
+run_quiet tsc-preproc-make.log make -C tree-sitter-c_preproc -j"$(nproc)"
 
 # --- Maki --------------------------------------------------------------------
 if [[ "${USE_LATEST}" == true ]]; then
@@ -158,32 +173,28 @@ else
 fi
 pushd Maki >/dev/null
   mkdir -p build && cd build
-  cmake ..
-  make -j"$(nproc)"
+  run_quiet maki-cmake.log cmake ..
+  run_quiet maki-make.log make -j"$(nproc)"
 popd >/dev/null
 
 # --- LibmCS ------------------------------------------------------------------
-# Clone + build LibmCS v1.2.0 completely non-interactive.
 git_clone_or_checkout "libmcs" "${LIBMCS_GIT}" "${LIBMCS_TAG}"
 pushd libmcs >/dev/null
   if [[ ! -f lib/libmcs.a && ! -f build/libmcs.a ]]; then
     echo "[*] Configuring LibmCS (non-interactive)..."
-    ./configure \
+    run_quiet libmcs-configure.log ./configure \
         --cross-compile="" \
         --compilation-flags="" \
         --disable-denormal-handling \
         --disable-long-double-procedures \
         --disable-complex-procedures \
         --little-endian
-    make -j"$(nproc)"
+    run_quiet libmcs-make.log make -j"$(nproc)"
   fi
 popd >/dev/null
 
-echo "=========================================================="
-echo "All prerequisites installed."
-echo "=========================================================="
-
 # Check if ~/.cargo/bin is in PATH
+echo "[*] Checking if \$HOME/.cargo/bin is in PATH"
 if ! echo "$PATH" | grep -q "$HOME/.cargo/bin"; then
   echo "=========================================================="
   echo "Warning: \$HOME/.cargo/bin is not in your PATH."
@@ -191,3 +202,7 @@ if ! echo "$PATH" | grep -q "$HOME/.cargo/bin"; then
   echo "export PATH=\"\$HOME/.cargo/bin:\$PATH\""
   echo "=========================================================="
 fi
+
+echo "=========================================================="
+echo "All prerequisites installed."
+echo "=========================================================="
