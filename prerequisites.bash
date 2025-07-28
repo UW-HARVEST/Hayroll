@@ -106,6 +106,7 @@ check_version() {
 
 run_quiet() {
   local log="$LOG_DIR/$1"
+  echo "Running command: $* > $log"
   shift
   if ! "$@" >"$log" 2>&1; then
     echo "Error: Command failed: $*"
@@ -130,21 +131,26 @@ check_version llvm 17
 check_version llvm-dev 17
 
 # --- Rust tool-chain (for c2rust & Maki) -------------------------------------
-if ! command -v cargo >/dev/null 2>&1; then
-  echo "[*] rustup not found – installing stable Rust tool-chain"
+if ! command -v rustc >/dev/null 2>&1; then
+  echo "[*] rustc not found – installing stable Rust tool-chain"
   run_quiet rustup-install.log curl https://sh.rustup.rs -sSf | sh -s -- -y
   export PATH="$HOME/.cargo/bin:$PATH"
+else
+  echo "[*] rustc found, version: $(rustc --version)"
 fi
 
 # --- C2Rust ------------------------------------------------------------------
 if ! command -v c2rust >/dev/null 2>&1; then
   echo "[*] Installing c2rust ${C2RUST_TAG}"
   run_quiet c2rust-install.log cargo install --git "${C2RUST_GIT}" --tag "${C2RUST_TAG}" --locked c2rust
+else
+  echo "[*] c2rust already installed, version: $(c2rust --version)"
 fi
 
 # --- Z3 ----------------------------------------------------------------------
 git_clone_or_checkout "z3" "${Z3_GIT}" "${Z3_TAG}"
 pushd z3 >/dev/null
+  echo "[*] Building Z3"
   mkdir -p build && cd build
   run_quiet z3-cmake.log cmake -DCMAKE_BUILD_TYPE=Release -DZ3_BUILD_PYTHON_BINDINGS=OFF ..
   run_quiet z3-make.log make -j"$(nproc)"
@@ -153,6 +159,7 @@ popd >/dev/null
 
 # --- tree-sitter core --------------------------------------------------------
 git_clone_or_checkout "tree-sitter" "${TS_GIT}" "${TS_TAG}"
+echo "[*] Building tree-sitter core"
 run_quiet tree-sitter-make.log make -C tree-sitter -j"$(nproc)"
 
 # --- tree-sitter-c_preproc ---------------------------------------------------
@@ -162,6 +169,7 @@ if [[ "${USE_LATEST}" == true ]]; then
 else
   git_clone_or_checkout "tree-sitter-c_preproc" "${TSC_PREPROC_GIT}" "${TSC_PREPROC_TAG}"
 fi
+echo "[*] Building tree-sitter-c_preproc"
 run_quiet tsc-preproc-make.log make -C tree-sitter-c_preproc -j"$(nproc)"
 
 # --- Maki --------------------------------------------------------------------
@@ -172,6 +180,7 @@ else
   git_clone_or_checkout "Maki" "${MAKI_GIT}" "${MAKI_TAG}"
 fi
 pushd Maki >/dev/null
+  echo "[*] Building Maki"
   mkdir -p build && cd build
   run_quiet maki-cmake.log cmake ..
   run_quiet maki-make.log make -j"$(nproc)"
@@ -181,7 +190,7 @@ popd >/dev/null
 git_clone_or_checkout "libmcs" "${LIBMCS_GIT}" "${LIBMCS_TAG}"
 pushd libmcs >/dev/null
   if [[ ! -f lib/libmcs.a && ! -f build/libmcs.a ]]; then
-    echo "[*] Configuring LibmCS (non-interactive)..."
+    echo "[*] Building LibmCS"
     run_quiet libmcs-configure.log ./configure \
         --cross-compile="" \
         --compilation-flags="" \
