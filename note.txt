@@ -225,6 +225,7 @@ The final expansion result should not have any "no further expansion" identifier
 
 /home/hurrypeng/libmcs/libm/include/internal_config.h:30:5~31:1
 
-./pipeline /home/hurrypeng/libmcs/compile_commands.json ./output/ &> trace.txt
-./pipeline /home/hurrypeng/libmcs/compile_commands_4.json ./output/ &> trace.txt
-./pipeline /home/hurrypeng/libmcs/compile_commands_130.json ./output/ &> trace.txt
+./hayroll /home/hurrypeng/libmcs/compile_commands.json ./output/ &> trace.txt
+./hayroll transpile /home/hurrypeng/libmcs/ -o ./output/ &> trace.txt
+./hayroll /home/hurrypeng/libmcs/compile_commands_4.json ./output/ &> trace.txt
+./hayroll /home/hurrypeng/libmcs/compile_commands_130.json ./output/ &> trace.txt

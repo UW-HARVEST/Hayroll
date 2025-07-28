@@ -149,8 +149,8 @@ z3_config
 tree_sitter_config
 )
 
-add_executable(pipeline src/pipeline.cpp)
-target_link_libraries(pipeline PRIVATE
+add_executable(hayroll src/hayroll.cpp)
+target_link_libraries(hayroll PRIVATE
     hayroll_exe_config
     external_exe_config
     z3_config

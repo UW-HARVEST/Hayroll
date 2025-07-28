@@ -6,7 +6,7 @@
 set -euo pipefail
 
 ROOT_DIR=${ROOT_DIR:-"${PWD}"}            # default to current dir if not overridden
-INSTALL_DIR="${ROOT_DIR}/.."              # clone/build here
+INSTALL_DIR=$(realpath "${ROOT_DIR}/..")  # normalize the path
 
 # --- third-party folders we expect under $INSTALL_DIR ----------------------------------
 THIRD_PARTY_DIRS=(Maki tree-sitter tree-sitter-c_preproc c2rust z3 libmcs)
@@ -90,13 +90,29 @@ git_clone_or_checkout () {
   fi
 }
 
+check_version() {
+  local pkg=$1
+  local min_version=$2
+  local installed_version
+  installed_version=$(dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null || echo "0")
+  if dpkg --compare-versions "$installed_version" lt "$min_version"; then
+    echo "Error: $pkg version >= $min_version is required. Installed version: $installed_version"
+    exit 1
+  fi
+}
+
 echo "[*] Installing system packages via apt"
 ${USE_SUDO:+sudo} apt-get update
 ${USE_SUDO:+sudo} apt-get install -y --no-install-recommends \
   build-essential git cmake ninja-build pkg-config python3 \
   libspdlog-dev libboost-stacktrace-dev \
-  clang libclang-dev llvm llvm-dev curl autoconf automake libtool \
-  bear
+  clang libclang-dev llvm llvm-dev \
+  curl autoconf automake libtool bear
+
+check_version clang 17
+check_version libclang-dev 17
+check_version llvm 17
+check_version llvm-dev 17
 
 # --- Rust tool-chain (for c2rust & Maki) -------------------------------------
 if ! command -v cargo >/dev/null 2>&1; then

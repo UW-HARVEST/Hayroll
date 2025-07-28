@@ -53,7 +53,7 @@ fi
 # Add soft links to binaries, from here (build directory) to the root directory
 ln -sf "${BUILD_DIR}/seeder" ../seeder
 ln -sf "${BUILD_DIR}/pioneer" ../pioneer
-ln -sf "${BUILD_DIR}/pipeline" ../pipeline
+ln -sf "${BUILD_DIR}/hayroll" ../hayroll
 # Rust binaries are in debug subdirectory
 ln -sf "${BUILD_DIR}/debug/reaper" ../reaper
 

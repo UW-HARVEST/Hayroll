@@ -22,18 +22,29 @@ int main(const int argc, const char* argv[])
 
     spdlog::set_level(spdlog::level::info);
 
-    // Take two arguments
-    // 1. Path to the compile_commands.json file.
-    // 2. Output directory.
-    if (argc != 3)
+    std::filesystem::path compileCommandsJsonPath;
+    std::filesystem::path outputDir;
+
+    if (std::string(argv[1]) == "transpile" && argc == 5)
+    {
+        // c2rust-style input format
+        compileCommandsJsonPath = std::filesystem::path(argv[2]) / "compile_commands.json";
+        outputDir = argv[4];
+    }
+    else if (std::string(argv[1]) != "transpile" && argc == 3)
+    {
+        // Original input format
+        compileCommandsJsonPath = argv[1];
+        outputDir = argv[2];
+    }
+    else
     {
         std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory>" << std::endl;
+        std::cerr << "   or: " << argv[0] << " transpile <path_to_folder_including_compile_commands.json> -o|--output-dir <output_directory>" << std::endl;
         return 1;
     }
 
-    std::filesystem::path compileCommandsJsonPath = argv[1];
     compileCommandsJsonPath = std::filesystem::canonical(compileCommandsJsonPath);
-    std::filesystem::path outputDir = argv[2];
     // Wipe the output directory if it exists
     if (std::filesystem::exists(outputDir))
     {
