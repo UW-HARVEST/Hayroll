@@ -716,7 +716,7 @@ fn main() -> Result<()> {
         .fold(Vec::new(), |mut acc, seed| {
             if seed.tag["astKind"] == "Expr" {
                 acc.push(HayrollRegion::Expr(seed.clone()));
-            } else if seed.tag["astKind"] == "Stmt" && seed.tag["begin"] == true {
+            } else if (seed.tag["astKind"] == "Stmt" || seed.tag["astKind"] == "Stmts") && seed.tag["begin"] == true {
                 acc.push(HayrollRegion::Span(seed.clone(), seed.clone())); // For now seedBegin == seedEnd
             } else if seed.tag["begin"] == false {
                 // Search through the acc to find the begin stmt with the same locInv

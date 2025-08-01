@@ -46,23 +46,21 @@ int main(int argc, char **argv)
     ]
     )";
     json compileCommandsJson = json::parse(compileCommandsStr);
+
+    MakiWrapper::CodeIntervalAnalysisTask codeIntervelAnalysisTask = 
+    {
+        .name = "Test Interval",
+        .beginLine = 18,
+        .beginCol = 1,
+        .endLine = 21,
+        .endCol = 1,
+        .extraInfo = "This is a test code interval for Maki analysis."
+    };
     
     std::vector<CompileCommand> compileCommands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
+    std::vector<MakiWrapper::CodeIntervalAnalysisTask> codeIntervals = {codeIntervelAnalysisTask};
 
-    std::string cpp2cStr = MakiWrapper::runCpp2c
-    (
-        compileCommands[0],
-        LibmcsDir,
-        16
-    );
-
-    std::cout << "Maki cpp2c output:\n" << cpp2cStr << std::endl;
-
-    std::string cpp2cCuStr = MakiWrapper::runCpp2cOnCu
-    (
-        compileCommands[0],
-        16
-    );
+    std::string cpp2cCuStr = MakiWrapper::runCpp2cOnCu(compileCommands[0], codeIntervals);
 
     std::cout << "Maki cpp2c on CU output:\n" << cpp2cCuStr << std::endl;
 

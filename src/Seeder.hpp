@@ -105,9 +105,8 @@ public:
         return fmt::format("{}:{}:{}", path.string(), line, col);
     }
 
-    // Tag structure to hold the information about the instrumentation task.
-    // This maps to the JSON structure in the .cpp2c invocation summary file.
-    // They will be serialized into C strings and embedded into the C code.
+    // Tag structure to be serialized and instrumented into C code
+    // Contains necessary information for Hayroll Reaper on the Rust side to reconstruct macros
     struct Tag
     {
         bool hayroll = true;
@@ -306,7 +305,7 @@ public:
                 tasks.push_back(taskRight);
             }
         }
-        else if (astKind == "Stmt")
+        else if (astKind == "Stmt" || astKind == "Stmts")
         {
             // Template:
             // {*tagBegin;ORIGINAL_INVOCATION;*tagEnd;}
@@ -336,6 +335,28 @@ public:
             };
             tasks.push_back(taskLeft);
             tasks.push_back(taskRight);
+        }
+        else if (astKind == "Decl" || astKind == "Decls")
+        {
+            // Template:
+            // const char * HAYROLL_TAG_FOR_<ORIGINAL_INVOCATION> = tagBegin;\n
+            InstrumentationTask taskLeft
+            {
+                .line = line,
+                .col = col,
+                .str = 
+                (
+                    std::stringstream()
+                    << "const char * HAYROLL_TAG_FOR_"
+                    << name
+                    << " = "
+                    << tagBegin.stringLiteral()
+                    << ";\n"
+                ).str()
+            };
+            tasks.push_back(taskLeft);
+            // Only one tag per declaration(s).
+            // Reaper will make use of #[c2rust::src_loc = "ln:col"] attribute to locate the declaration.
         }
         else if (astKind == "Debug")
         {
@@ -423,7 +444,7 @@ public:
         std::string Name;
         std::string DefinitionLocation;
         std::string InvocationLocation;
-        std::string ASTKind; // ['Decl', 'Stmt', 'TypeLoc', 'Expr']
+        std::string ASTKind; // {"Expr", "Stmt", "Stmts", "Decl", "Decls", "TypeLoc", "Debug"}
         std::string TypeSignature;
         int InvocationDepth;
         int NumASTRoots;
@@ -617,7 +638,7 @@ public:
             assert(hasSemanticData());
             return 
                 // Functions must be stmts or expressions
-                (ASTKind == "Stmt" || ASTKind == "Expr")
+                (ASTKind == "Stmt" || ASTKind == "Stmts" || ASTKind == "Expr")
                 // Functions cannot be invoked where ICEs are required
                 && !IsInvokedWhereICERequired;
         }
@@ -836,7 +857,7 @@ public:
             invocation.DefinitionLocation.empty()
             || invocation.Name.empty()
             || invocation.ASTKind.empty()
-            || invocation.ReturnType.empty()
+            // || invocation.ReturnType.empty() // Decl and Decls may not have a return type
             || invocation.InvocationLocation.empty()
             || invocation.InvocationLocationEnd.empty()
         )
@@ -844,8 +865,8 @@ public:
             return false;
         }
         auto [path, line, col] = parseLocation(invocation.InvocationLocation);
-        // If ASTKind is not "Expr" or "Stmt", skip it.
-        if (invocation.ASTKind != "Expr" && invocation.ASTKind != "Stmt")
+        constexpr static std::string_view validASTKinds[] = {"Expr", "Stmt", "Stmts", "Decl", "Decls"};
+        if (std::find(std::begin(validASTKinds), std::end(validASTKinds), invocation.ASTKind) == std::end(validASTKinds))
         {
             return false;
         }

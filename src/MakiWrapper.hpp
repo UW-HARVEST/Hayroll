@@ -24,10 +24,50 @@ public:
     static std::filesystem::path MakiLibcpp2cPath;
     static std::filesystem::path MakiAnalysisScriptPath;
 
+    // Extra code interval to require Maki to analyze.
+    // Used for conditional compilation intervals.
+    struct CodeIntervalAnalysisTask
+    {
+        std::string name;
+        int beginLine;
+        int beginCol;
+        int endLine;
+        int endCol;
+        std::string extraInfo;
+
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeIntervalAnalysisTask, name, beginLine, beginCol, endLine, endCol, extraInfo)
+    };
+
+    // Automatically aggregate each compile command into a single compilation unit file,
+    // erase its line markers, and save it to a temporary directory.
+    // and then run Maki's cpp2c on it.
+    // This gives an absolute line:col number w.r.t. the CU file.
+    static std::string runCpp2cOnCu
+    (
+        const CompileCommand & compileCommand,
+        const std::vector<CodeIntervalAnalysisTask> & codeIntervals = {},
+        int numThreads = 16
+    )
+    {
+        TempDir cuDir;
+        std::filesystem::path cuDirPath = cuDir.getPath();
+        // Update the command to use the CU file as the source
+        std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(compileCommand);
+        std::string cuNolmStr = LinemarkerEraser::run(cuStr);
+        CompileCommand newCompileCommand = compileCommand
+            .withUpdatedDirectory(cuDirPath)
+            .withUpdatedExtension(".cu.c");
+        saveStringToFile(cuNolmStr, newCompileCommand.file);
+
+        return runCpp2c(newCompileCommand, cuDirPath, codeIntervals, numThreads);
+    }
+
+private:
     static std::string runCpp2c
     (
         const CompileCommand & compileCommand,
         std::filesystem::path projDir,
+        const std::vector<CodeIntervalAnalysisTask> & codeIntervals = {},
         int numThreads = 16
     )
     {
@@ -35,10 +75,11 @@ public:
         // ../Maki/evaluation/analyze_macro_invocations_in_program.py "../Maki/build/lib/libcpp2c.so" "./compile_commands.json" "./" "./macro_invocation_analyses/" 16
         // <script> <cpp2c.so> <compileCommandsJsonPath> <projDir> <outputDir> <numThreads>
 
-        TempDir compileCommandsDir;
+        TempDir tempDir;
         // This is fake, just so that Maki reads compile_commands.json from the current directory.
-        std::filesystem::path compileCommandsDirPath = compileCommandsDir.getPath();
-        std::filesystem::path compileCommandsPath = compileCommandsDirPath / "compile_commands.json";
+        std::filesystem::path tempDirPath = tempDir.getPath();
+        std::filesystem::path compileCommandsPath = tempDirPath / "compile_commands.json";
+        std::filesystem::path codeIntervalsPath = tempDirPath / "code_intervals.json";
         // Write compile_commands.json to projDir
         saveStringToFile
         (
@@ -48,31 +89,52 @@ public:
         SPDLOG_DEBUG("Saved compile_commands.json to: {}\n content:\n{}",
                      compileCommandsPath.string(),
                      CompileCommand::compileCommandsToJson({compileCommand}).dump(4));
+
+        // Write code intervals to a file if provided
+        if (!codeIntervals.empty())
+        {
+            nlohmann::json codeIntervalsJson = nlohmann::json(codeIntervals);
+            saveStringToFile(codeIntervalsJson.dump(4), codeIntervalsPath);
+            SPDLOG_DEBUG("Saved code_intervals.json to: {}\n content:\n{}",
+                         codeIntervalsPath.string(),
+                         codeIntervalsJson.dump(4));
+        }
         
         projDir = std::filesystem::canonical(projDir);
         
         TempDir outputDir;
 
-        SPDLOG_DEBUG
-        (
-            "Issuing command: {} {} {} {} {} {}",
+        std::vector<std::string> args =
+        {
             MakiAnalysisScriptPath.string(),
             MakiLibcpp2cPath.string(),
             compileCommandsPath.string(),
             projDir.string(),
             outputDir.getPath().string(),
             std::to_string(numThreads)
+        };
+
+        if (!codeIntervals.empty())
+        {
+            args.push_back(codeIntervalsPath.string());
+        }
+
+        SPDLOG_DEBUG
+        (
+            "Issuing command: {}",
+            [&args]() {
+                std::ostringstream oss;
+                for (size_t i = 0; i < args.size(); ++i) {
+                    if (i > 0) oss << " ";
+                    oss << args[i];
+                }
+                return oss.str();
+            }()
         );
+        
         subprocess::Popen cpp2c
         (
-            {
-                MakiAnalysisScriptPath.string(),
-                MakiLibcpp2cPath.string(),
-                compileCommandsPath.string(),
-                projDir.string(),
-                outputDir.getPath().string(),
-                std::to_string(numThreads)
-            },
+            args,
             subprocess::output{subprocess::PIPE},
             subprocess::error{subprocess::PIPE}
         );
@@ -100,29 +162,6 @@ public:
         }
 
         return cpp2cStr;
-    }
-
-    // Automatically aggregate each compile command into a single compilation unit file,
-    // erase its line markers, and save it to a temporary directory.
-    // and then run Maki's cpp2c on it.
-    // This gives an absolute line:col number w.r.t. the CU file.
-    static std::string runCpp2cOnCu
-    (
-        const CompileCommand & compileCommand,
-        int numThreads = 16
-    )
-    {
-        TempDir cuDir;
-        std::filesystem::path cuDirPath = cuDir.getPath();
-        // Update the command to use the CU file as the source
-        std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(compileCommand);
-        std::string cuNolmStr = LinemarkerEraser::run(cuStr);
-        CompileCommand newCompileCommand = compileCommand
-            .withUpdatedDirectory(cuDirPath)
-            .withUpdatedExtension(".cu.c");
-        saveStringToFile(cuNolmStr, newCompileCommand.file);
-
-        return runCpp2c(newCompileCommand, cuDirPath, numThreads);
     }
 };
 

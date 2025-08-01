@@ -229,3 +229,5 @@ The final expansion result should not have any "no further expansion" identifier
 ./hayroll transpile /home/hurrypeng/libmcs/ -o ./output/ &> trace.txt
 ./hayroll /home/hurrypeng/libmcs/compile_commands_4.json ./output/ &> trace.txt
 ./hayroll /home/hurrypeng/libmcs/compile_commands_130.json ./output/ &> trace.txt
+
+./hayroll /home/hurrypeng/Maki/compile_commands.json ./output/ &> trace.txt

@@ -147,11 +147,11 @@ struct CompileCommand
             CompileCommand command;
             command.arguments = item["arguments"].get<std::vector<std::string>>();
             command.directory = item["directory"].get<std::filesystem::path>();
-            command.directory = std::filesystem::canonical(command.directory);
+            command.directory = std::filesystem::weakly_canonical(command.directory);
             command.file = item["file"].get<std::filesystem::path>();
-            command.file = std::filesystem::canonical(command.file);
+            command.file = std::filesystem::weakly_canonical(command.file);
             command.output = item["output"].get<std::filesystem::path>();
-            command.output = std::filesystem::canonical(command.output);
+            command.output = std::filesystem::weakly_canonical(command.output);
             commands.push_back(command);
         }
 

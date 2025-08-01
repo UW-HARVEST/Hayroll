@@ -91,23 +91,6 @@ int main(const int argc, const char* argv[])
         SPDLOG_INFO("Source file {} copied to: {}", srcPath.string(), outputPath.string());
     }
 
-    // Analyze macro invocations using Maki
-    // compileCommands + src --Maki-> cpp2cStr
-
-    std::vector<std::string> cpp2cStrs;
-    for (const CompileCommand & command : compileCommands)
-    {
-        std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command);
-        CompileCommand outputCommand = command
-            .withUpdatedDirectory(outputDir)
-            .withUpdatedExtension(".cpp2c");
-        std::filesystem::path outputPath = outputCommand.file;
-        saveStringToFile(cpp2cStr, outputPath);
-        SPDLOG_INFO("Maki cpp2c output for {} saved to: {}", command.file.string(), outputPath.string());
-        cpp2cStrs.push_back(cpp2cStr);
-    }
-    assert(cpp2cStrs.size() == numTasks);
-
     // Aggregate sources into compilation units
     // compileCommands + src --clang-frewrite-includes-> cuStrs
 
@@ -163,6 +146,23 @@ int main(const int argc, const char* argv[])
     }
     assert(lineMaps.size() == numTasks);
     assert(inverseLineMaps.size() == numTasks);
+
+    // Analyze macro invocations using Maki
+    // compileCommands + src --Maki-> cpp2cStr
+
+    std::vector<std::string> cpp2cStrs;
+    for (const CompileCommand & command : compileCommands)
+    {
+        std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command);
+        CompileCommand outputCommand = command
+            .withUpdatedDirectory(outputDir)
+            .withUpdatedExtension(".cpp2c");
+        std::filesystem::path outputPath = outputCommand.file;
+        saveStringToFile(cpp2cStr, outputPath);
+        SPDLOG_INFO("Maki cpp2c output for {} saved to: {}", command.file.string(), outputPath.string());
+        cpp2cStrs.push_back(cpp2cStr);
+    }
+    assert(cpp2cStrs.size() == numTasks);
 
     // Hayroll Seeder
     // compileCommands + cuStrs + includeTree + premiseTree --Seeder-> seed
@@ -227,7 +227,7 @@ int main(const int argc, const char* argv[])
     assert(reaperStrs.size() == numTasks);
 
     // Print final results
-    SPDLOG_INFO("Hayroll Pipeline completed. See output directory: {}", outputDir.string());
+    SPDLOG_INFO("Hayroll pipeline completed. See output directory: {}", outputDir.string());
 
     return 0;
 }

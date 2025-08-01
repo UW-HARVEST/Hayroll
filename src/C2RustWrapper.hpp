@@ -60,6 +60,7 @@ public:
             "Issuing command: {} {} {} {} {}",
             C2RustExe.string(),
             "transpile",
+            "--reorganize-definitions",
             compileCommandsPath.string(),
             "--output-dir", outputDirPath.string()
         );
@@ -69,6 +70,7 @@ public:
             {
                 C2RustExe.string(),
                 "transpile",
+                "--reorganize-definitions",
                 compileCommandsPath.string(),
                 "--output-dir", outputDirPath.string()
             },
