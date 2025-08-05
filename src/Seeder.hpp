@@ -175,6 +175,18 @@ public:
         auto [includeTree, srcLine] = inverseLineMap[line];
         auto [includeTreeEnd, srcLineEnd] = inverseLineMap[lineEnd];
         assert(includeTree == includeTreeEnd);
+        if (!includeTree)
+        {
+            // This code section was copied from a header file which was concretely executed
+            // by Hayroll Pioneer, so the include tree is not available.
+            // We don't instrument this code section.
+            SPDLOG_DEBUG
+            (
+                "Skipping instrumentation for {}: {}:{} (no include tree)",
+                name, path.string(), srcLine
+            );
+            return {};
+        }
 
         std::filesystem::path srcPath = includeTree->path;
 
@@ -200,6 +212,15 @@ public:
             );
             auto [declPath, declLine, declCol] = parseLocation(locDecl);
             auto [declIncludeTree, declSrcLine] = inverseLineMap[declLine];
+            if (!declIncludeTree)
+            {
+                SPDLOG_DEBUG
+                (
+                    "Skipping locDecl translation for {}: {} (no include tree)",
+                    name, locDecl
+                );
+                return {};
+            }
             std::filesystem::path declSrcPath = declIncludeTree->path;
             srcLocDecl = makeLocation(declSrcPath, declSrcLine, declCol);
             SPDLOG_DEBUG
