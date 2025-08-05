@@ -49,10 +49,10 @@ void saveStringToFile(std::string_view content, const std::filesystem::path & pa
     // Create parent directories if they do not exist
     std::filesystem::create_directories(path.parent_path());
 
-    // Warn if writing into LibmcsDir
-    if (path.string().starts_with(LibmcsDir.string()))
+    // Warn if writing into LibmcsDir/libm
+    if (path.string().starts_with((LibmcsDir / "libm").string()))
     {
-        throw std::runtime_error("Error: Attempting to write into LibmcsDir, which may be unintended. Please check the path: " + path.string());
+        SPDLOG_WARN("Writing into LibmcsDir/libm: {}", path.string());
     }
 
     std::ofstream file(path);
