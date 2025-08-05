@@ -16,6 +16,7 @@
 #include <fstream>
 #include <algorithm>
 
+#include <spdlog/spdlog.h>
 #include <z3++.h>
 
 namespace Hayroll
