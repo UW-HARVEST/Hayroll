@@ -196,7 +196,8 @@ This command creates a `compile_commands.json` file of this form:
 #### Remove some entries from `compile_commands.json`
 
 LibmCS uses complex numbers, but c2rust does not have full support for complex numbers.
-Therefore, delete entries in `compile_commands.json` that point to source files under `libm/complexf/`.
+If you installed and configured LibmCS via `prerequisites.bash`, it is expected that no entires in `compile_commands.json` should point to source files under `libm/complexf/`.
+In case you configured it manually, please remove such entries.
 
 #### Run Hayroll
 
