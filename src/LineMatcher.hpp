@@ -82,7 +82,7 @@ public:
                 .childByFieldId(lang.preproc_line_s.filename_f)
                 .childByFieldId(lang.string_literal_s.content_f)
                 .textView();
-            std::filesystem::path lastCanonicalPath = includeResolver.resolveUserInclude(lastPath, lastIncludeTree->getAncestorDirs());
+            std::filesystem::path lastCanonicalPath = *includeResolver.resolveUserInclude(lastPath, lastIncludeTree->getAncestorDirs());
             if (lastCanonicalPath != lastIncludeTree->path)
             {
                 // We are in a file that was concretely executed, and thus not in the include tree.
@@ -125,7 +125,7 @@ public:
                 .childByFieldId(lang.preproc_line_s.filename_f)
                 .childByFieldId(lang.string_literal_s.content_f)
                 .textView();
-            std::filesystem::path thisCanonicalPath = includeResolver.resolveUserInclude(thisPath, lastIncludeTree->getAncestorDirs());
+            std::filesystem::path thisCanonicalPath = *includeResolver.resolveUserInclude(thisPath, lastIncludeTree->getAncestorDirs());
             if (thisFlag == 1)
             {
                 // Jump into a new file

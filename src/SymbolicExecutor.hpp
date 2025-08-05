@@ -626,9 +626,10 @@ public:
             assert(stringContentNode.isSymbol(lang.string_content_s));
             std::string_view pathStr = stringContentNode.textView();
 
-            std::filesystem::path includePath = includeResolver.resolveInclude(isSystemInclude, pathStr, includeTree->getAncestorDirs());
-            if (includePath.empty()) return {}; // Include not found, process as error.
-            else if (includePath.string().starts_with(projPath.string())) // Header is in project path, execute symbolically. 
+            std::optional<std::filesystem::path> optionalIncludePath = includeResolver.resolveInclude(isSystemInclude, pathStr, includeTree->getAncestorDirs());
+            if (!optionalIncludePath) return {}; // Include not found, process as error.
+            std::filesystem::path includePath = *optionalIncludePath;
+            if (includePath.string().starts_with(projPath.string())) // Header is in project path, execute symbolically. 
             {
                 // Include found, add it to the AST bank and create a new state for it.
                 const TSTree & tree = astBank.addFileOrFind(includePath);

@@ -52,7 +52,7 @@ int main(int argc, char **argv)
     for (const auto & [isSystemInclude, includeName] : includes)
     {
         auto ancestorDirs = includeNode->getAncestorDirs();
-        auto includePath = resolver.resolveInclude(isSystemInclude, includeName, ancestorDirs);
+        auto includePath = *resolver.resolveInclude(isSystemInclude, includeName, ancestorDirs);
         std::cout << "Resolved include path: " << includePath << std::endl;
         includeNode->addChild(TSNode{}, includePath);
         includeNode = includeNode->children[TSNode{}];

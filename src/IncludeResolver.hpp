@@ -33,7 +33,7 @@ public:
     // Resolve an include path using the given C compiler
     // Parent paths are also necessary for user includes
     // You can generate that with InludeTree::getAncestorDirs()
-    std::filesystem::path resolveInclude
+    std::optional<std::filesystem::path> resolveInclude
     (
         bool isSystemInclude,
         std::string_view includeName,
@@ -98,15 +98,20 @@ public:
         SPDLOG_DEBUG("Include hierarchy:\n{}", hierarchy);
 
         std::string includePath = parseStubIncludePath(hierarchy);
+        if (includePath.empty())
+        {
+            SPDLOG_DEBUG("Include path not found for: {}", includeName);
+            return std::nullopt; // Include not found
+        }
         return std::filesystem::canonical(includePath);
     }
 
-    std::filesystem::path resolveSystemInclude(std::string_view includeName) const
+    std::optional<std::filesystem::path> resolveSystemInclude(std::string_view includeName) const
     {
         return resolveInclude(true, includeName, {});
     }
 
-    std::filesystem::path resolveUserInclude
+    std::optional<std::filesystem::path> resolveUserInclude
     (
         std::string_view includeName, 
         const std::vector<std::filesystem::path> & parentPaths
