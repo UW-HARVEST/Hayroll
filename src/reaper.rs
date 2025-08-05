@@ -10,7 +10,6 @@ use serde_json::{self, value};
 use syntax::{ast::{self, SourceFile}, syntax_editor::Element, ted::{self, Position}, AstNode, AstToken, SyntaxElement, SyntaxNode, SyntaxToken, T};
 use vfs::FileId;
 use std::fs;
-use hir;
 
 // Create an AST node from a string
 fn ast_from_text<N: AstNode>(text: &str) -> N {
@@ -43,7 +42,7 @@ fn get_dollar_token_mut() -> SyntaxToken {
     dollar_token_mut
 }
 
-// HayrollSeed is a tagged literal in the source code
+// HayrollSeed is a tag literal in the source code
 #[derive(Clone)]
 struct HayrollSeed {
     literal: ast::Literal,
@@ -262,6 +261,7 @@ enum CodeRegion {
 }
 
 impl CodeRegion {
+    #[allow(dead_code)]
     fn make_immutable(&self) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(expr.clone_subtree()),
@@ -326,7 +326,7 @@ impl CodeRegion {
     }
 
     // Returns a vector of syntax elements that represent the code region.
-    // This is to provide a unified way of iterating over the code region, wehter it's a single expression or a span of statements.
+    #[allow(dead_code)]
     fn syntax_element_vec(&self) -> Vec<SyntaxElement> {
         match self {
             CodeRegion::Expr(expr) => vec![expr.syntax().syntax_element().clone()],
@@ -387,6 +387,7 @@ impl std::fmt::Display for CodeRegion {
 }
 
 // HayrollMacroInv is a macro invocation in AST representation
+// It contains the CodeRegion of the expansion range and the CodeRegions of the arguments
 #[derive(Clone)]
 struct HayrollMacroInv {
     region: HayrollRegion,
@@ -583,6 +584,7 @@ impl HayrollMacroDB {
 }
 
 // Takes a node and returns the parent node until the parent node satisfies the condition
+#[allow(dead_code)]
 fn ancestor_until(node: SyntaxNode, condition: fn(SyntaxNode) -> bool) -> Option<SyntaxNode> {
     let mut node = node;
     while !condition(node.clone()) {
@@ -641,11 +643,11 @@ fn main() -> Result<()> {
     // Print consumed time, tag "db"
     let duration = start.elapsed();
     println!("Time elapsed in db is: {:?}", duration);
-    
-    let sema = &hir::Semantics::new(&db);
-    // Print consumed time, tag "sema"
-    let duration = start.elapsed();
-    println!("Time elapsed in sema is: {:?}", duration);
+
+    // let sema = &hir::Semantics::new(&db);
+    // // Print consumed time, tag "sema"
+    // let duration = start.elapsed();
+    // println!("Time elapsed in sema is: {:?}", duration);
 
     let mut syntax_roots: HashMap<FileId, (SourceFile, Option<SourceChangeBuilder>)> = db.local_roots().iter()
         .flat_map(|&srid| db.source_root(srid).iter().collect::<Vec<_>>())
@@ -666,6 +668,12 @@ fn main() -> Result<()> {
     // Print consumed time, tag "syntax_roots"
     let duration = start.elapsed();
     println!("Time elapsed in syntax_roots is: {:?}", duration);
+
+    println!("Found {} Rust files in the workspace", syntax_roots.len());
+    // Print all filenames in the workspace
+    for (file_id, (_root, _)) in &syntax_roots {
+        println!("File: {}", vfs.file_path(*file_id));
+    }
 
     let hayroll_seeds: Vec<HayrollSeed> = syntax_roots
         .iter()
@@ -688,16 +696,6 @@ fn main() -> Result<()> {
                     println!("Byte String: {}, Tag: {:?}", content, tag);
                     if let Ok(tag) = tag {
                         if tag["hayroll"] == true {
-                            let mut hrs: HayrollSeed = HayrollSeed {
-                                literal: ast::Literal::cast(element.parent()?)?,
-                                tag: tag.clone(),
-                                file_id: file_id.clone(),
-                            };
-                            hrs = (&mut HayrollSeed {
-                                literal: ast::Literal::cast(element.parent()?)?,
-                                tag: tag.clone(),
-                                file_id: file_id.clone(),
-                            }).clone();
                             return Some(HayrollSeed {
                                 literal: ast::Literal::cast(element.parent()?)?,
                                 tag,
@@ -710,6 +708,25 @@ fn main() -> Result<()> {
             None
         })
         .collect();
+
+    // Collect from source code all annotations like #[c2rust::src_loc = "9:1"]
+    let annotations: Vec<String> = syntax_roots
+        .iter()
+        .flat_map(|(_file_id, (root, _))| {
+            root.syntax().descendants()
+            // Attatch a file_id to each node
+            .map(move |node| node)
+        })
+        .filter_map(|node| {
+            ast::Attr::cast(node)
+                .and_then(|attr| attr.meta())
+                .and_then(|meta| meta.expr())
+                .map(|expr| expr.to_string())
+        })
+        .collect();
+
+    // Print all annotations
+    println!("Annotations: {:?}", annotations);
 
     // Pair up stmt hayroll_literals that are in the same scope and share the locInv in info
     let hayroll_regions : Vec<HayrollRegion> = hayroll_seeds.iter()
@@ -812,7 +829,7 @@ fn main() -> Result<()> {
 
     // For each macro db entry, generate a new macro/func definition and add that to the top/bottom of the file
     // For each macro invocation, replace the invocation with a macro/func call
-    for (loc_decl, hayroll_macros) in hayroll_macro_db.map.iter() {
+    for (_loc_decl, hayroll_macros) in hayroll_macro_db.map.iter() {
         // There is at least one macro invocation for each locDecl
         let hayroll_macro_inv = &hayroll_macros[0];
         let (syntax_root, builder) = syntax_roots.get_mut(&hayroll_macro_inv.region.file_id()).unwrap();
