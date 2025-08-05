@@ -115,7 +115,7 @@ files to Rust files, with macros (partially) preserving their
 structure.
 
 ```
- ./hayroll <path_to_compile_commands.json> <output_directory>
+ <path_to_Hayroll>/hayroll <path_to_compile_commands.json> <output_directory>
 ```
 
 ### Output
@@ -193,10 +193,10 @@ This command creates a `compile_commands.json` file of this form:
 ]
 ```
 
-#### Remove some entires from `compile_commands.json`
+#### Remove some entries from `compile_commands.json`
 
 LibmCS uses complex numbers, but c2rust does not have full support for complex numbers.
-Therefore, delete entires in `compile_commands.json` that point to source files under `libm/complexf/`.
+Therefore, delete entries in `compile_commands.json` that point to source files under `libm/complexf/`.
 
 #### Run Hayroll
 
