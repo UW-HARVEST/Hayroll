@@ -21,17 +21,8 @@ struct CompileCommand
     std::vector<std::string> arguments;
     std::filesystem::path directory;
     std::filesystem::path file;
-    std::filesystem::path output;
 
-    nlohmann::json toJson() const
-    {
-        nlohmann::json jsonCommand;
-        jsonCommand["arguments"] = arguments;
-        jsonCommand["directory"] = directory.string();
-        jsonCommand["file"] = file.string();
-        jsonCommand["output"] = output.string();
-        return jsonCommand;
-    }
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(CompileCommand, arguments, directory, file)
 
     std::vector<std::filesystem::path> getIncludePaths() const
     {
@@ -67,8 +58,6 @@ struct CompileCommand
         CompileCommand updatedCommand = *this;
         std::filesystem::path relativeFile = std::filesystem::relative(this->file, this->directory);
         updatedCommand.file = newDirectory / relativeFile;
-        std::filesystem::path relativeOutput = std::filesystem::relative(this->output, this->directory);
-        updatedCommand.output = newDirectory / relativeOutput;
         updatedCommand.directory = newDirectory;
         return updatedCommand;
     }
@@ -150,8 +139,6 @@ struct CompileCommand
             command.directory = std::filesystem::weakly_canonical(command.directory);
             command.file = item["file"].get<std::filesystem::path>();
             command.file = std::filesystem::weakly_canonical(command.file);
-            command.output = item["output"].get<std::filesystem::path>();
-            command.output = std::filesystem::weakly_canonical(command.output);
             commands.push_back(command);
         }
 
@@ -163,7 +150,7 @@ struct CompileCommand
         nlohmann::json jsonCommands = nlohmann::json::array();
         for (const auto & command : commands)
         {
-            jsonCommands.push_back(command.toJson());
+            jsonCommands.push_back(command);
         }
         return jsonCommands;
     }

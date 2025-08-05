@@ -43,7 +43,7 @@ int main(int argc, char **argv)
             "output": ")" + LibmcsDir.string() + R"(/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o"
         }
     ]
-    )";
+    )"; // output is optional
     json compileCommandsJson = json::parse(compileCommandsStr);
 
     std::vector<CompileCommand> commands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
@@ -51,7 +51,6 @@ int main(int argc, char **argv)
     CompileCommand &command = commands[0];
     assert(command.directory == LibmcsDir);
     assert(command.file == LibmcsDir / "libm/mathf/sinhf.c");
-    assert(command.output == LibmcsDir / "build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o");
     std::vector<std::filesystem::path> includePaths = command.getIncludePaths();
     assert(includePaths.size() == 5);
     assert(includePaths[0] == LibmcsDir); // Include the command's directory as well.
@@ -65,12 +64,10 @@ int main(int argc, char **argv)
         .withUpdatedExtension(".cu.c");
     assert(updatedCommandCu.directory == "/tmp/hayroll");
     assert(updatedCommandCu.file == "/tmp/hayroll/libm/mathf/sinhf.cu.c");
-    assert(updatedCommandCu.output == "/tmp/hayroll/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o");
 
     CompileCommand updatedCommandSeedCu = updatedCommandCu.withUpdatedExtension(".seed.cu.c");
     assert(updatedCommandSeedCu.directory == "/tmp/hayroll");
     assert(updatedCommandSeedCu.file == "/tmp/hayroll/libm/mathf/sinhf.seed.cu.c");
-    assert(updatedCommandSeedCu.output == "/tmp/hayroll/build-x86_64-linux-gnu/obj/libm/mathf/sinhf.o");
 
     return 0;
 }

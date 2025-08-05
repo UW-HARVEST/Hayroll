@@ -160,10 +160,10 @@ target_link_libraries(hayroll PRIVATE
 # Rust
 
 add_custom_target(
-    analyzer ALL
+    Rust ALL
     COMMAND CARGO_TARGET_DIR=${CMAKE_SOURCE_DIR}/build/ cargo build
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Building Rust analyzer binary"
+    COMMENT "Building Rust binaries"
 )
 
 # Testing
