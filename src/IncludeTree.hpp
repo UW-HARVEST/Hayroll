@@ -128,10 +128,9 @@ public:
             {
                 ss << std::format
                 (
-                    "{}:{}:{}",
+                    "{}:{}",
                     parent->path.string(),
-                    includeNode.startPoint().row + 1,
-                    includeNode.startPoint().column + 1
+                    includeNode.startPoint().toString()
                 );
             }
             else
@@ -160,12 +159,7 @@ public:
             ss << node->path.string() << ":";
             if (prevIncludeNode)
             {
-                ss << std::format
-                (
-                    "{}:{}",
-                    prevIncludeNode.startPoint().row + 1,
-                    prevIncludeNode.startPoint().column + 1
-                );
+                ss << prevIncludeNode.startPoint().toString();
             }
             else
             {

@@ -29,7 +29,6 @@ namespace ts
 namespace Hayroll
 {
 
-using TSPoint = ts::TSPoint;
 using TSRange = ts::TSRange;
 using TSStateId = ts::TSStateId;
 using TSFieldId = ts::TSFieldId;
@@ -41,6 +40,32 @@ namespace TSUtils
     std::string freeCstrToString(const char *cstr);
     TSRange freeTSRangePtrToTSRange(const ts::TSRange *range);
 } // namespace TSUtils
+
+struct TSPoint : public ts::TSPoint
+{
+    TSPoint() = default;
+    TSPoint(uint32_t row, uint32_t column) : ts::TSPoint{row, column} {}
+    TSPoint(const ts::TSPoint & point) : ts::TSPoint{point} {}
+
+    operator std::string() const
+    {
+        return std::format("{}:{}", row + 1, column + 1);
+    }
+
+    std::string toString() const
+    {
+        return std::string(*this);
+    }
+
+    std::partial_ordering operator<=>(const TSPoint & other) const
+    {
+        if (row < other.row) return std::partial_ordering::less;
+        if (row > other.row) return std::partial_ordering::greater;
+        if (column < other.column) return std::partial_ordering::less;
+        if (column > other.column) return std::partial_ordering::greater;
+        return std::partial_ordering::equivalent;
+    }
+};
 
 class TSTreeCursor;
 class TSTreeCursorIterateChildren;

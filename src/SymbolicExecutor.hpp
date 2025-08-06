@@ -332,7 +332,12 @@ public:
             PremiseTree * premiseTreeNode = nullptr;
             z3::expr unexpandedPremise = ctx->bool_val(false);
             // defProgramPoint -> collectedNestedExpansionDefinitions
-            std::unordered_map<ProgramPoint, std::vector<TSNode>, ProgramPoint::Hasher> nestedExpansionUniformityChecker;
+            std::unordered_map
+            <
+                ProgramPoint,
+                std::pair<std::vector<TSNode>, z3::expr>,
+                ProgramPoint::Hasher
+            > nestedExpansionUniformityChecker;
             for (const State & state : states)
             {
                 const auto & [symbolTable, premise] = state;
@@ -356,15 +361,45 @@ public:
                         }
                         if (auto it = nestedExpansionUniformityChecker.find(defProgramPoint); it == nestedExpansionUniformityChecker.end())
                         {
-                            nestedExpansionUniformityChecker.emplace(defProgramPoint, std::move(nestedExpansionDefinitions));
+                            nestedExpansionUniformityChecker.emplace(defProgramPoint, std::make_pair(nestedExpansionDefinitions, premise));
                         }
                         else
                         {
                             // Check if the nested expansion definitions are the same.
-                            std::vector<TSNode> & existingDefinitions = it->second;
+                            std::vector<TSNode> & existingDefinitions = it->second.first;
+                            z3::expr & existingPremise = it->second.second;
                             if (existingDefinitions != nestedExpansionDefinitions)
                             {
-                                std::cerr << std::format("Warning: nested expansion definitions are not the same for token {} at {}.\n", name, programPoint.toString());
+                                std::string existingDefinitionsStr;
+                                for (const TSNode & def : existingDefinitions)
+                                {
+                                    existingDefinitionsStr += def.textView();
+                                    existingDefinitionsStr += "@";
+                                    existingDefinitionsStr += def.startPoint().toString();
+                                    existingDefinitionsStr += " ";
+                                }
+                                std::string nestedExpansionDefinitionsStr;
+                                for (const TSNode & def : nestedExpansionDefinitions)
+                                {
+                                    nestedExpansionDefinitionsStr += def.textView();
+                                    nestedExpansionDefinitionsStr += "@";
+                                    nestedExpansionDefinitionsStr += def.startPoint().toString();
+                                    nestedExpansionDefinitionsStr += " ";
+                                }
+                                SPDLOG_WARN
+                                (
+                                    "Nested expansion definitions for token {} at {} are not uniform across states:\n"
+                                    "Existing Premise: {}\n"
+                                    "Existing Definitions: {}\n"
+                                    "New Premise: {}\n"
+                                    "New Definitions: {}\n",
+                                    name,
+                                    token.startPoint().toString(),
+                                    simplifyOrOfAnd(existingPremise).to_string(),
+                                    existingDefinitionsStr,
+                                    simplifyOrOfAnd(premise).to_string(),
+                                    nestedExpansionDefinitionsStr
+                                );
                             }
                         }
                     }

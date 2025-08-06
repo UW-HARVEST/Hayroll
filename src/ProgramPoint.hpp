@@ -25,12 +25,10 @@ struct ProgramPoint
         if (!node) return std::format("{}:EOF", includeTree->path.string());
         return std::format
         (
-            "{}:{}:{}~{}:{} {}",
+            "{}:{}~{} {}",
             includeTree->path.string(),
-            node.startPoint().row + 1,
-            node.startPoint().column + 1,
-            node.endPoint().row + 1,
-            node.endPoint().column + 1,
+            node.startPoint().toString(),
+            node.endPoint().toString(),
             node.type()
         );
     }
