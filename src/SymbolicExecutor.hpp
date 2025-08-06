@@ -204,7 +204,7 @@ public:
     // The node(s) of the state(s) returned shall be either its next sibling or a null node.
     // A null node here means it reached the end of the block_items or translation_unit it is in. It does not mean EOF. 
     // The null node is meant to be handled by executeInLockStep and set to the meeting point.
-    Warp executeOne(Warp && startWarp)
+    std::optional<Warp> executeOne(Warp && startWarp)
     {
         // All possible node types:
         // preproc_if
@@ -331,7 +331,8 @@ public:
             std::string_view name = token.textView();
             PremiseTree * premiseTreeNode = nullptr;
             z3::expr unexpandedPremise = ctx->bool_val(false);
-            std::unordered_map<TSNode, std::vector<TSNode>, TSNode::Hasher> nestedExpansionUniformityChecker;
+            // defProgramPoint -> collectedNestedExpansionDefinitions
+            std::unordered_map<ProgramPoint, std::vector<TSNode>, ProgramPoint::Hasher> nestedExpansionUniformityChecker;
             for (const State & state : states)
             {
                 const auto & [symbolTable, premise] = state;
@@ -339,11 +340,13 @@ public:
                 {
                     if (std::holds_alternative<ObjectSymbol>(**symbol) || std::holds_alternative<FunctionSymbol>(**symbol))
                     {
+                        ProgramPoint defProgramPoint = symbolProgramPoint(**symbol);
+
                         if (!premiseTreeNode)
                         {
                             premiseTreeNode = scribe.createNode({includeTree, token}, ctx->bool_val(true));
                         }
-                        premiseTreeNode->disjunctMacroPremise(symbolProgramPoint(**symbol), premise);
+                        premiseTreeNode->disjunctMacroPremise(defProgramPoint, premise);
 
                         std::vector<TSNode> nestedExpansionDefinitions = macroExpander.collectNestedExpansionDefinitions(token, symbolTable);
                         SPDLOG_DEBUG("Nested expansion definitions for token {}", name);
@@ -351,9 +354,9 @@ public:
                         {
                             SPDLOG_DEBUG("  {}", nestedExpansion.textView());
                         }
-                        if (auto it = nestedExpansionUniformityChecker.find(token); it == nestedExpansionUniformityChecker.end())
+                        if (auto it = nestedExpansionUniformityChecker.find(defProgramPoint); it == nestedExpansionUniformityChecker.end())
                         {
-                            nestedExpansionUniformityChecker.emplace(token, std::move(nestedExpansionDefinitions));
+                            nestedExpansionUniformityChecker.emplace(defProgramPoint, std::move(nestedExpansionDefinitions));
                         }
                         else
                         {
@@ -606,7 +609,7 @@ public:
         else assert(false);
     }
 
-    Warp executeInclude(Warp && startWarp)
+    std::optional<Warp> executeInclude(Warp && startWarp)
     {
         // All possible node types:
         // preproc_include
@@ -627,7 +630,17 @@ public:
             std::string_view pathStr = stringContentNode.textView();
 
             std::optional<std::filesystem::path> optionalIncludePath = includeResolver.resolveInclude(isSystemInclude, pathStr, includeTree->getAncestorDirs());
-            if (!optionalIncludePath) return {}; // Include not found, process as error.
+            if (!optionalIncludePath)// Include not found, process as error.
+            {
+                z3::expr disallowed = ctx->bool_val(false);
+                for (const State & state : states)
+                {
+                    disallowed = disallowed || state.premise;
+                }
+                scribe.conjunctPremiseOntoRoot(!simplifyOrOfAnd(disallowed));
+                SPDLOG_DEBUG("Include not found: {}, disallowed premise: {}", pathStr, disallowed.to_string());
+                return std::nullopt;
+            }
             std::filesystem::path includePath = *optionalIncludePath;
             if (includePath.string().starts_with(projPath.string())) // Header is in project path, execute symbolically. 
             {
@@ -755,9 +768,9 @@ public:
             {
                 blockedWarps.push_back(std::move(warp));
             }
-            else
+            else if (auto result = executeOne(std::move(warp)); result)
             {
-                tasks.emplace_back(body, executeOne(std::move(warp)));
+                tasks.emplace_back(body, std::move(*result));
             }
         }
 

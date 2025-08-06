@@ -80,6 +80,19 @@ const ProgramPoint & symbolProgramPoint(const Symbol & symbol)
     else assert(false);
 }
 
+const TSNode & symbolBody(const Symbol & symbol)
+{
+    if (std::holds_alternative<ObjectSymbol>(symbol))
+    {
+        return std::get<ObjectSymbol>(symbol).body;
+    }
+    else if (std::holds_alternative<FunctionSymbol>(symbol))
+    {
+        return std::get<FunctionSymbol>(symbol).body;
+    }
+    else assert(false);
+}
+
 class SymbolSegment;
 using SymbolSegmentPtr = std::shared_ptr<SymbolSegment>;
 using ConstSymbolSegmentPtr = std::shared_ptr<const SymbolSegment>;

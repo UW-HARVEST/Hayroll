@@ -7,6 +7,7 @@
 #include <variant>
 #include <ranges>
 #include <map>
+#include <algorithm>
 
 #include <z3++.h>
 
@@ -424,44 +425,47 @@ public:
         const ConstSymbolTablePtr & symbolTable
     )
     {
-        if (!token.isSymbol(lang.identifier_s)) return {};
+        std::vector<TSNode> collection;
+        std::vector<TSNode> workList = {token};
 
-        std::string_view name = token.textView();
-        std::optional<const Hayroll::Symbol *> symbol = symbolTable->lookup(name);
-        if (symbol.has_value())
+        while (!workList.empty())
         {
-            const Symbol & sym = *symbol.value();
-            if (std::holds_alternative<ObjectSymbol>(sym))
+            TSNode current = workList.back();
+            workList.pop_back();
+
+            if (!current.isSymbol(lang.identifier_s)) continue;
+
+            // Break recursion if the token is already collected
+            if (std::find(collection.begin(), collection.end(), current) != collection.end())
             {
-                const ObjectSymbol & objSymbol = std::get<ObjectSymbol>(sym);
-                const TSNode & body = objSymbol.body;
-                std::vector<TSNode> definitions = {token};
-                for (const TSNode & token : body.iterateChildren())
+                continue;
+            }
+
+            std::optional<const Hayroll::Symbol *> symbol = symbolTable->lookup(current.textView());
+            if (symbol.has_value())
+            {
+                const Symbol & sym = *symbol.value();
+                if (std::holds_alternative<ObjectSymbol>(sym) || std::holds_alternative<FunctionSymbol>(sym))
                 {
-                    std::vector<TSNode> nestedDefinitions = collectNestedExpansionDefinitions(token, symbolTable);
-                    definitions.insert(definitions.end(), nestedDefinitions.begin(), nestedDefinitions.end());
+                    collection.push_back(current);
+                    const TSNode & body = symbolBody(sym);
+                    if (body)
+                    {
+                        for (const TSNode & token : body.iterateChildren())
+                        {
+                            workList.push_back(token);
+                        }
+                    }
                 }
-                return definitions;
-            }
-            else if (std::holds_alternative<FunctionSymbol>(sym))
-            {
-                const FunctionSymbol & funcSymbol = std::get<FunctionSymbol>(sym);
-                const TSNode & body = funcSymbol.body;
-                std::vector<TSNode> definitions = {token};
-                for (const TSNode & token : body.iterateChildren())
+                else if (std::holds_alternative<UndefinedSymbol>(sym))
                 {
-                    std::vector<TSNode> nestedDefinitions = collectNestedExpansionDefinitions(token, symbolTable);
-                    definitions.insert(definitions.end(), nestedDefinitions.begin(), nestedDefinitions.end());
+                    // Do nothing, undefined symbols do not have a body
                 }
-                return definitions;
+                else assert(false);
             }
-            else if (std::holds_alternative<UndefinedSymbol>(sym))
-            {
-                return {};
-            }
-            else assert(false);
         }
-        return {};
+
+        return collection;
     }
 
     std::vector<TSNode> expandFunctionLikeMacro
