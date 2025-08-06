@@ -754,6 +754,8 @@ fn main() -> Result<()> {
                 if !found {
                     panic!("No matching begin stmt found for end stmt");
                 }
+            } else if seed.tag["astKind"] == "Decl" || seed.tag["astKind"] == "Decls" {
+                // Do nothing for now
             } else {
                 panic!("Unknown tag");
             }

@@ -17,6 +17,7 @@
 #include "TreeSitterCPreproc.hpp"
 #include "Util.hpp"
 #include "SymbolTable.hpp"
+#include "ProgramPoint.hpp"
 
 namespace Hayroll
 {
@@ -419,13 +420,13 @@ public:
 
     // Collect all definitons used for a nested expansion.
     // Used to make sure our premise collection for multi-defined macro expansion is correct.
-    std::vector<TSNode> collectNestedExpansionDefinitions
+    std::vector<ProgramPoint> collectNestedExpansionDefinitions
     (
         const TSNode & token,
         const ConstSymbolTablePtr & symbolTable
     )
     {
-        std::vector<TSNode> collection;
+        std::vector<ProgramPoint> collection;
         std::vector<TSNode> workList = {token};
 
         while (!workList.empty())
@@ -435,19 +436,19 @@ public:
 
             if (!current.isSymbol(lang.identifier_s)) continue;
 
-            // Break recursion if the token is already collected
-            if (std::find(collection.begin(), collection.end(), current) != collection.end())
-            {
-                continue;
-            }
-
             std::optional<const Hayroll::Symbol *> symbol = symbolTable->lookup(current.textView());
             if (symbol.has_value())
             {
                 const Symbol & sym = *symbol.value();
                 if (std::holds_alternative<ObjectSymbol>(sym) || std::holds_alternative<FunctionSymbol>(sym))
                 {
-                    collection.push_back(current);
+                    ProgramPoint defProgramPoint = symbolProgramPoint(sym);
+                    if (std::find(collection.begin(), collection.end(), defProgramPoint) != collection.end())
+                    {
+                        // Already collected this definition, skip it to avoid infinite loops
+                        continue;
+                    }
+                    collection.push_back(std::move(defProgramPoint));
                     const TSNode & body = symbolBody(sym);
                     if (body)
                     {
