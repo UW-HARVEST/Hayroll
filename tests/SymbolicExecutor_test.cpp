@@ -32,8 +32,13 @@ int main(int argc, char **argv)
 
     std::string testSrcString = 
     R"(
+        #ifdef INCLUDE_IMPOSSIBLE
+            #check 0
+            #include "macrohard.h"
+        #endif
+
         #ifdef __UINT32_MAX__
-            #check !defined USER_E
+            #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E
         #else
             #check 0
         #endif
@@ -42,11 +47,11 @@ int main(int argc, char **argv)
 
         #undef __WORDSIZE
         #if __WORDSIZE == 0
-            #check !defined USER_E
+            #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E
         #endif
         #include <math.h>
         #if __WORDSIZE >= 32
-            #check !defined USER_E
+            #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E
         #endif
 
         #ifdef USER_C
@@ -54,32 +59,32 @@ int main(int argc, char **argv)
         #endif
 
         #ifndef USER_A
-            #check !defined USER_E && !defined USER_A
+            #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E && !defined USER_A
             #if USER_D > USER_A // USER_D > 0
                 #define SOMETHING() THAT_BLOCKS_STATE_MERGING
-                #check !defined USER_E && !defined USER_A && USER_D > 0
+                #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E && !defined USER_A && USER_D > 0
             #endif
         #elifndef USER_B
-            #check !defined USER_E && defined USER_A && !defined USER_B
+            #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E && defined USER_A && !defined USER_B
             #define SOMETHING() ALTERNATIVELY_THAT_DEPENDS_ON __USER_C
         #elifdef CODE_F
             #check 0
         #elifdef USER_C
-            #check !defined USER_E && defined USER_A && defined USER_B && defined USER_C
+            #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E && defined USER_A && defined USER_B && defined USER_C
         #elif defined USER_A && defined USER_B && !defined USER_C
-            #check !defined USER_E && defined USER_A && defined USER_B && !defined USER_C
+            #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E && defined USER_A && defined USER_B && !defined USER_C
         #else
             #check 0
         #endif
 
         #if 1
-            #check !defined USER_E
+            #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E
             // Even though states splitted, every thread will reach this point
             #define CODE_F
         #endif
 
         #ifdef USER_E
-            #check defined USER_E
+            #check 0
             #error
         #endif
 
@@ -90,7 +95,7 @@ int main(int argc, char **argv)
 
     std::string incSrcString =
     R"(
-        #check 1
+        #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E
         #undef CODE_F
     )";
     saveSource(incSrcString, "inc.h");
@@ -99,16 +104,8 @@ int main(int argc, char **argv)
 
     executors.push_back(std::move(SymbolicExecutor(entryPath, tmpPath)));
 
-    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/include/complex.h", LibmcsDir, {LibmcsDir / "libm/include/"})));
-    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/include/config.h", LibmcsDir, {LibmcsDir / "libm/include/"})));
-    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/include/fenv.h", LibmcsDir, {LibmcsDir / "libm/include/"})));
-    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/include/internal_config.h", LibmcsDir, {LibmcsDir / "libm/include/"})));
-    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/include/math.h", LibmcsDir, {LibmcsDir / "libm/include/"})));
-
-    executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/common/tools.h", LibmcsDir, {LibmcsDir / "libm/include/"})));
-
-    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/mathf/sinhf.c", LibmcsDir, {LibmcsDir / "libm/include/"})));
-    // executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/complexd/cabsd.c", LibmcsDir, {LibmcsDir / "libm/include/"})));
+    executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/mathf/sinhf.c", LibmcsDir, {LibmcsDir / "libm/include/"})));
+    executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/complexd/cabsd.c", LibmcsDir, {LibmcsDir / "libm/include/"})));
     
     bool allPass = true;
 
@@ -161,17 +158,17 @@ int main(int argc, char **argv)
                     z3::expr writtenPremise = executor.macroExpander.symbolizeToBoolExpr(std::move(writtenPremiseTokens));
                     writtenPremise = simplifyOrOfAnd(writtenPremise);
                     z3::expr premise = premiseTreeNode->getCompletePremise();
-                    z3::expr premiseImpliesWrittenPremise = z3::implies(premise, writtenPremise);
+                    z3::expr premiseEqWrittenPremise = premise == writtenPremise;
                     z3::solver s(*executor.ctx);
-                    s.add(!premiseImpliesWrittenPremise);
+                    s.add(!premiseEqWrittenPremise);
                     std::cout << std::format("Checking written premise at {}\n", programPoint.toString());
                     if (s.check() == z3::unsat)
                     {
-                        std::cout << std::format("Pass: Premise {} implies written premise {}\n", premise.to_string(), writtenPremise.to_string());
+                        std::cout << std::format("Pass: Premise {} is equivalent to written premise {}\n", premise.to_string(), writtenPremise.to_string());
                     }
                     else
                     {
-                        std::cout << std::format("Error: Premise {} does not imply written premise {}\n", premise.to_string(), writtenPremise.to_string());
+                        std::cout << std::format("Error: Premise {} is not equivalent to written premise {}\n", premise.to_string(), writtenPremise.to_string());
                         allPass = false;
                     }
                 }
