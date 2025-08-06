@@ -138,7 +138,7 @@ int main(const int argc, const char* argv[])
         const IncludeTreePtr & includeTree = symbolicExecutors[i].includeTree;
         const std::vector<std::filesystem::path> & includePaths = compileCommands[i].getIncludePaths();
 
-        const auto & [lineMap, inverseLineMap] = LineMatcher::run(cuStr, includeTree, includePaths);
+        const auto [lineMap, inverseLineMap] = LineMatcher::run(cuStr, includeTree, includePaths);
         lineMaps.push_back(std::move(lineMap));
         inverseLineMaps.push_back(std::move(inverseLineMap));
 

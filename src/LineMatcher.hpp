@@ -100,13 +100,11 @@ public:
             }
 
             std::vector<int> & lines = lineMap[lastIncludeTree];
-            while (lines.size() <= lastSrcLine)
-            {
-                lines.resize(lines.size() * 2);
-            }
-            // t <= thisCuLine : give one more line to lastCuLine
+            std::size_t sizeNeeded = lastSrcLine + (thisCuLine - lastCuLine) + 1;
+            if (lines.size() <= sizeNeeded) lines.resize(std::max(sizeNeeded, lines.size() * 2));
             for (int s = lastSrcLine, t = lastCuLine + 1; t <= thisCuLine; ++s, ++t)
             {
+                assert(s >= 0 && s < lines.size());
                 lines[s] = t;
                 inverseLineMap[t] = {lastIncludeTree, s};
             }
@@ -172,7 +170,7 @@ public:
             }
         }
 
-        return {std::move(lineMap), std::move(inverseLineMap)};
+        return {lineMap, inverseLineMap};
     }
 };
 
