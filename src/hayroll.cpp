@@ -117,13 +117,22 @@ int main(const int argc, const char* argv[])
     {
         std::filesystem::path srcPath = command.file;
         SymbolicExecutor executor(srcPath, projDir, command.getIncludePaths());
-        symbolicExecutors.push_back(std::move(executor));
-    }
-    for (SymbolicExecutor & executor : symbolicExecutors)
-    {
         executor.run();
         // Results are in the executor's member variables
         SPDLOG_INFO("Hayroll Pioneer symbolic execution completed for: {}", executor.srcPath.string());
+        
+        PremiseTree * premiseTree = executor.scribe.borrowTree();
+        premiseTree->refine();
+        std::string premiseTreeStr = premiseTree->toString();
+        
+        CompileCommand outputCommand = command
+            .withUpdatedDirectory(outputDir)
+            .withUpdatedExtension(".premise_tree.txt");
+        std::filesystem::path outputPath = outputCommand.file;
+        saveStringToFile(premiseTreeStr, outputPath);
+        SPDLOG_INFO("Premise tree for {} saved to: {}", command.file.string(), outputPath.string());
+
+        symbolicExecutors.push_back(std::move(executor));
     }
     assert(symbolicExecutors.size() == numTasks);
 

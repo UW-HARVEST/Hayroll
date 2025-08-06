@@ -125,6 +125,7 @@ files for each original C file.
 
 - `xxx.c`: The C source file.
 - `xxx.cu.c`: The C compilation unit source file. This is `xxx.c` with all necessary `#include`s copy-pasted into a single file, which we call the compilation unit file. A compilation unit file is standalone compilable.
+- `xxx.premise_tree.c`: Output by the Hayroll Pioneer symbolic executor from executing `xxx.c`. For each line of code, it shows the compilation flag combination required for the code to survive conditional compilation macros.
 - `xxx.cpp2c`: Maki's macro analysis result on `xxx.cu.c`.
 - `xxx.seeded.cu.c`: `xxx.cu.c` with Hayroll's macro info tags (seeds) inserted (seeded).
 - `xxx.seeded.rs`: `xxx.seeded.cu.c` translated to Rust by C2Rust, where C macros were expanded and translated as-is, together with Hayroll's seeds.
