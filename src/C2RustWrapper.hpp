@@ -90,7 +90,11 @@ public:
         std::filesystem::path rustFilePath = outputDirPath / "src/input_seeded_cu.rs"; // It replaces '.' with '_'
         if (!std::filesystem::exists(rustFilePath))
         {
-            throw std::runtime_error("C2Rust did not produce the expected output file: " + rustFilePath.string());
+            std::ostringstream oss;
+            oss << "C2Rust did not produce the expected output file: " << rustFilePath.string()
+                << "\nOutput:\n" << out.buf.data()
+                << "\nError:\n" << err.buf.data();
+            throw std::runtime_error(oss.str());
         }
 
         return loadFileToString(rustFilePath);

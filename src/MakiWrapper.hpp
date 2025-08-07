@@ -151,7 +151,11 @@ private:
         std::filesystem::path cpp2cFilePath = outputDir.getPath() / "all_results.cpp2c";
         if (!std::filesystem::exists(cpp2cFilePath))
         {
-            throw std::runtime_error("Maki cpp2c did not produce the expected output file: " + cpp2cFilePath.string());
+            std::ostringstream oss;
+            oss << "Maki cpp2c did not produce the expected output file: " << cpp2cFilePath.string()
+                << "\nOutput:\n" << out.buf.data()
+                << "\nError:\n" << err.buf.data();
+            throw std::runtime_error(oss.str());
         }
 
         std::string cpp2cStr = loadFileToString(cpp2cFilePath);
