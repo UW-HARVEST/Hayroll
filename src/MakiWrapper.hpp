@@ -24,9 +24,9 @@ public:
     static std::filesystem::path MakiLibcpp2cPath;
     static std::filesystem::path MakiAnalysisScriptPath;
 
-    // Extra code interval to require Maki to analyze.
-    // Used for conditional compilation intervals.
-    struct CodeIntervalAnalysisTask
+    // Extra code ranges to require Maki to analyze.
+    // Used for conditional compilation.
+    struct CodeRangeAnalysisTask
     {
         std::string name;
         int beginLine;
@@ -35,7 +35,7 @@ public:
         int endCol;
         std::string extraInfo;
 
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeIntervalAnalysisTask, name, beginLine, beginCol, endLine, endCol, extraInfo)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeRangeAnalysisTask, name, beginLine, beginCol, endLine, endCol, extraInfo)
     };
 
     // Automatically aggregate each compile command into a single compilation unit file,
@@ -45,7 +45,7 @@ public:
     static std::string runCpp2cOnCu
     (
         const CompileCommand & compileCommand,
-        const std::vector<CodeIntervalAnalysisTask> & codeIntervals = {},
+        const std::vector<CodeRangeAnalysisTask> & codeRanges = {},
         int numThreads = 16
     )
     {
@@ -59,7 +59,7 @@ public:
             .withUpdatedExtension(".cu.c");
         saveStringToFile(cuNolmStr, newCompileCommand.file);
 
-        return runCpp2c(newCompileCommand, cuDirPath, codeIntervals, numThreads);
+        return runCpp2c(newCompileCommand, cuDirPath, codeRanges, numThreads);
     }
 
 private:
@@ -67,7 +67,7 @@ private:
     (
         const CompileCommand & compileCommand,
         std::filesystem::path projDir,
-        const std::vector<CodeIntervalAnalysisTask> & codeIntervals = {},
+        const std::vector<CodeRangeAnalysisTask> & codeRanges = {},
         int numThreads = 16
     )
     {
@@ -79,7 +79,7 @@ private:
         // This is fake, just so that Maki reads compile_commands.json from the current directory.
         std::filesystem::path tempDirPath = tempDir.getPath();
         std::filesystem::path compileCommandsPath = tempDirPath / "compile_commands.json";
-        std::filesystem::path codeIntervalsPath = tempDirPath / "code_intervals.json";
+        std::filesystem::path codeRangesPath = tempDirPath / "code_ranges.json";
         // Write compile_commands.json to projDir
         saveStringToFile
         (
@@ -90,14 +90,14 @@ private:
                      compileCommandsPath.string(),
                      CompileCommand::compileCommandsToJson({compileCommand}).dump(4));
 
-        // Write code intervals to a file if provided
-        if (!codeIntervals.empty())
+        // Write code ranges to a file if provided
+        if (!codeRanges.empty())
         {
-            nlohmann::json codeIntervalsJson = nlohmann::json(codeIntervals);
-            saveStringToFile(codeIntervalsJson.dump(4), codeIntervalsPath);
-            SPDLOG_DEBUG("Saved code_intervals.json to: {}\n content:\n{}",
-                         codeIntervalsPath.string(),
-                         codeIntervalsJson.dump(4));
+            nlohmann::json codeRangesJson = nlohmann::json(codeRanges);
+            saveStringToFile(codeRangesJson.dump(4), codeRangesPath);
+            SPDLOG_DEBUG("Saved code_ranges.json to: {}\n content:\n{}",
+                         codeRangesPath.string(),
+                         codeRangesJson.dump(4));
         }
         
         projDir = std::filesystem::canonical(projDir);
@@ -114,9 +114,9 @@ private:
             std::to_string(numThreads)
         };
 
-        if (!codeIntervals.empty())
+        if (!codeRanges.empty())
         {
-            args.push_back(codeIntervalsPath.string());
+            args.push_back(codeRangesPath.string());
         }
 
         SPDLOG_DEBUG
