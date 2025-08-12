@@ -132,9 +132,10 @@ check_version llvm-dev 17
 
 # --- Rust tool-chain (for c2rust & Maki) -------------------------------------
 if ! command -v rustc >/dev/null 2>&1; then
-  echo "[*] rustc not found – installing stable Rust tool-chain"
-  run_quiet rustup-install.log curl https://sh.rustup.rs -sSf | sh -s -- -y
-  export PATH="$HOME/.cargo/bin:$PATH"
+  echo "Error: rustc (Rust tool-chain) not found."
+  echo "Please install Rust by referring to https://www.rust-lang.org/tools/install"
+  echo "Then restart this script."
+  exit 1
 else
   echo "[*] rustc found, version: $(rustc --version)"
 fi
