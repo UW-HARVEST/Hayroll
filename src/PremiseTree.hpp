@@ -12,6 +12,7 @@
 #include "Util.hpp"
 #include "IncludeTree.hpp"
 #include "TreeSitter.hpp"
+#include "MakiWrapper.hpp"
 
 namespace Hayroll
 {
@@ -199,9 +200,9 @@ struct PremiseTree
         children = std::move(newChildren);
     }
 
-    std::vector<PremiseTree *> getDescendants()
+    std::vector<const PremiseTree *> getDescendants() const
     {
-        std::vector<PremiseTree *> result;
+        std::vector<const PremiseTree *> result;
         result.push_back(this);
         for (const PremiseTreePtr & child : children)
         {
@@ -223,6 +224,44 @@ struct PremiseTree
             }
         }
         return this;
+    }
+
+    // Generates code range analysis tasks for each descendant node.
+    // The row and column number in the return value is that in the compilation unit file, i.e. line-mapped.
+    std::vector<CodeRangeAnalysisTask> getCodeRangeAnalysisTasks
+    (
+        const std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> & lineMap
+    ) const
+    {
+        std::vector<CodeRangeAnalysisTask> tasks;
+        for (const PremiseTree * premiseNode : getDescendants())
+        {
+            const ProgramPoint & programPoint = premiseNode->programPoint;
+            const IncludeTreePtr & includeTree = programPoint.includeTree;
+            const TSNode & tsNode = programPoint.node;
+            if (!lineMap.contains(includeTree))
+            {
+                SPDLOG_DEBUG
+                (
+                    "IncludeTree {} not found in lineMap. Skipping premise {}.",
+                    includeTree->stacktrace(),
+                    premiseNode->premise.to_string()
+                );
+                continue; // Skip if the IncludeTree is not in the lineMap
+            }
+            const std::vector<int> & lineNumbers = lineMap.at(includeTree);
+            CodeRangeAnalysisTask task =
+            {
+                .name = "PremiseTree-generated",
+                .beginLine = lineNumbers.at(tsNode.startPoint().row + 1),
+                .beginCol = static_cast<int>(tsNode.startPoint().column) + 1,
+                .endLine = lineNumbers.at(tsNode.endPoint().row + 1),
+                .endCol = static_cast<int>(tsNode.endPoint().column) + 1,
+                .extraInfo = premiseNode->premise.to_string()
+            };
+            tasks.push_back(task);
+        }
+        return tasks;
     }
 };
 

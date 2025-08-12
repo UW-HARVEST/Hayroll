@@ -15,6 +15,8 @@ int main(int argc, char **argv)
     spdlog::set_level(spdlog::level::debug);
 
     std::string seededRustStr = R"(
+#[no_mangle]
+#[c2rust::src_loc = "7332:1"]
 pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
     x *= __volatile_onef;
     let mut t: libc::c_float = 0.;
@@ -22,19 +24,19 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
     let mut h: libc::c_float = 0.;
     let mut ix: int32_t = 0;
     let mut jx: int32_t = 0;
-    *(b"{\"argNames\":[\"i\",\"d\"],\"astKind\":\"Stmt\",\"begin\":true,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locArg\":\"\",\"locDecl\":\"/home/hurrypeng/libmcs/libm/common/tools.h:307:9\",\"locInv\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:5\",\"name\":\"GET_FLOAT_WORD\"}\0"
+    *(b"{\"argNames\":[\"i\",\"d\"],\"astKind\":\"Stmt\",\"begin\":true,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:5\",\"locEnd\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:26\",\"locRefBegin\":\"/home/hurrypeng/libmcs/libm/common/tools.h:307:9\",\"name\":\"GET_FLOAT_WORD\"}\0"
         as *const u8 as *const libc::c_char);
     loop {
         let mut gf_u: ieee_float_shape_type = ieee_float_shape_type { value: 0. };
         gf_u
-            .value = *if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":false,\"hayroll\":true,\"isArg\":true,\"isLvalue\":true,\"locArg\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:24\",\"locDecl\":\"\",\"locInv\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:5\",\"name\":\"d\"}\0"
+            .value = *if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":false,\"hayroll\":true,\"isArg\":true,\"isLvalue\":true,\"locBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:24\",\"locEnd\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:25\",\"locRefBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:5\",\"name\":\"d\"}\0"
             as *const u8 as *const libc::c_char) as libc::c_int != 0
         {
             &mut x
         } else {
             0 as *mut libc::c_float
         };
-        *if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":false,\"hayroll\":true,\"isArg\":true,\"isLvalue\":true,\"locArg\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:20\",\"locDecl\":\"\",\"locInv\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:5\",\"name\":\"i\"}\0"
+        *if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":false,\"hayroll\":true,\"isArg\":true,\"isLvalue\":true,\"locBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:20\",\"locEnd\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:22\",\"locRefBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:5\",\"name\":\"i\"}\0"
             as *const u8 as *const libc::c_char) as libc::c_int != 0
         {
             &mut jx
@@ -45,13 +47,13 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
             break;
         }
     }
-    *(b"{\"argNames\":[],\"astKind\":\"\",\"begin\":false,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locArg\":\"\",\"locDecl\":\"/home/hurrypeng/libmcs/libm/common/tools.h:307:9\",\"locInv\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:5\",\"name\":\"GET_FLOAT_WORD\"}\0"
+    *(b"{\"argNames\":[\"i\",\"d\"],\"astKind\":\"Stmt\",\"begin\":false,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:5\",\"locEnd\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:19:26\",\"locRefBegin\":\"/home/hurrypeng/libmcs/libm/common/tools.h:307:9\",\"name\":\"GET_FLOAT_WORD\"}\0"
         as *const u8 as *const libc::c_char);
     ix = jx & 0x7fffffff as libc::c_int;
-    if if *(b"{\"argNames\":[\"x\"],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locArg\":\"\",\"locDecl\":\"/home/hurrypeng/libmcs/libm/include/internal_config.h:90:9\",\"locInv\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:23:10\",\"name\":\"FLT_UWORD_IS_FINITE\"}\0"
+    if if *(b"{\"argNames\":[\"x\"],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:23:10\",\"locEnd\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:23:33\",\"locRefBegin\":\"/home/hurrypeng/libmcs/libm/include/internal_config.h:90:9\",\"name\":\"FLT_UWORD_IS_FINITE\"}\0"
         as *const u8 as *const libc::c_char) as libc::c_int != 0
     {
-        ((*(if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":false,\"hayroll\":true,\"isArg\":true,\"isLvalue\":true,\"locArg\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:23:30\",\"locDecl\":\"\",\"locInv\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:23:10\",\"name\":\"x\"}\0"
+        ((*(if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":false,\"hayroll\":true,\"isArg\":true,\"isLvalue\":true,\"locBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:23:30\",\"locEnd\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:23:32\",\"locRefBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:23:10\",\"name\":\"x\"}\0"
             as *const u8 as *const libc::c_char) as libc::c_int != 0
         {
             &mut ix as *mut int32_t
@@ -70,10 +72,10 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
     }
     if ix < 0x41b00000 as libc::c_int {
         if ix < 0x31800000 as libc::c_int {
-            if if *(b"{\"argNames\":[\"x\"],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locArg\":\"\",\"locDecl\":\"/home/hurrypeng/libmcs/libm/include/internal_config.h:129:13\",\"locInv\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:36:17\",\"name\":\"FLT_UWORD_IS_ZERO\"}\0"
+            if if *(b"{\"argNames\":[\"x\"],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:36:17\",\"locEnd\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:36:38\",\"locRefBegin\":\"/home/hurrypeng/libmcs/libm/include/internal_config.h:129:13\",\"name\":\"FLT_UWORD_IS_ZERO\"}\0"
                 as *const u8 as *const libc::c_char) as libc::c_int != 0
             {
-                ((*(if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":false,\"hayroll\":true,\"isArg\":true,\"isLvalue\":true,\"locArg\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:36:35\",\"locDecl\":\"\",\"locInv\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:36:17\",\"name\":\"x\"}\0"
+                ((*(if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":false,\"hayroll\":true,\"isArg\":true,\"isLvalue\":true,\"locBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:36:35\",\"locEnd\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:36:37\",\"locRefBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:36:17\",\"name\":\"x\"}\0"
                     as *const u8 as *const libc::c_char) as libc::c_int != 0
                 {
                     &mut ix as *mut int32_t
@@ -96,7 +98,7 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
         return h * (t + t / (t + one));
     }
     if ix
-        <= (if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locArg\":\"\",\"locDecl\":\"/home/hurrypeng/libmcs/libm/include/internal_config.h:95:9\",\"locInv\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:53:15\",\"name\":\"FLT_UWORD_LOG_MAX\"}\0"
+        <= (if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:53:15\",\"locEnd\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:53:32\",\"locRefBegin\":\"/home/hurrypeng/libmcs/libm/include/internal_config.h:95:9\",\"name\":\"FLT_UWORD_LOG_MAX\"}\0"
             as *const u8 as *const libc::c_char) as libc::c_int != 0
         {
             0x42b17217 as libc::c_int
@@ -107,7 +109,7 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
         return h * expf(fabsf(x));
     }
     if ix
-        <= (if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locArg\":\"\",\"locDecl\":\"/home/hurrypeng/libmcs/libm/include/internal_config.h:96:9\",\"locInv\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:58:15\",\"name\":\"FLT_UWORD_LOG_2MAX\"}\0"
+        <= (if *(b"{\"argNames\":[],\"astKind\":\"Expr\",\"begin\":true,\"canFn\":true,\"hayroll\":true,\"isArg\":false,\"isLvalue\":false,\"locBegin\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:58:15\",\"locEnd\":\"/home/hurrypeng/libmcs/libm/mathf/sinhf.c:58:33\",\"locRefBegin\":\"/home/hurrypeng/libmcs/libm/include/internal_config.h:96:9\",\"name\":\"FLT_UWORD_LOG_2MAX\"}\0"
             as *const u8 as *const libc::c_char) as libc::c_int != 0
         {
             0x42b2d4fc as libc::c_int
@@ -120,7 +122,8 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
         return t * w;
     }
     return __raise_overflowf(x);
-})";
+}
+)";
 
     std::string rustStr = ReaperWrapper::runReaper(seededRustStr);
     if (rustStr == seededRustStr)

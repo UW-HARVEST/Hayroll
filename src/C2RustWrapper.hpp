@@ -12,6 +12,7 @@
 #include "TempDir.hpp"
 #include "CompileCommand.hpp"
 #include "RewriteIncludesWrapper.hpp"
+#include "LinemarkerEraser.hpp"
 
 namespace Hayroll
 {
@@ -32,7 +33,8 @@ public:
         TempDir inputDir;
         std::filesystem::path inputDirPath = inputDir.getPath();
         std::filesystem::path inputFilePath = inputDirPath / "input.seeded.cu.c";
-        saveStringToFile(seededCuStr, inputFilePath);
+        std::string seededCuNolmStr = LinemarkerEraser::run(seededCuStr);
+        saveStringToFile(seededCuNolmStr, inputFilePath);
 
         CompileCommand newCompileCommand = compileCommand
             .withUpdatedDirectory(inputDirPath)

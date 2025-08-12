@@ -17,26 +17,26 @@
 namespace Hayroll
 {
 
+// Extra code ranges to require Maki to analyze.
+// Used for conditional compilation.
+struct CodeRangeAnalysisTask
+{
+    std::string name;
+    int beginLine;
+    int beginCol;
+    int endLine;
+    int endCol;
+    std::string extraInfo;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeRangeAnalysisTask, name, beginLine, beginCol, endLine, endCol, extraInfo)
+};
+
 class MakiWrapper
 {
 public:
     static std::filesystem::path MakiDir;
     static std::filesystem::path MakiLibcpp2cPath;
     static std::filesystem::path MakiAnalysisScriptPath;
-
-    // Extra code ranges to require Maki to analyze.
-    // Used for conditional compilation.
-    struct CodeRangeAnalysisTask
-    {
-        std::string name;
-        int beginLine;
-        int beginCol;
-        int endLine;
-        int endCol;
-        std::string extraInfo;
-
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeRangeAnalysisTask, name, beginLine, beginCol, endLine, endCol, extraInfo)
-    };
 
     // Automatically aggregate each compile command into a single compilation unit file,
     // erase its line markers, and save it to a temporary directory.

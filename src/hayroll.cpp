@@ -137,7 +137,7 @@ int main(const int argc, const char* argv[])
     assert(symbolicExecutors.size() == numTasks);
 
     // LineMatcher
-    // cuStrs + includeTrees + includePaths --LineMatcher-> lineMaps + inverseLineMaps
+    // cuStr + includeTree + includePath --LineMatcher-> lineMap + inverseLineMap
 
     std::vector<std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>>> lineMaps;
     std::vector<std::vector<std::pair<Hayroll::IncludeTreePtr, int>>> inverseLineMaps;
@@ -156,13 +156,36 @@ int main(const int argc, const char* argv[])
     assert(lineMaps.size() == numTasks);
     assert(inverseLineMaps.size() == numTasks);
 
+    // CodeRangeAnalysisTasks
+    // premiseTree + lineMap --> CodeRangeAnalysisTasks
+    std::vector<std::vector<CodeRangeAnalysisTask>> codeRangeAnalysisTasks;
+    for (int i = 0; i < numTasks; ++i)
+    {
+        const PremiseTree * premiseTree = symbolicExecutors[i].scribe.borrowTree();
+        const auto & lineMap = lineMaps[i];
+        std::vector<CodeRangeAnalysisTask> tasks = premiseTree->getCodeRangeAnalysisTasks(lineMap);
+
+        CompileCommand outputCommand = compileCommands[i]
+            .withUpdatedDirectory(outputDir)
+            .withUpdatedExtension(".range_tasks.json");
+        std::filesystem::path outputPath = outputCommand.file;
+        saveStringToFile(json(tasks).dump(4), outputPath);
+
+        codeRangeAnalysisTasks.push_back(std::move(tasks));
+        SPDLOG_INFO("Code range analysis tasks for {} saved to: {}", compileCommands[i].file.string(), outputPath.string());
+    }
+    assert(codeRangeAnalysisTasks.size() == numTasks);
+
     // Analyze macro invocations using Maki
     // compileCommands + src --Maki-> cpp2cStr
 
     std::vector<std::string> cpp2cStrs;
-    for (const CompileCommand & command : compileCommands)
+    for (int i = 0; i < numTasks; ++i)
     {
-        std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command);
+        const CompileCommand & command = compileCommands[i];
+        const std::vector<Hayroll::CodeRangeAnalysisTask> & codeRanges = codeRangeAnalysisTasks[i];
+
+        std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command, codeRanges);
         CompileCommand outputCommand = command
             .withUpdatedDirectory(outputDir)
             .withUpdatedExtension(".cpp2c");

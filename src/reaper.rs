@@ -88,18 +88,25 @@ impl HayrollRegion {
         let arg_names = seed.tag["argNames"].as_array().unwrap();
         arg_names.iter().map(|arg_name| arg_name.as_str().unwrap().to_string()).collect()
     }
-    
-    fn loc_inv(&self) -> String {
+
+    fn loc_begin(&self) -> String {
         match self {
-            HayrollRegion::Expr(seed) => seed.tag["locInv"].as_str().unwrap().to_string(),
-            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["locInv"].as_str().unwrap().to_string(),
+            HayrollRegion::Expr(seed) => seed.tag["locBegin"].as_str().unwrap().to_string(),
+            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["locBegin"].as_str().unwrap().to_string(),
         }
     }
 
-    fn loc_decl(&self) -> String {
+    fn loc_end(&self) -> String {
         match self {
-            HayrollRegion::Expr(seed) => seed.tag["locDecl"].as_str().unwrap().to_string(),
-            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["locDecl"].as_str().unwrap().to_string(),
+            HayrollRegion::Expr(seed) => seed.tag["locEnd"].as_str().unwrap().to_string(),
+            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["locEnd"].as_str().unwrap().to_string(),
+        }
+    }
+
+    fn loc_ref_begin(&self) -> String {
+        match self {
+            HayrollRegion::Expr(seed) => seed.tag["locRefBegin"].as_str().unwrap().to_string(),
+            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["locRefBegin"].as_str().unwrap().to_string(),
         }
     }
 
@@ -559,7 +566,7 @@ impl HayrollMacroInv {
 
 // HayrollMacroDB is a database of HayrollMacroInv collected from the source code
 struct HayrollMacroDB{
-    map: HashMap<String, Vec<HayrollMacroInv>>,
+    map: HashMap<String, Vec<HayrollMacroInv>>, // definition location -> invocations
 }
 
 impl HayrollMacroDB {
@@ -573,7 +580,7 @@ impl HayrollMacroDB {
         // Collect macros by locDecl
         let mut db = HayrollMacroDB::new();
         for mac in hayroll_macros.iter() {
-            let loc_decl = mac.region.loc_decl();
+            let loc_decl = mac.region.loc_begin();
             if !db.map.contains_key(&loc_decl) {
                 db.map.insert(loc_decl.clone(), Vec::new());
             }
@@ -775,7 +782,7 @@ fn main() -> Result<()> {
             } else {
                 let mut found = false;
                 for mac in acc.iter_mut().rev() {
-                    if mac.region.loc_inv() == region.loc_inv() {
+                    if mac.region.loc_begin() == region.loc_ref_begin() {
                         if mac.args.iter().any(|(name, _)| name == &region.name()) {
                             // If the arg already exists, just push the region to the existing arg
                             let arg = mac.args.iter_mut().find(|(name, _)| name == &region.name()).unwrap();
@@ -790,7 +797,7 @@ fn main() -> Result<()> {
                 }
                 // Assert found
                 if !found {
-                    panic!("{}", format!("No matching macro found for arg: {:?}", region.loc_inv()));
+                    panic!("{}", format!("No matching macro found for arg: {:?}", region.loc_ref_begin()));
                 }
             }
             acc

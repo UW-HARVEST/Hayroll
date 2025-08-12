@@ -69,6 +69,8 @@ public:
     // Canonicalizes the filename.
     static std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view loc)
     {
+        assert(!loc.empty());
+
         std::string_view pathStr;
         int line;
         int col;
@@ -116,13 +118,13 @@ public:
         std::string astKind;
         bool isLvalue;
         std::string name;
-        std::string locDecl;
-        std::string locInv;
-        std::string locArg;
+        std::string locBegin; // For invocation: invocation begin; for arg: arg begin
+        std::string locEnd;   // For invocation: invocation end; for arg: arg end
+        std::string locRefBegin; // For invocation: definition begin; for arg: invocation begin
 
         bool canFn;
 
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locDecl, locInv, locArg, canFn)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, locRefBegin, canFn)
 
         // Escape the JSON string to make it a valid C string that embeds into C code
         std::string stringLiteral() const
@@ -160,8 +162,7 @@ public:
         std::string_view astKind,
         bool isLvalue,
         std::string_view name,
-        std::string_view locDecl,
-        std::string_view locInv, // Only for args, the locInv for an invocation is locBegin
+        std::string_view locRefBegin,
         std::string_view spelling,
         bool canFn,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
@@ -169,12 +170,16 @@ public:
     {
         auto [path, line, col] = parseLocation(locBegin);
         auto [pathEnd, lineEnd, colEnd] = parseLocation(locEnd);
+        auto [locRefPath, locRefLine, locRefCol] = parseLocation(locRefBegin);
         assert(path == pathEnd);
+        assert(locRefPath == path); // Should all be the only CU file
 
         // Map the compilation unit line numbers back to the source file line numbers
         auto [includeTree, srcLine] = inverseLineMap[line];
         auto [includeTreeEnd, srcLineEnd] = inverseLineMap[lineEnd];
+        auto [locRefIncludeTree, locRefSrcLine] = inverseLineMap[locRefLine];
         assert(includeTree == includeTreeEnd);
+
         if (!includeTree)
         {
             // This code section was copied from a header file which was concretely executed
@@ -189,46 +194,11 @@ public:
         }
 
         std::filesystem::path srcPath = includeTree->path;
+        std::filesystem::path locRefSrcPath = locRefIncludeTree->path;
 
         std::string srcLocBegin = makeLocation(srcPath, srcLine, col);
-        
-        std::string srcLocInv = "";
-        if (isArg)
-        {
-            assert(locInv != "");
-            auto [invPath, invLine, invCol] = parseLocation(locInv);
-            auto [invIncludeTree, invSrcLine] = inverseLineMap[invLine];
-            assert(invIncludeTree == includeTree);
-            srcLocInv = makeLocation(srcPath, invSrcLine, invCol);
-        }
-
-        std::string srcLocDecl = "";
-        if (locDecl != "")
-        {
-            SPDLOG_DEBUG
-            (
-                "Translating locDecl for non-arg {}: {}",
-                name, locDecl
-            );
-            auto [declPath, declLine, declCol] = parseLocation(locDecl);
-            auto [declIncludeTree, declSrcLine] = inverseLineMap[declLine];
-            if (!declIncludeTree)
-            {
-                SPDLOG_DEBUG
-                (
-                    "Skipping locDecl translation for {}: {} (no include tree)",
-                    name, locDecl
-                );
-                return {};
-            }
-            std::filesystem::path declSrcPath = declIncludeTree->path;
-            srcLocDecl = makeLocation(declSrcPath, declSrcLine, declCol);
-            SPDLOG_DEBUG
-            (
-                "Translated locDecl for non-arg {}: {}",
-                name, srcLocDecl
-            );
-        }
+        std::string srcLocEnd = makeLocation(srcPath, srcLineEnd, colEnd);
+        std::string srcLocRef = makeLocation(locRefSrcPath, locRefSrcLine, locRefCol);
 
         Tag tagBegin
         {
@@ -238,27 +208,15 @@ public:
             .astKind = std::string(astKind),
             .isLvalue = isLvalue,
             .name = std::string(name),
-            .locDecl = std::string(srcLocDecl),
-            .locInv = isArg ? std::string(srcLocInv) : std::string(srcLocBegin),
-            .locArg = isArg ? std::string(srcLocBegin) : "",
+            .locBegin = std::string(srcLocBegin),
+            .locEnd = std::string(srcLocEnd),
+            .locRefBegin = std::string(srcLocRef),
 
             .canFn = canFn
         };
 
-        Tag tagEnd
-        {
-            .begin = false,
-            .isArg = isArg,
-            .argNames = {},
-            .astKind = "",
-            .isLvalue = isLvalue,
-            .name = std::string(name),
-            .locDecl = std::string(srcLocDecl),
-            .locInv = isArg ? std::string(srcLocInv) : std::string(srcLocBegin),
-            .locArg = isArg ? std::string(srcLocBegin) : "",
-
-            .canFn = canFn
-        };
+        Tag tagEnd = tagBegin;
+        tagEnd.begin = false;
 
         std::list<InstrumentationTask> tasks;
         if (astKind == "Expr")
@@ -448,7 +406,6 @@ public:
                 ASTKind,
                 IsLValue,
                 Name,
-                "", // locDecl
                 InvocationLocation,
                 Spelling,
                 false, // canFn
@@ -858,7 +815,6 @@ public:
                 IsLValue,
                 Name,
                 DefinitionLocation,
-                "", // locInv, not required for invocations
                 Spelling,
                 canRustFn(),
                 inverseLineMap
@@ -994,7 +950,7 @@ public:
         {
             PremiseTree * premiseTree = premiseTreeOpt.value();
             assert(premiseTree != nullptr);
-            for (Hayroll::PremiseTree * premiseTreeNode : premiseTree->getDescendants())
+            for (const Hayroll::PremiseTree * premiseTreeNode : premiseTree->getDescendants())
             {
                 // For each premise tree node that is not a macro expansion node,
                 // insert "Debug" instrumentation tasks, with the premise as its name.
@@ -1046,23 +1002,22 @@ public:
                     colEnd
                 );
 
-                std::list<InstrumentationTask> premiseTasks = genInstrumentationTasks
-                (
-                    locBegin,
-                    locEnd,
-                    false, // isArg
-                    {}, // argNames
-                    "Debug",
-                    false, // isLvalue
-                    premiseTreeNode->premise.to_string(),
-                    "", // locDecl
-                    "", // locInv
-                    "", // spelling
-                    false, // canFn
-                    inverseLineMap
-                );
+                // std::list<InstrumentationTask> premiseTasks = genInstrumentationTasks
+                // (
+                //     locBegin,
+                //     locEnd,
+                //     false, // isArg
+                //     {}, // argNames
+                //     "Debug",
+                //     false, // isLvalue
+                //     premiseTreeNode->premise.to_string(),
+                //     "", // locRef
+                //     "", // spelling
+                //     false, // canFn
+                //     inverseLineMap
+                // );
 
-                tasks.splice(tasks.end(), premiseTasks);
+                // tasks.splice(tasks.end(), premiseTasks);
             }
         }
         

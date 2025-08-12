@@ -47,7 +47,7 @@ int main(int argc, char **argv)
     )";
     json compileCommandsJson = json::parse(compileCommandsStr);
 
-    MakiWrapper::CodeRangeAnalysisTask codeRangeAnalysisTask = 
+    CodeRangeAnalysisTask codeRangeAnalysisTask = 
     {
         .name = "Test Range",
         .beginLine = 18,
@@ -58,7 +58,7 @@ int main(int argc, char **argv)
     };
     
     std::vector<CompileCommand> compileCommands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
-    std::vector<MakiWrapper::CodeRangeAnalysisTask> codeRanges = {codeRangeAnalysisTask};
+    std::vector<CodeRangeAnalysisTask> codeRanges = {codeRangeAnalysisTask};
 
     std::string cpp2cCuStr = MakiWrapper::runCpp2cOnCu(compileCommands[0], codeRanges);
 
