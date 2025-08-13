@@ -120,6 +120,8 @@ public:
         std::string name;
         std::string locBegin; // For invocation: invocation begin; for arg: arg begin
         std::string locEnd;   // For invocation: invocation end; for arg: arg end
+        std::string cuLocBegin; // Line number in compilation unit file
+        std::string cuLocEnd;
         std::string locRefBegin; // For invocation: definition begin; for arg: invocation begin
 
         bool canFn;
@@ -198,7 +200,7 @@ public:
 
         std::string srcLocBegin = makeLocation(srcPath, srcLine, col);
         std::string srcLocEnd = makeLocation(srcPath, srcLineEnd, colEnd);
-        std::string srcLocRef = makeLocation(locRefSrcPath, locRefSrcLine, locRefCol);
+        std::string srcLocRefBegin = makeLocation(locRefSrcPath, locRefSrcLine, locRefCol);
 
         Tag tagBegin
         {
@@ -208,9 +210,11 @@ public:
             .astKind = std::string(astKind),
             .isLvalue = isLvalue,
             .name = std::string(name),
-            .locBegin = std::string(srcLocBegin),
-            .locEnd = std::string(srcLocEnd),
-            .locRefBegin = std::string(srcLocRef),
+            .locBegin = srcLocBegin,
+            .locEnd = srcLocEnd,
+            .cuLocBegin = std::string(locBegin),
+            .cuLocEnd = std::string(locEnd),
+            .locRefBegin = srcLocRefBegin,
 
             .canFn = canFn
         };

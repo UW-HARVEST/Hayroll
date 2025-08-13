@@ -55,80 +55,74 @@ struct HayrollSeed {
 #[derive(Clone)]
 enum HayrollRegion {
     Expr(HayrollSeed),
-    Span(HayrollSeed, HayrollSeed),
+    Stmts(HayrollSeed, HayrollSeed),
+    Decls(HayrollSeed),
 }
 
 impl HayrollRegion {
-    fn file_id(&self) -> FileId {
+    fn first_seed(&self) -> &HayrollSeed {
         match self {
-            HayrollRegion::Expr(seed) => seed.file_id,
-            HayrollRegion::Span(seed_begin, _) => seed_begin.file_id,
+            HayrollRegion::Expr(seed) => seed,
+            HayrollRegion::Stmts(seed_begin, _) => seed_begin,
+            HayrollRegion::Decls(seed) => seed,
         }
+    }
+
+    fn file_id(&self) -> FileId {
+        self.first_seed().file_id
     }
 
     fn is_arg(&self) -> bool {
-        match self {
-            HayrollRegion::Expr(seed) => seed.tag["isArg"] == true,
-            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["isArg"] == true,
-        }
+        self.first_seed().tag["isArg"] == true
     }
 
     fn name(&self) -> String {
-        match self {
-            HayrollRegion::Expr(seed) => seed.tag["name"].as_str().unwrap().to_string(),
-            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["name"].as_str().unwrap().to_string(),
-        }
+        self.first_seed().tag["name"].as_str().unwrap().to_string()
     }
 
     fn arg_names(&self) -> Vec<String> {
-        let seed = match self {
-            HayrollRegion::Expr(seed) => seed,
-            HayrollRegion::Span(seed_begin, _) => seed_begin,
-        };
-        let arg_names = seed.tag["argNames"].as_array().unwrap();
+        let arg_names = self.first_seed().tag["argNames"].as_array().unwrap();
         arg_names.iter().map(|arg_name| arg_name.as_str().unwrap().to_string()).collect()
     }
 
     fn loc_begin(&self) -> String {
-        match self {
-            HayrollRegion::Expr(seed) => seed.tag["locBegin"].as_str().unwrap().to_string(),
-            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["locBegin"].as_str().unwrap().to_string(),
-        }
+        self.first_seed().tag["locBegin"].as_str().unwrap().to_string()
     }
 
     fn loc_end(&self) -> String {
-        match self {
-            HayrollRegion::Expr(seed) => seed.tag["locEnd"].as_str().unwrap().to_string(),
-            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["locEnd"].as_str().unwrap().to_string(),
-        }
+        self.first_seed().tag["locEnd"].as_str().unwrap().to_string()
+    }
+
+    fn cu_loc_begin(&self) -> String {
+        self.first_seed().tag["cuLocBegin"].as_str().unwrap().to_string()
+    }
+
+    fn cu_loc_end(&self) -> String {
+        self.first_seed().tag["cuLocEnd"].as_str().unwrap().to_string()
     }
 
     fn loc_ref_begin(&self) -> String {
-        match self {
-            HayrollRegion::Expr(seed) => seed.tag["locRefBegin"].as_str().unwrap().to_string(),
-            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["locRefBegin"].as_str().unwrap().to_string(),
-        }
+        self.first_seed().tag["locRefBegin"].as_str().unwrap().to_string()
     }
 
     fn is_lvalue(&self) -> bool {
         match self {
             HayrollRegion::Expr(seed) => seed.tag["isLvalue"] == true,
-            HayrollRegion::Span(_, _) => false,
+            HayrollRegion::Stmts(_, _) => false,
+            HayrollRegion::Decls(_) => false,
         }
     }
 
     fn is_expr(&self) -> bool {
         match self {
             HayrollRegion::Expr(_) => true,
-            HayrollRegion::Span(_, _) => false,
+            HayrollRegion::Stmts(_, _) => false,
+            HayrollRegion::Decls(_) => false,
         }
     }
 
     fn can_fn(&self) -> bool {
-        match self {
-            HayrollRegion::Expr(seed) => seed.tag["canFn"] == true,
-            HayrollRegion::Span(seed_begin, _) => seed_begin.tag["canFn"] == true,
-        }
+        self.first_seed().tag["canFn"] == true
     }
 
     // Find the code region, which is the node(s) that contains the tagged region
@@ -140,12 +134,15 @@ impl HayrollRegion {
                 let if_expr = ancestor_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
                 CodeRegion::Expr(if_expr.into())
             }
-            HayrollRegion::Span(seed_begin, seed_end) => {
+            HayrollRegion::Stmts(seed_begin, seed_end) => {
                 let stmt_begin = ancestor_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
                 let stmt_end = ancestor_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
                 let stmt_list = ancestor_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
                 let elements = stmt_begin..=stmt_end;
                 CodeRegion::Span{parent: stmt_list, elements}
+            }
+            HayrollRegion::Decls(_) => {
+                panic!("Decls not supported in code region");
             }
         }
     }
@@ -197,7 +194,7 @@ impl HayrollRegion {
                     (CodeRegion::Expr(then_branch.into()), mutator)
                 }
             }
-            HayrollRegion::Span(seed_begin, seed_end) => {
+            HayrollRegion::Stmts(seed_begin, seed_end) => {
                 let stmt_begin = ancestor_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
                 let stmt_begin_next: ast::Stmt = ast::Stmt::cast(stmt_begin.syntax().next_sibling().unwrap()).unwrap();
                 let stmt_end = ancestor_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
@@ -208,6 +205,9 @@ impl HayrollRegion {
                 let stmt_begin_next = mutator.make_mut(&stmt_begin_next);
                 let stmt_end_prev = mutator.make_mut(&stmt_end_prev);
                 (CodeRegion::Span{parent: stmt_list, elements: stmt_begin_next..=stmt_end_prev}, mutator)
+            }
+            HayrollRegion::Decls(_) => {
+                panic!("Decls not supported in peel_tag");
             }
         }
     }
@@ -252,7 +252,10 @@ impl HayrollRegion {
                     Some(ptr_type.ty().unwrap())
                 }
             }
-            HayrollRegion::Span(_, _) => {
+            HayrollRegion::Stmts(_, _) => {
+                None
+            }
+            HayrollRegion::Decls(_) => {
                 None
             }
         }
@@ -458,7 +461,8 @@ impl HayrollMacroInv {
             .map(|(arg_name, arg_regions)| {
                 let arg_type = match arg_regions[0] {
                     HayrollRegion::Expr(_) => "expr",
-                    HayrollRegion::Span(_, _) => "stmt",
+                    HayrollRegion::Stmts(_, _) => "stmt",
+                    HayrollRegion::Decls(_) => panic!("Decls not supported as macro arg"),
                 };
                 format!("${}:{}", arg_name, arg_type)
             })
@@ -741,13 +745,13 @@ fn main() -> Result<()> {
             if seed.tag["astKind"] == "Expr" {
                 acc.push(HayrollRegion::Expr(seed.clone()));
             } else if (seed.tag["astKind"] == "Stmt" || seed.tag["astKind"] == "Stmts") && seed.tag["begin"] == true {
-                acc.push(HayrollRegion::Span(seed.clone(), seed.clone())); // For now seedBegin == seedEnd
+                acc.push(HayrollRegion::Stmts(seed.clone(), seed.clone())); // For now seedBegin == seedEnd
             } else if seed.tag["begin"] == false {
                 // Search through the acc to find the begin stmt with the same locInv
                 let mut found = false;
                 for region in acc.iter_mut().rev() {
                     match region {
-                        HayrollRegion::Span(seed_begin, seed_end) => {
+                        HayrollRegion::Stmts(seed_begin, seed_end) => {
                             if seed_begin.tag["locInv"] == seed.tag["locInv"] {
                                 *seed_end = seed.clone();
                                 found = true;
