@@ -80,10 +80,10 @@ public:
         }
 
         // Log ccArgs, each in a new line
-        SPDLOG_DEBUG("ccArgs:");
+        SPDLOG_TRACE("ccArgs:");
         for (const auto & arg : ccArgs)
         {
-            SPDLOG_DEBUG("{}", arg);
+            SPDLOG_TRACE("{}", arg);
         }
 
         subprocess::Popen proc
@@ -95,12 +95,12 @@ public:
         auto [out, err] = proc.communicate();
 
         std::string_view hierarchy(err.buf.data(), err.length);
-        SPDLOG_DEBUG("Include hierarchy:\n{}", hierarchy);
+        SPDLOG_TRACE("Include hierarchy:\n{}", hierarchy);
 
         std::string includePath = parseStubIncludePath(hierarchy);
         if (includePath.empty())
         {
-            SPDLOG_DEBUG("Include path not found for: {}", includeName);
+            SPDLOG_TRACE("Include path not found for: {}", includeName);
             return std::nullopt; // Include not found
         }
         return std::filesystem::canonical(includePath);
@@ -176,7 +176,7 @@ private:
     // It is a tree structure, but we only care about the first line of each include
     static std::string parseStubIncludePath(const std::string_view src)
     {
-        SPDLOG_DEBUG("Parsing include hierarchy:\n{}", src.data());
+        SPDLOG_TRACE("Parsing include hierarchy:\n{}", src.data());
         std::istringstream iss(src.data());
         std::string line;
         while (std::getline(iss, line))
@@ -185,7 +185,7 @@ private:
             {
                 continue;
             }
-            SPDLOG_DEBUG("Parsed include: {}", line.substr(2).data());
+            SPDLOG_TRACE("Parsed include: {}", line.substr(2).data());
             return line.substr(2);
         }
         return "";

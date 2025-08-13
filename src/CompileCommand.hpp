@@ -89,7 +89,7 @@ struct CompileCommand
         }
         catch (const std::exception & e)
         {
-            SPDLOG_DEBUG("Last argument is not a valid path: {}", e.what());
+            SPDLOG_TRACE("Last argument is not a valid path: {}", e.what());
         }
         return updatedCommand;
     }
@@ -116,7 +116,7 @@ struct CompileCommand
         }
         catch (const std::exception & e)
         {
-            SPDLOG_DEBUG("Last argument is not a valid path: {}", e.what());
+            SPDLOG_TRACE("Last argument is not a valid path: {}", e.what());
         }
         return updatedCommand;
     }

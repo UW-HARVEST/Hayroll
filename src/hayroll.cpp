@@ -1,5 +1,9 @@
 #include <iostream>
 #include <filesystem>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <optional>
 
 #include <spdlog/spdlog.h>
 #include "json.hpp"
@@ -24,23 +28,65 @@ int main(const int argc, const char* argv[])
 
     std::filesystem::path compileCommandsJsonPath;
     std::filesystem::path outputDir;
+    std::optional<size_t> optNumThreads; // optional -j
 
-    if (std::string(argv[1]) == "transpile" && argc == 5)
+    if (argc >= 2 && std::string(argv[1]) == "transpile" && argc >= 5)
     {
         // c2rust-style input format
+        if (!(std::string(argv[3]) == "-o" || std::string(argv[3]) == "--output-dir"))
+        {
+            std::cerr << "Usage: " << argv[0] << " transpile <path_to_folder_including_compile_commands.json> -o|--output-dir <output_directory> [-j|--jobs|--threads N]" << std::endl;
+            return 1;
+        }
         compileCommandsJsonPath = std::filesystem::path(argv[2]) / "compile_commands.json";
         outputDir = argv[4];
+
+        // optional: -j N | --jobs N | --threads N
+        for (int i = 5; i + 1 < argc; )
+        {
+            std::string opt = argv[i];
+            if (opt == "-j" || opt == "--jobs" || opt == "--threads")
+            {
+                try { optNumThreads = static_cast<size_t>(std::stoul(argv[i+1])); }
+                catch (...) { std::cerr << "Invalid thread count: " << argv[i+1] << std::endl; return 1; }
+                i += 2;
+            }
+            else
+            {
+                std::cerr << "Unknown option: " << opt << std::endl;
+                std::cerr << "Usage: " << argv[0] << " transpile <path> -o|--output-dir <out> [-j|--jobs|--threads N]" << std::endl;
+                return 1;
+            }
+        }
     }
-    else if (std::string(argv[1]) != "transpile" && argc == 3)
+    else if (argc >= 3 && std::string(argv[1]) != "transpile")
     {
         // Original input format
         compileCommandsJsonPath = argv[1];
         outputDir = argv[2];
+
+        // optional: -j N | --jobs N | --threads N
+        for (int i = 3; i + 1 < argc; )
+        {
+            std::string opt = argv[i];
+            if (opt == "-j" || opt == "--jobs" || opt == "--threads")
+            {
+                try { optNumThreads = static_cast<size_t>(std::stoul(argv[i+1])); }
+                catch (...) { std::cerr << "Invalid thread count: " << argv[i+1] << std::endl; return 1; }
+                i += 2;
+            }
+            else
+            {
+                std::cerr << "Unknown option: " << opt << std::endl;
+                std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory> [-j|--jobs|--threads N]" << std::endl;
+                return 1;
+            }
+        }
     }
     else
     {
-        std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory>" << std::endl;
-        std::cerr << "   or: " << argv[0] << " transpile <path_to_folder_including_compile_commands.json> -o|--output-dir <output_directory>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory> [-j|--jobs|--threads N]" << std::endl;
+        std::cerr << "   or: " << argv[0] << " transpile <path_to_folder_including_compile_commands.json> -o|--output-dir <output_directory> [-j|--jobs|--threads N]" << std::endl;
         return 1;
     }
 
@@ -78,188 +124,164 @@ int main(const int argc, const char* argv[])
         }
     }
 
-    // Copy all source files to the output directory
-    // compileCommands + src -> outputDir
+    // Process tasks in parallel; skip failures and report at the end
+    std::vector<std::pair<std::filesystem::path, std::string>> failedTasks; // Failed file -> error
+    std::mutex failedMutex;
 
-    for (const CompileCommand & command : compileCommands)
+    size_t hw = std::thread::hardware_concurrency();
+    if (hw == 0) hw = 2;
+    if (hw > 16) hw = 16; // Limit to 16 threads to avoid memory thrashing
+    size_t numThreads = optNumThreads.value_or(hw);
+    if (numThreads == 0) numThreads = 1;
+    if (numThreads > static_cast<size_t>(numTasks)) numThreads = static_cast<size_t>(numTasks);
+    SPDLOG_INFO("Using {} worker thread(s)", numThreads);
+
+    std::atomic<size_t> nextIdx{0};
+
+    auto worker = [&]()
     {
-        std::filesystem::path srcPath = command.file;
-        CompileCommand outputCommand = command.withUpdatedDirectory(outputDir);
-        std::filesystem::path outputPath = outputCommand.file;
-        std::string srcStr = loadFileToString(srcPath);
-        saveStringToFile(srcStr, outputPath);
-        SPDLOG_INFO("Source file {} copied to: {}", srcPath.string(), outputPath.string());
-    }
+        while (true)
+        {
+            size_t i = nextIdx.fetch_add(1, std::memory_order_relaxed);
+            if (i >= static_cast<size_t>(numTasks)) break;
+            const CompileCommand & command = compileCommands[i];
+            std::filesystem::path srcPath = command.file;
+            try
+            {
+                // Copy all source files to the output directory
+                // compileCommands + src -> outputDir
+                {
+                    CompileCommand outputCommand = command.withUpdatedDirectory(outputDir);
+                    std::filesystem::path outputPath = outputCommand.file;
+                    std::string srcStr = loadFileToString(srcPath);
+                    saveStringToFile(srcStr, outputPath);
+                    SPDLOG_INFO("Source file {} copied to: {}", srcPath.string(), outputPath.string());
+                }
 
-    // Aggregate sources into compilation units
-    // compileCommands + src --clang-frewrite-includes-> cuStrs
+                // Aggregate sources into compilation units
+                // compileCommands + src --clang-frewrite-includes-> cuStrs
+                std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
+                {
+                    CompileCommand outputCommand = command
+                        .withUpdatedDirectory(outputDir)
+                        .withUpdatedExtension(".cu.c");
+                    std::filesystem::path outputPath = outputCommand.file;
+                    saveStringToFile(cuStr, outputPath);
+                    SPDLOG_INFO("Compilation unit file for {} saved to: {}", command.file.string(), outputPath.string());
+                }
 
-    std::vector<std::string> cuStrs;
-    for (const CompileCommand & command : compileCommands)
-    {
-        std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
-        cuStrs.push_back(cuStr);
+                // Hayroll Pioneer symbolic execution
+                // compileCommands + cpp2cStr --SymbolicExecutor-> includeTree + premiseTree
+                SymbolicExecutor executor(srcPath, projDir, command.getIncludePaths());
+                executor.run();
+                SPDLOG_INFO("Hayroll Pioneer symbolic execution completed for: {}", executor.srcPath.string());
+                PremiseTree * premiseTree = executor.scribe.borrowTree();
+                premiseTree->refine();
+                {
+                    std::string premiseTreeStr = premiseTree->toString();
+                    CompileCommand outputCommand = command
+                        .withUpdatedDirectory(outputDir)
+                        .withUpdatedExtension(".premise_tree.txt");
+                    std::filesystem::path outputPath = outputCommand.file;
+                    saveStringToFile(premiseTreeStr, outputPath);
+                    SPDLOG_INFO("Premise tree for {} saved to: {}", command.file.string(), outputPath.string());
+                }
 
-        CompileCommand outputCommand = command
-            .withUpdatedDirectory(outputDir)
-            .withUpdatedExtension(".cu.c");
-        std::filesystem::path outputPath = outputCommand.file;
-        saveStringToFile(cuStr, outputPath);
-        SPDLOG_INFO("Compilation unit file for {} saved to: {}", command.file.string(), outputPath.string());
-    }
-    assert(cuStrs.size() == numTasks);
+                // LineMatcher
+                // cuStr + includeTree + includePath --LineMatcher-> lineMap + inverseLineMap
 
-    // Hayroll Pioneer symbolic execution
-    // compileCommands + cpp2cStr --SymbolicExecutor-> includeTree + premiseTree
+                const auto [lineMap, inverseLineMap] = LineMatcher::run(
+                    cuStr, executor.includeTree, command.getIncludePaths());
+                SPDLOG_INFO("Hayroll Line mapping completed for {}", command.file.string());
 
-    std::vector<SymbolicExecutor> symbolicExecutors;
-    for (const CompileCommand & command : compileCommands)
-    {
-        std::filesystem::path srcPath = command.file;
-        SymbolicExecutor executor(srcPath, projDir, command.getIncludePaths());
-        executor.run();
-        // Results are in the executor's member variables
-        SPDLOG_INFO("Hayroll Pioneer symbolic execution completed for: {}", executor.srcPath.string());
-        
-        PremiseTree * premiseTree = executor.scribe.borrowTree();
-        premiseTree->refine();
-        std::string premiseTreeStr = premiseTree->toString();
-        
-        CompileCommand outputCommand = command
-            .withUpdatedDirectory(outputDir)
-            .withUpdatedExtension(".premise_tree.txt");
-        std::filesystem::path outputPath = outputCommand.file;
-        saveStringToFile(premiseTreeStr, outputPath);
-        SPDLOG_INFO("Premise tree for {} saved to: {}", command.file.string(), outputPath.string());
+                // CodeRangeAnalysisTasks
+                // premiseTree + lineMap --> CodeRangeAnalysisTasks
+                std::vector<CodeRangeAnalysisTask> tasks = premiseTree->getCodeRangeAnalysisTasks(lineMap);
+                {
+                    CompileCommand outputCommand = command
+                        .withUpdatedDirectory(outputDir)
+                        .withUpdatedExtension(".range_tasks.json");
+                    std::filesystem::path outputPath = outputCommand.file;
+                    saveStringToFile(json(tasks).dump(4), outputPath);
+                    SPDLOG_INFO("Code range analysis tasks for {} saved to: {}", command.file.string(), outputPath.string());
+                }
 
-        symbolicExecutors.push_back(std::move(executor));
-    }
-    assert(symbolicExecutors.size() == numTasks);
+                // Analyze macro invocations using Maki
+                // compileCommands + src --Maki-> cpp2cStr
+                std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command, tasks);
+                {
+                    CompileCommand outputCommand = command
+                        .withUpdatedDirectory(outputDir)
+                        .withUpdatedExtension(".cpp2c");
+                    std::filesystem::path outputPath = outputCommand.file;
+                    saveStringToFile(cpp2cStr, outputPath);
+                    SPDLOG_INFO("Maki cpp2c output for {} saved to: {}", command.file.string(), outputPath.string());
+                }
 
-    // LineMatcher
-    // cuStr + includeTree + includePath --LineMatcher-> lineMap + inverseLineMap
+                // Hayroll Seeder
+                // compileCommands + cuStrs + includeTree + premiseTree --Seeder-> seededStr
+                std::string cuSeededStr = Seeder::run(cpp2cStr, std::nullopt, cuStr, lineMap, inverseLineMap);
+                {
+                    CompileCommand outputCommand = command
+                        .withUpdatedDirectory(outputDir)
+                        .withUpdatedExtension(".seeded.cu.c");
+                    std::filesystem::path outputPath = outputCommand.file;
+                    saveStringToFile(cuSeededStr, outputPath);
+                    SPDLOG_INFO("Hayroll Seeded compilation unit for {} saved to: {}", command.file.string(), outputPath.string());
+                }
 
-    std::vector<std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>>> lineMaps;
-    std::vector<std::vector<std::pair<Hayroll::IncludeTreePtr, int>>> inverseLineMaps;
-    for (int i = 0; i < numTasks; ++i)
-    {
-        const std::string & cuStr = cuStrs[i];
-        const IncludeTreePtr & includeTree = symbolicExecutors[i].includeTree;
-        const std::vector<std::filesystem::path> & includePaths = compileCommands[i].getIncludePaths();
+                // c2rust -> .seeded.rs
+                std::string c2rustStr = C2RustWrapper::runC2Rust(cuSeededStr, command);
+                {
+                    CompileCommand outputCommand = command
+                        .withUpdatedDirectory(outputDir)
+                        .withUpdatedExtension(".seeded.rs");
+                    std::filesystem::path outputPath = outputCommand.file;
+                    saveStringToFile(c2rustStr, outputPath);
+                    SPDLOG_INFO("C2Rust output for {} saved to: {}", command.file.string(), outputPath.string());
+                }
 
-        const auto [lineMap, inverseLineMap] = LineMatcher::run(cuStr, includeTree, includePaths);
-        lineMaps.push_back(std::move(lineMap));
-        inverseLineMaps.push_back(std::move(inverseLineMap));
+                // Reaper -> .rs
+                std::string reaperStr = ReaperWrapper::runReaper(c2rustStr);
+                {
+                    CompileCommand outputCommand = command
+                        .withUpdatedDirectory(outputDir)
+                        .withUpdatedExtension(".rs");
+                    std::filesystem::path outputPath = outputCommand.file;
+                    saveStringToFile(reaperStr, outputPath);
+                    SPDLOG_INFO("Hayroll Reaper output for {} saved to: {}", command.file.string(), outputPath.string());
+                }
+            }
+            catch (const std::exception & e)
+            {
+                std::lock_guard<std::mutex> lock(failedMutex);
+                failedTasks.emplace_back(command.file, e.what());
+                SPDLOG_ERROR("Task {} failed: {}", command.file.string(), e.what());
+            }
+            catch (...)
+            {
+                std::lock_guard<std::mutex> lock(failedMutex);
+                failedTasks.emplace_back(command.file, "unknown error");
+                SPDLOG_ERROR("Task {} failed: unknown error", command.file.string());
+            }
+        }
+    };
 
-        SPDLOG_INFO("Hayroll Line mapping completed for {}", compileCommands[i].file.string());
-    }
-    assert(lineMaps.size() == numTasks);
-    assert(inverseLineMaps.size() == numTasks);
-
-    // CodeRangeAnalysisTasks
-    // premiseTree + lineMap --> CodeRangeAnalysisTasks
-    std::vector<std::vector<CodeRangeAnalysisTask>> codeRangeAnalysisTasks;
-    for (int i = 0; i < numTasks; ++i)
-    {
-        const PremiseTree * premiseTree = symbolicExecutors[i].scribe.borrowTree();
-        const auto & lineMap = lineMaps[i];
-        std::vector<CodeRangeAnalysisTask> tasks = premiseTree->getCodeRangeAnalysisTasks(lineMap);
-
-        CompileCommand outputCommand = compileCommands[i]
-            .withUpdatedDirectory(outputDir)
-            .withUpdatedExtension(".range_tasks.json");
-        std::filesystem::path outputPath = outputCommand.file;
-        saveStringToFile(json(tasks).dump(4), outputPath);
-
-        codeRangeAnalysisTasks.push_back(std::move(tasks));
-        SPDLOG_INFO("Code range analysis tasks for {} saved to: {}", compileCommands[i].file.string(), outputPath.string());
-    }
-    assert(codeRangeAnalysisTasks.size() == numTasks);
-
-    // Analyze macro invocations using Maki
-    // compileCommands + src --Maki-> cpp2cStr
-
-    std::vector<std::string> cpp2cStrs;
-    for (int i = 0; i < numTasks; ++i)
-    {
-        const CompileCommand & command = compileCommands[i];
-        const std::vector<Hayroll::CodeRangeAnalysisTask> & codeRanges = codeRangeAnalysisTasks[i];
-
-        std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command, codeRanges);
-        CompileCommand outputCommand = command
-            .withUpdatedDirectory(outputDir)
-            .withUpdatedExtension(".cpp2c");
-        std::filesystem::path outputPath = outputCommand.file;
-        saveStringToFile(cpp2cStr, outputPath);
-        SPDLOG_INFO("Maki cpp2c output for {} saved to: {}", command.file.string(), outputPath.string());
-        cpp2cStrs.push_back(cpp2cStr);
-    }
-    assert(cpp2cStrs.size() == numTasks);
-
-    // Hayroll Seeder
-    // compileCommands + cuStrs + includeTree + premiseTree --Seeder-> seed
-    std::vector<std::string> cuSeededStrs;
-    for (int i = 0; i < numTasks; ++i)
-    {
-        const CompileCommand & command = compileCommands[i];
-        const std::string & cpp2cStr = cpp2cStrs[i];
-        const std::string & cuStr = cuStrs[i];
-        const auto & lineMap = lineMaps[i];
-        const auto & inverseLineMap = inverseLineMaps[i];
-
-        std::string cuSeededStr = Seeder::run(cpp2cStr, std::nullopt, cuStr, lineMap, inverseLineMap);
-        cuSeededStrs.push_back(cuSeededStr);
-
-        // Save the seeded source to a file
-        CompileCommand outputCommand = command
-            .withUpdatedDirectory(outputDir)
-            .withUpdatedExtension(".seeded.cu.c");
-        std::filesystem::path outputPath = outputCommand.file;
-        saveStringToFile(cuSeededStr, outputPath);
-        SPDLOG_INFO("Hayroll Seeded compilation unit for {} saved to: {}", command.file.string(), outputPath.string());
-    }
-    assert(cuSeededStrs.size() == numTasks);
-
-    // c2rust
-    std::vector<std::string> c2rustStrs;
-    for (int i = 0; i < numTasks; ++i)
-    {
-        const CompileCommand & command = compileCommands[i];
-        const std::string & cuSeededStr = cuSeededStrs[i];
-        std::string c2rustStr = C2RustWrapper::runC2Rust(cuSeededStr, command);
-        c2rustStrs.push_back(c2rustStr);
-
-        // Save the C2Rust output to a file
-        CompileCommand outputCommand = command
-            .withUpdatedDirectory(outputDir)
-            .withUpdatedExtension(".seeded.rs");
-        std::filesystem::path outputPath = outputCommand.file;
-        saveStringToFile(c2rustStr, outputPath);
-        SPDLOG_INFO("C2Rust output for {} saved to: {}", command.file.string(), outputPath.string());
-    }
-    assert(c2rustStrs.size() == numTasks);
-
-    // Hayroll Reaper
-    std::vector<std::string> reaperStrs;
-    for (int i = 0; i < numTasks; ++i)
-    {
-        const CompileCommand & command = compileCommands[i];
-        const std::string & c2rustStr = c2rustStrs[i];
-        std::string reaperStr = ReaperWrapper::runReaper(c2rustStr);
-        reaperStrs.push_back(reaperStr);
-
-        // Save the Reaper output to a file
-        CompileCommand outputCommand = command
-            .withUpdatedDirectory(outputDir)
-            .withUpdatedExtension(".rs");
-        std::filesystem::path outputPath = outputCommand.file;
-        saveStringToFile(reaperStr, outputPath);
-        SPDLOG_INFO("Hayroll Reaper output for {} saved to: {}", command.file.string(), outputPath.string());
-    }
-    assert(reaperStrs.size() == numTasks);
+    std::vector<std::thread> threads;
+    threads.reserve(numThreads);
+    for (size_t t = 0; t < numThreads; ++t) threads.emplace_back(worker);
+    for (auto & th : threads) th.join();
 
     // Print final results
+    if (!failedTasks.empty())
+    {
+        SPDLOG_ERROR("{} task(s) failed:", failedTasks.size());
+        for (const auto & p : failedTasks)
+        {
+            SPDLOG_ERROR("  {} -> {}", p.first.string(), p.second);
+        }
+    }
     SPDLOG_INFO("Hayroll pipeline completed. See output directory: {}", outputDir.string());
 
-    return 0;
+    return failedTasks.empty() ? 0 : 1;
 }

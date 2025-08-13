@@ -50,14 +50,14 @@ public:
             CompileCommand::compileCommandsToJson({newCompileCommand}).dump(4),
             compileCommandsPath
         );
-        SPDLOG_DEBUG("Saved compile_commands.json to: {}\n content:\n{}",
+        SPDLOG_TRACE("Saved compile_commands.json to: {}\n content:\n{}",
                      compileCommandsPath.string(),
                      CompileCommand::compileCommandsToJson({newCompileCommand}).dump(4));
         
         TempDir outputDir;
         std::filesystem::path outputDirPath = outputDir.getPath();
 
-        SPDLOG_DEBUG
+        SPDLOG_TRACE
         (
             "Issuing command: {} {} {} {} {}",
             C2RustExe.string(),
@@ -84,8 +84,8 @@ public:
         auto [out, err] = c2rustProc.communicate();
 
         // Print out the output and error streams
-        SPDLOG_DEBUG("C2Rust stdout:\n{}", out.buf.data());
-        SPDLOG_DEBUG("C2Rust stderr:\n{}", err.buf.data());
+        SPDLOG_TRACE("C2Rust stdout:\n{}", out.buf.data());
+        SPDLOG_TRACE("C2Rust stderr:\n{}", err.buf.data());
 
         // Should appear: outputDir/src/input.seeded.cu.rs
         // Confirm that the file exists and return its content

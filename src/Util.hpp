@@ -416,8 +416,6 @@ z3::expr simplifyOrOfAnd(const z3::expr & expr)
 {
     z3::context & ctx = expr.ctx();
     
-    // SPDLOG_DEBUG("simplifyOrOfAnd input: {}", expr.to_string());
-    
     z3::params paramsSimplify(ctx);
     paramsSimplify.set("flat_and_or", true);
     paramsSimplify.set("bv_ite2id", true);
@@ -431,11 +429,7 @@ z3::expr simplifyOrOfAnd(const z3::expr & expr)
     assert(res1.size() > 0);
     z3::expr expr1 = res1[0].as_expr();
 
-    // SPDLOG_DEBUG("simplifyOrOfAnd simplify_t: {}", expr0.to_string());
-
     z3::expr expr2 = factorCommonTerm(expr1);
-
-    // SPDLOG_DEBUG("simplifyOrOfAnd factorCommonTerm: {}", expr1.to_string());
 
     z3::tactic tacticCompound =
         tacticSimplify

@@ -34,7 +34,7 @@ public:
         saveStringToFile(dummyCargoToml, cargoPath);
         saveStringToFile(seededRustStr, inputFilePath);
 
-        SPDLOG_DEBUG
+        SPDLOG_TRACE
         (
             "Issuing command: {} {}",
             HayrollReaperExe.string(),
@@ -53,8 +53,8 @@ public:
         );
 
         auto [out, err] = reaperProcess.communicate();
-        SPDLOG_DEBUG("Reaper output:\n{}", out.buf.data());
-        SPDLOG_DEBUG("Reaper error:\n{}", err.buf.data());
+        SPDLOG_TRACE("Reaper output:\n{}", out.buf.data());
+        SPDLOG_TRACE("Reaper error:\n{}", err.buf.data());
 
         // Reaper rewrites the input file in place
         std::string rustStr = loadFileToString(inputFilePath);

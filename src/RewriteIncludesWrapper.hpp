@@ -50,7 +50,7 @@ public:
         {
             clangArgsStr += arg + " ";
         }
-        SPDLOG_DEBUG
+        SPDLOG_TRACE
         (
             "cwd to {} and issuing command: {}",
             compileCommand.directory.string(),

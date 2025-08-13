@@ -86,7 +86,7 @@ private:
             CompileCommand::compileCommandsToJson({compileCommand}).dump(4),
             compileCommandsPath
         );
-        SPDLOG_DEBUG("Saved compile_commands.json to: {}\n content:\n{}",
+        SPDLOG_TRACE("Saved compile_commands.json to: {}\n content:\n{}",
                      compileCommandsPath.string(),
                      CompileCommand::compileCommandsToJson({compileCommand}).dump(4));
 
@@ -95,7 +95,7 @@ private:
         {
             nlohmann::json codeRangesJson = nlohmann::json(codeRanges);
             saveStringToFile(codeRangesJson.dump(4), codeRangesPath);
-            SPDLOG_DEBUG("Saved code_ranges.json to: {}\n content:\n{}",
+            SPDLOG_TRACE("Saved code_ranges.json to: {}\n content:\n{}",
                          codeRangesPath.string(),
                          codeRangesJson.dump(4));
         }
@@ -119,7 +119,7 @@ private:
             args.push_back(codeRangesPath.string());
         }
 
-        SPDLOG_DEBUG
+        SPDLOG_TRACE
         (
             "Issuing command: {}",
             [&args]() {
@@ -143,8 +143,8 @@ private:
         auto [out, err] = cpp2c.communicate();
 
         // Print out the output and error streams
-        SPDLOG_DEBUG("Maki cpp2c output:\n{}", out.buf.data());
-        SPDLOG_DEBUG("Maki cpp2c error:\n{}", err.buf.data());
+        SPDLOG_TRACE("Maki cpp2c output:\n{}", out.buf.data());
+        SPDLOG_TRACE("Maki cpp2c error:\n{}", err.buf.data());
 
         // Should appear: outputDir/all_results.cpp2c
         // Confirm that the file exists and return its content

@@ -185,7 +185,7 @@ public:
             // This code section was copied from a header file which was concretely executed
             // by Hayroll Pioneer, so the include tree is not available.
             // We don't instrument this code section.
-            SPDLOG_DEBUG
+            SPDLOG_TRACE
             (
                 "Skipping instrumentation for {}: {}:{} (no include tree)",
                 name, path.string(), srcLine
@@ -912,7 +912,7 @@ public:
         {
             auto [path, line, col] = parseLocation(invocation.InvocationLocation);
             auto [pathEnd, lineEnd, colEnd] = parseLocation(invocation.InvocationLocationEnd);
-            SPDLOG_DEBUG
+            SPDLOG_TRACE
             (
                 "Extracting spelling for invocation {} at {}: {}:{}-{}:{}",
                 invocation.Name,
@@ -925,7 +925,7 @@ public:
             {
                 auto [argPath, argLine, argCol] = parseLocation(arg.ActualArgLocBegin);
                 auto [argPathEnd, argLineEnd, argColEnd] = parseLocation(arg.ActualArgLocEnd);
-                SPDLOG_DEBUG
+                SPDLOG_TRACE
                 (
                     "Extracting spelling for argument {} at {}: {}:{}-{}:{}",
                     arg.Name,
@@ -964,7 +964,7 @@ public:
                 int lnEnd = premiseTreeNode->programPoint.node.endPoint().row + 1;
                 int colEnd = premiseTreeNode->programPoint.node.endPoint().column + 1;
 
-                SPDLOG_DEBUG
+                SPDLOG_TRACE
                 (
                     "Premise: {} at IncludeTree {}: {}:{}-{}:{}",
                     premiseTreeNode->premise.to_string(),
@@ -974,7 +974,7 @@ public:
 
                 if (!lineMap.contains(premiseTreeNode->programPoint.includeTree))
                 {
-                    SPDLOG_DEBUG
+                    SPDLOG_TRACE
                     (
                         "IncludeTree {} not found in lineMap. Skipping premise {}.",
                         premiseTreeNode->programPoint.includeTree->stacktrace(),
@@ -1023,7 +1023,7 @@ public:
         
         for (const InstrumentationTask & task : tasks)
         {
-            SPDLOG_DEBUG(task.toString());
+            SPDLOG_TRACE(task.toString());
             task.addToEditor(srcEditor);
         }
         

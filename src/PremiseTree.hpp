@@ -96,16 +96,16 @@ struct PremiseTree
 
     void disjunctPremise(const z3::expr & premise)
     {
-        SPDLOG_DEBUG("Disjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string());
+        SPDLOG_TRACE("Disjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string());
         this->premise = this->premise || premise;
-        SPDLOG_DEBUG("New premise: {}", this->premise.to_string());
+        SPDLOG_TRACE("New premise: {}", this->premise.to_string());
     }
 
     void conjunctPremise(const z3::expr & premise)
     {
-        SPDLOG_DEBUG("Conjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string());
+        SPDLOG_TRACE("Conjuncting premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string());
         this->premise = this->premise && premise;
-        SPDLOG_DEBUG("New premise: {}", this->premise.to_string());
+        SPDLOG_TRACE("New premise: {}", this->premise.to_string());
     }
 
     void disjunctMacroPremise
@@ -114,7 +114,7 @@ struct PremiseTree
         const z3::expr & premise
     )
     {
-        SPDLOG_DEBUG("Disjuncting macro premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string());
+        SPDLOG_TRACE("Disjuncting macro premise: \n Program point: {}\n Premise: {}", programPoint.toString(), premise.to_string());
         auto it = macroPremises.find(programPoint);
         if (it == macroPremises.end())
         {
@@ -173,7 +173,7 @@ struct PremiseTree
         {
             if (z3Check(!z3::implies(getCompletePremise(), macroPremise)) == z3::unsat)
             {
-                SPDLOG_DEBUG("Eliminating macro premise: {}", macroPremise.to_string());
+                SPDLOG_TRACE("Eliminating macro premise: {}", macroPremise.to_string());
                 continue;
             }
             macroPremise = simplifyOrOfAnd(macroPremise);
@@ -191,7 +191,7 @@ struct PremiseTree
             {
                 if (z3Check(!z3::implies(getCompletePremise(), child->premise)) == z3::unsat)
                 {
-                    SPDLOG_DEBUG("Eliminating child node: {}", child->toString());
+                    SPDLOG_TRACE("Eliminating child node: {}", child->toString());
                     continue;
                 }
             }
@@ -241,7 +241,7 @@ struct PremiseTree
             const TSNode & tsNode = programPoint.node;
             if (!lineMap.contains(includeTree))
             {
-                SPDLOG_DEBUG
+                SPDLOG_TRACE
                 (
                     "IncludeTree {} not found in lineMap. Skipping premise {}.",
                     includeTree->stacktrace(),
@@ -322,9 +322,9 @@ public:
         PremiseTree * newTree = parent->addChild(programPoint, premise);
         map.emplace(programPoint, newTree);
 
-        SPDLOG_DEBUG("Created new premise tree node: {}", newTree->toString());
-        SPDLOG_DEBUG("Parent premise tree node: {}", parent->toString());
-        SPDLOG_DEBUG("New premise: {}", newTree->premise.to_string());
+        SPDLOG_TRACE("Created new premise tree node: {}", newTree->toString());
+        SPDLOG_TRACE("Parent premise tree node: {}", parent->toString());
+        SPDLOG_TRACE("New premise: {}", newTree->premise.to_string());
 
         return newTree;
     }

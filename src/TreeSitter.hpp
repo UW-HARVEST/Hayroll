@@ -1053,7 +1053,6 @@ const std::string & TSNode::getSource() const
 std::string_view TSNode::textView() const
 {
     if (isNull()) return "";
-    // SPDLOG_DEBUG("TSNode::textView getSource() {}", getSource());
     return std::string_view(getSource()).substr(startByte(), length());
 }
 
