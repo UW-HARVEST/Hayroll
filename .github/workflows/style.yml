@@ -18,7 +18,9 @@ jobs:
     - run: pwd
     - run: ls -a
     - run: ls -a ..
+    - run: echo "GITHUB_SHA=$GITHUB_SHA"
     - run: git status
+    - run: git rev-parse HEAD
     - run: git show
     - name: Check style
       run: make style-check
