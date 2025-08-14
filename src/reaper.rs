@@ -7,7 +7,7 @@ use project_model::CargoConfig;
 use load_cargo;
 use anyhow::Result;
 use serde_json::{self, value};
-use syntax::{ast::{self, SourceFile}, syntax_editor::Element, ted::{self, Position}, AstNode, AstToken, SyntaxElement, SyntaxNode, SyntaxToken, T};
+use syntax::{ast::{self, HasAttrs, SourceFile}, syntax_editor::Element, ted::{self, Position}, AstNode, AstToken, SyntaxElement, SyntaxNode, SyntaxToken, T};
 use vfs::FileId;
 use std::fs;
 
@@ -42,12 +42,140 @@ fn get_dollar_token_mut() -> SyntaxToken {
     dollar_token_mut
 }
 
+// Takes a node and keeps climbing up to the parent node until the node itself is of the given kind i.e. IfExpr
+// Also takes a predicate to check if the node satisfies the extra condition
+fn parent_until_kind_and_cond<T>(node: &impl ast::AstNode, condition: fn(&T) -> bool) -> Option<T>
+where
+    T: ast::AstNode,
+{
+    let mut node = node.syntax().clone();
+    while !(T::can_cast(node.kind()) && condition(&T::cast(node.clone()).unwrap())) {
+        node = node.parent()?;
+    }
+    Some(T::cast(node)?)
+}
+
+// Takes a node and keeps climbing up to the parent node until the node itself is of the given kind i.e. IfExpr
+fn parent_until_kind<T>(node: &impl ast::AstNode) -> Option<T>
+where
+    T: ast::AstNode,
+{
+    parent_until_kind_and_cond(node, |_| true)
+}
+
+// Takes a node and returns the parent node until the parent node satisfies the condition
+#[allow(dead_code)]
+fn parent_until(node: SyntaxNode, condition: fn(SyntaxNode) -> bool) -> Option<SyntaxNode> {
+    let mut node = node;
+    while !condition(node.clone()) {
+        node = node.parent()?;
+    }
+    Some(node)
+}
+
+// Keep climbing up the AST from the given node until we find the source file
+fn get_source_file(node: &impl ast::AstNode) -> ast::SourceFile {
+    parent_until_kind::<ast::SourceFile>(node).unwrap()
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct LnCol {
+    line: u32,
+    col: u32,
+}
+
+impl LnCol {
+    fn new(line: u32, col: u32) -> Self {
+        LnCol { line, col }
+    }
+
+    fn from_cu_ln_col(cu_ln_col: &str) -> Self {
+        let mut parts = cu_ln_col.split(':');
+        let line: u32 = parts.next().unwrap().parse().unwrap();
+        let col: u32 = parts.next().unwrap().parse().unwrap();
+        LnCol::new(line, col)
+    }
+}
+
+// Find all ast::Item in a SourceFile, who has a #[c2rust::src_loc = "9:1"] attribute
+// that is within a certain range
+fn find_items_in_range(source_file: &ast::SourceFile, range: std::ops::RangeInclusive<LnCol>) -> Vec<ast::Item> {
+    source_file.syntax().descendants()
+        .filter_map(ast::Item::cast)
+        .filter(|item| {
+            item.attrs().any(|attr| {
+                attr.meta().map_or(false, |meta| {
+                    meta.path().map_or(false, |path| path.to_string() == "c2rust::src_loc")
+                    &&
+                    meta.expr().map_or(false, |expr| {
+                        ast::String::cast(expr.syntax().first_token().unwrap())
+                            .map_or(false, |string| {
+                                let cu_loc = string.value();
+                                let loc = LnCol::from_cu_ln_col(&cu_loc.as_ref().unwrap());
+                                range.contains(&loc)
+                            })
+                    })
+                })
+            })
+        })
+        .collect()
+}
+
 // HayrollSeed is a tag literal in the source code
 #[derive(Clone)]
 struct HayrollSeed {
     literal: ast::Literal,
     tag: serde_json::Value,
     file_id: FileId,
+}
+
+// Trait abstraction for hayroll metadata; allows generic code over Seed or Region.
+trait HayrollMeta {
+    fn is_arg(&self) -> bool;
+    fn name(&self) -> String;            // kept as String for backward compatibility
+    fn arg_names(&self) -> Vec<String>;
+    fn loc_begin(&self) -> String;
+    fn loc_end(&self) -> String;
+    fn cu_ln_col_begin(&self) -> String;
+    fn cu_ln_col_end(&self) -> String;
+    fn loc_ref_begin(&self) -> String;
+    fn can_fn(&self) -> bool;
+    fn file_id(&self) -> FileId;
+    fn is_lvalue(&self) -> bool;
+    fn ast_kind(&self) -> String;
+    fn begin(&self) -> bool;
+    fn is_expr(&self) -> bool;
+    fn is_stmt(&self) -> bool;
+    fn is_stmts(&self) -> bool;
+    fn is_decl(&self) -> bool;
+    fn is_decls(&self) -> bool;
+}
+
+// Methods that logically belong to a single seed (moved from HayrollRegion)
+impl HayrollMeta for HayrollSeed {
+    fn is_arg(&self) -> bool { self.tag["isArg"] == true }
+    fn name(&self) -> String { self.tag["name"].as_str().unwrap().to_string() }
+    fn arg_names(&self) -> Vec<String> {
+        self.tag["argNames"].as_array().unwrap()
+            .iter()
+            .map(|arg_name| arg_name.as_str().unwrap().to_string())
+            .collect()
+    }
+    fn loc_begin(&self) -> String { self.tag["locBegin"].as_str().unwrap().to_string() }
+    fn loc_end(&self) -> String { self.tag["locEnd"].as_str().unwrap().to_string() }
+    fn cu_ln_col_begin(&self) -> String { self.tag["cuLnColBegin"].as_str().unwrap().to_string() }
+    fn cu_ln_col_end(&self) -> String { self.tag["cuLnColEnd"].as_str().unwrap().to_string() }
+    fn loc_ref_begin(&self) -> String { self.tag["locRefBegin"].as_str().unwrap().to_string() }
+    fn can_fn(&self) -> bool { self.tag["canFn"] == true }
+    fn file_id(&self) -> FileId { self.file_id }
+    fn is_lvalue(&self) -> bool { self.tag["isLvalue"] == true }
+    fn ast_kind(&self) -> String { self.tag["astKind"].as_str().unwrap().to_string() }
+    fn begin(&self) -> bool { self.tag["begin"] == true }
+    fn is_expr(&self) -> bool { self.ast_kind() == "Expr" }
+    fn is_stmt(&self) -> bool { self.ast_kind() == "Stmt" }
+    fn is_stmts(&self) -> bool { self.ast_kind() == "Stmts" }
+    fn is_decl(&self) -> bool { self.ast_kind() == "Decl" }
+    fn is_decls(&self) -> bool { self.ast_kind() == "Decls" }
 }
 
 // HayrollRegion is a tagged region in the source code
@@ -59,6 +187,27 @@ enum HayrollRegion {
     Decls(HayrollSeed),
 }
 
+impl HayrollMeta for HayrollRegion {
+    fn is_arg(&self) -> bool { self.first_seed().is_arg() }
+    fn name(&self) -> String { self.first_seed().name() }
+    fn arg_names(&self) -> Vec<String> { self.first_seed().arg_names() }
+    fn loc_begin(&self) -> String { self.first_seed().loc_begin() }
+    fn loc_end(&self) -> String { self.first_seed().loc_end() }
+    fn cu_ln_col_begin(&self) -> String { self.first_seed().cu_ln_col_begin() }
+    fn cu_ln_col_end(&self) -> String { self.first_seed().cu_ln_col_end() }
+    fn loc_ref_begin(&self) -> String { self.first_seed().loc_ref_begin() }
+    fn can_fn(&self) -> bool { self.first_seed().can_fn() }
+    fn file_id(&self) -> FileId { self.first_seed().file_id() }
+    fn is_lvalue(&self) -> bool { self.first_seed().is_lvalue() }
+    fn ast_kind(&self) -> String { self.first_seed().ast_kind() }
+    fn begin(&self) -> bool { self.first_seed().begin() }
+    fn is_expr(&self) -> bool { self.first_seed().is_expr() }
+    fn is_stmt(&self) -> bool { self.first_seed().is_stmt() }
+    fn is_stmts(&self) -> bool { self.first_seed().is_stmts() }
+    fn is_decl(&self) -> bool { self.first_seed().is_decl() }
+    fn is_decls(&self) -> bool { self.first_seed().is_decls() }
+}
+
 impl HayrollRegion {
     fn first_seed(&self) -> &HayrollSeed {
         match self {
@@ -68,76 +217,21 @@ impl HayrollRegion {
         }
     }
 
-    fn file_id(&self) -> FileId {
-        self.first_seed().file_id
-    }
-
-    fn is_arg(&self) -> bool {
-        self.first_seed().tag["isArg"] == true
-    }
-
-    fn name(&self) -> String {
-        self.first_seed().tag["name"].as_str().unwrap().to_string()
-    }
-
-    fn arg_names(&self) -> Vec<String> {
-        let arg_names = self.first_seed().tag["argNames"].as_array().unwrap();
-        arg_names.iter().map(|arg_name| arg_name.as_str().unwrap().to_string()).collect()
-    }
-
-    fn loc_begin(&self) -> String {
-        self.first_seed().tag["locBegin"].as_str().unwrap().to_string()
-    }
-
-    fn loc_end(&self) -> String {
-        self.first_seed().tag["locEnd"].as_str().unwrap().to_string()
-    }
-
-    fn cu_loc_begin(&self) -> String {
-        self.first_seed().tag["cuLocBegin"].as_str().unwrap().to_string()
-    }
-
-    fn cu_loc_end(&self) -> String {
-        self.first_seed().tag["cuLocEnd"].as_str().unwrap().to_string()
-    }
-
-    fn loc_ref_begin(&self) -> String {
-        self.first_seed().tag["locRefBegin"].as_str().unwrap().to_string()
-    }
-
-    fn is_lvalue(&self) -> bool {
-        match self {
-            HayrollRegion::Expr(seed) => seed.tag["isLvalue"] == true,
-            HayrollRegion::Stmts(_, _) => false,
-            HayrollRegion::Decls(_) => false,
-        }
-    }
-
-    fn is_expr(&self) -> bool {
-        match self {
-            HayrollRegion::Expr(_) => true,
-            HayrollRegion::Stmts(_, _) => false,
-            HayrollRegion::Decls(_) => false,
-        }
-    }
-
-    fn can_fn(&self) -> bool {
-        self.first_seed().tag["canFn"] == true
-    }
-
     // Find the code region, which is the node(s) that contains the tagged region
-    // For lvalue expr, the code region does not include the star PrefixExpr
+    // For lvalue expr, the returned code region does not include the star PrefixExpr
+    // An rvalue expr is not dereferenced by nature
+    // Stmts are not dereferenced either
     // Returns immutable node(s)
     fn get_code_region_no_deref(&self) -> CodeRegion {
         match self {
             HayrollRegion::Expr(seed) => {
-                let if_expr = ancestor_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
+                let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
                 CodeRegion::Expr(if_expr.into())
             }
             HayrollRegion::Stmts(seed_begin, seed_end) => {
-                let stmt_begin = ancestor_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
-                let stmt_end = ancestor_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
-                let stmt_list = ancestor_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
+                let stmt_begin = parent_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
+                let stmt_end = parent_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
+                let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
                 let elements = stmt_begin..=stmt_end;
                 CodeRegion::Stmts{parent: stmt_list, elements}
             }
@@ -147,24 +241,15 @@ impl HayrollRegion {
         }
     }
 
-    // Find the code region, which is the node(s) that contains the whole region
-    // For lvalue expr, the code region includes the star PrefixExpr
+    // Find the code region, which is the node(s) that contains the tagged region
+    // For lvalue expr, the returned code region includes the star PrefixExpr
+    // An rvalue expr is not dereferenced by nature
+    // Stmts are not dereferenced either
     // Returns immutable node(s)
     fn get_code_region_with_deref(&self) -> CodeRegion {
         let region = self.get_code_region_no_deref();
-        if self.is_lvalue() {
-            if let CodeRegion::Expr(if_expr) = region {
-                let star_expr = ancestor_until_kind_and_cond::<ast::PrefixExpr>(
-                    &if_expr, 
-                    |prefix_expr| prefix_expr.op_kind().unwrap() == ast::UnaryOp::Deref
-                ).unwrap();
-                CodeRegion::Expr(star_expr.into())
-            } else {
-                panic!("Expected an Expr region");
-            }
-        } else {
-            region
-        }
+        assert!(self.is_lvalue());
+        region.with_parent_deref()
     }
 
     // Peel the tag from the region, and return the body of the region. 
@@ -175,13 +260,13 @@ impl HayrollRegion {
     fn peel_tag_keep_deref(&self) -> (CodeRegion, TreeMutator) {
         match self {
             HayrollRegion::Expr(seed) => {
-                let if_expr = ancestor_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
+                let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
                 let then_branch = if_expr.then_branch().unwrap();
                 // If this is lvalue, then there should be an address-of operator (RefExpr) in then_branch
                 // and also a star PrefixExpr in the parent of the if expression
                 // In that case, we should build a new Expr with the RefExpr's expr as the body
                 if self.is_lvalue() {
-                    let star_expr = ancestor_until_kind::<ast::PrefixExpr>(&if_expr).unwrap();
+                    let star_expr = parent_until_kind::<ast::PrefixExpr>(&if_expr).unwrap();
                     let mutator = TreeMutator::new(&star_expr.syntax().clone());
                     let star_expr = mutator.make_mut(&star_expr);
                     let if_expr = mutator.make_mut(&if_expr);
@@ -195,19 +280,29 @@ impl HayrollRegion {
                 }
             }
             HayrollRegion::Stmts(seed_begin, seed_end) => {
-                let stmt_begin = ancestor_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
+                let stmt_begin = parent_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
                 let stmt_begin_next: ast::Stmt = ast::Stmt::cast(stmt_begin.syntax().next_sibling().unwrap()).unwrap();
-                let stmt_end = ancestor_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
+                let stmt_end = parent_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
                 let stmt_end_prev = ast::Stmt::cast(stmt_end.syntax().prev_sibling().unwrap()).unwrap();
-                let stmt_list = ancestor_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
+                let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
                 let mutator = TreeMutator::new(&stmt_list.syntax().clone());
                 let stmt_list = mutator.make_mut(&stmt_list);
                 let stmt_begin_next = mutator.make_mut(&stmt_begin_next);
                 let stmt_end_prev = mutator.make_mut(&stmt_end_prev);
                 (CodeRegion::Stmts{parent: stmt_list, elements: stmt_begin_next..=stmt_end_prev}, mutator)
             }
-            HayrollRegion::Decls(_) => {
-                panic!("Decls not supported in peel_tag");
+            HayrollRegion::Decls(seed) => {
+                // Collect all the Items in the SourceFile where the seed is
+                // whose #[c2rust::src_loc = "l:c"] tags are within the cuLocBegin and cuLocEnd range in the tag
+                let source_file = get_source_file(&seed.literal);
+                let cu_loc_begin = LnCol::from_cu_ln_col(&self.cu_ln_col_begin());
+                let cu_loc_end = LnCol::from_cu_ln_col(&self.cu_ln_col_end());
+                let range = cu_loc_begin..=cu_loc_end;
+                let items = find_items_in_range(&source_file, range);
+                
+                let mutator = TreeMutator::new(&source_file.syntax().clone());
+                let code_region = CodeRegion::Decls(items);
+                (code_region, mutator)
             }
         }
     }
@@ -218,7 +313,7 @@ impl HayrollRegion {
     fn peel_tag_no_deref(&self) -> (CodeRegion, TreeMutator) {
         let (region, mutator) = self.peel_tag_keep_deref();
         if self.is_lvalue() {
-            if let CodeRegion::Expr(expr)= region {
+            if let CodeRegion::Expr(expr) = region {
                 // Assert that the expr is a PrefixExpr with Deref operator
                 let star_expr = ast::PrefixExpr::cast(expr.syntax().clone()).unwrap();
                 (CodeRegion::Expr(star_expr.expr().unwrap().into()), mutator)
@@ -235,7 +330,7 @@ impl HayrollRegion {
         // rvalue: if{}else{*(0 as *mut T)} -> T
         match self {
             HayrollRegion::Expr(ref seed) => {
-                let if_expr = ancestor_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
+                let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
                 let else_branch = if_expr.else_branch().unwrap();
                 let else_block = if let ast::ElseBranch::Block(block) = else_branch {
                     block
@@ -294,6 +389,21 @@ impl CodeRegion {
         }
     }
 
+    fn with_parent_deref(&self) -> CodeRegion {
+        if let CodeRegion::Expr(if_expr) = self {
+            if let Some(star_expr) = parent_until_kind_and_cond::<ast::PrefixExpr>(
+                if_expr,
+                |prefix_expr| prefix_expr.op_kind().unwrap() == ast::UnaryOp::Deref
+            ) {
+                CodeRegion::Expr(star_expr.into())
+            } else {
+                self.clone()
+            }
+        } else {
+            self.clone()
+        }
+    }
+
     // LUB: Least Upper Bound, a single syntax node that contains all the elements in the region
     fn lub(&self) -> SyntaxNode {
         match self {
@@ -302,8 +412,7 @@ impl CodeRegion {
                 parent.syntax().clone()
             }
             CodeRegion::Decls(decls) => {
-                // Return the SourceFile node
-                ancestor_until_kind::<ast::SourceFile>(&decls[0]).unwrap().syntax().clone()
+                get_source_file(&decls[0]).syntax().clone()
             }
         }
     }
@@ -452,14 +561,12 @@ impl HayrollMacroInv {
         let (region, mutator) = match (peel_tag, return_inv_region_with_deref) {
             (true, true) => self.region.peel_tag_keep_deref(),
             (true, false) => self.region.peel_tag_no_deref(),
-            (false, true) => {
-                let region = self.region.get_code_region_with_deref();
-                let mutator = TreeMutator::new(&region.lub());
-                let region = region.make_mut_with_mutator(&mutator);
-                (region, mutator)
-            }
-            (false, false) => {
-                let region = self.region.get_code_region_no_deref();
+            (false, _) => {
+                let region = if return_inv_region_with_deref {
+                    self.region.get_code_region_with_deref()
+                } else {
+                    self.region.get_code_region_no_deref()
+                };
                 let mutator = TreeMutator::new(&region.lub());
                 let region = region.make_mut_with_mutator(&mutator);
                 (region, mutator)
@@ -627,39 +734,6 @@ impl HayrollMacroDB {
     }
 }
 
-// Takes a node and returns the parent node until the parent node satisfies the condition
-#[allow(dead_code)]
-fn ancestor_until(node: SyntaxNode, condition: fn(SyntaxNode) -> bool) -> Option<SyntaxNode> {
-    let mut node = node;
-    while !condition(node.clone()) {
-        node = node.parent()?;
-    }
-    Some(node)
-}
-
-// Takes a node and keeps climbing up to the parent node until the node itself is of the given kind i.e. IfExpr
-// Also takes a predicate to check if the node satisfies the extra condition
-fn ancestor_until_kind_and_cond<T>(node: &impl ast::AstNode, condition: fn(&T) -> bool) -> Option<T>
-where
-    T: ast::AstNode,
-{
-    let mut node = node.syntax().clone();
-    while !(T::can_cast(node.kind()) && condition(&T::cast(node.clone()).unwrap())) {
-        node = node.parent()?;
-    }
-    Some(T::cast(node)?)
-}
-
-// Takes a node and keeps climbing up to the parent node until the node itself is of the given kind i.e. IfExpr
-fn ancestor_until_kind<T>(node: &impl ast::AstNode) -> Option<T>
-where
-    T: ast::AstNode,
-{
-    ancestor_until_kind_and_cond(node, |_| true)
-}
-
-
-
 fn main() -> Result<()> {
     // Record the start time
     let start = Instant::now();
@@ -753,39 +827,37 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    // Collect from source code all annotations like #[c2rust::src_loc = "9:1"]
-    let annotations: Vec<String> = syntax_roots
-        .iter()
-        .flat_map(|(_file_id, (root, _))| {
-            root.syntax().descendants()
-            // Attatch a file_id to each node
-            .map(move |node| node)
-        })
-        .filter_map(|node| {
-            ast::Attr::cast(node)
-                .and_then(|attr| attr.meta())
-                .and_then(|meta| meta.expr())
-                .map(|expr| expr.to_string())
-        })
-        .collect();
+    // // Collect items within c2rust::src_loc 1000:1..=10000:1
+    // let items = syntax_roots.iter()
+    //     .flat_map(|(file_id, (root, _))| {
+    //         let range = LnCol::new(1000, 1)..=LnCol::new(10000, 1);
+    //         find_items_in_range(root, range).into_iter().map(|item| {
+    //             item.clone()
+    //         })
+    //     })
+    //     .collect::<Vec<_>>();
 
-    // Print all annotations
-    println!("Annotations: {:?}", annotations);
+    // // Print all such items
+    // println!("Items within c2rust::src_loc 1000:1..=10000:1: {:?}", items);
 
     // Pair up stmt hayroll_literals that are in the same scope and share the locInv in info
     let hayroll_regions : Vec<HayrollRegion> = hayroll_seeds.iter()
         .fold(Vec::new(), |mut acc, seed| {
-            if seed.tag["astKind"] == "Expr" {
+            if seed.is_expr() {
+                assert!(seed.begin());
                 acc.push(HayrollRegion::Expr(seed.clone()));
-            } else if (seed.tag["astKind"] == "Stmt" || seed.tag["astKind"] == "Stmts") && seed.tag["begin"] == true {
+            } else if (seed.is_stmt() || seed.is_stmts()) && seed.begin() == true {
                 acc.push(HayrollRegion::Stmts(seed.clone(), seed.clone())); // For now seedBegin == seedEnd
-            } else if seed.tag["begin"] == false {
+            } else if seed.is_decl() || seed.is_decls() {
+                assert!(seed.begin());
+                acc.push(HayrollRegion::Decls(seed.clone()));
+            } else if !seed.begin() {
                 // Search through the acc to find the begin stmt with the same locInv
                 let mut found = false;
                 for region in acc.iter_mut().rev() {
                     match region {
                         HayrollRegion::Stmts(seed_begin, seed_end) => {
-                            if seed_begin.tag["locInv"] == seed.tag["locInv"] {
+                            if seed_begin.loc_begin() == seed.loc_begin() {
                                 *seed_end = seed.clone();
                                 found = true;
                                 break;
@@ -798,8 +870,6 @@ fn main() -> Result<()> {
                 if !found {
                     panic!("No matching begin stmt found for end stmt");
                 }
-            } else if seed.tag["astKind"] == "Decl" || seed.tag["astKind"] == "Decls" {
-                // Do nothing for now
             } else {
                 panic!("Unknown tag");
             }

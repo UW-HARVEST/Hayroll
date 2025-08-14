@@ -56,6 +56,16 @@ public:
         SPDLOG_TRACE("Reaper output:\n{}", out.buf.data());
         SPDLOG_TRACE("Reaper error:\n{}", err.buf.data());
 
+        int retcode = reaperProcess.retcode();
+        if (retcode != 0)
+        {
+            SPDLOG_ERROR("Reaper exited with code {}", retcode);
+            // Include a snippet of stderr (avoid extremely long messages)
+            std::string errStr = std::string(err.buf.data());
+            if (errStr.size() > 2048) errStr = errStr.substr(0, 2048) + "...<truncated>";
+            throw std::runtime_error("Reaper failed (exit code " + std::to_string(retcode) + "): " + errStr);
+        }
+
         // Reaper rewrites the input file in place
         std::string rustStr = loadFileToString(inputFilePath);
         if (rustStr.empty())

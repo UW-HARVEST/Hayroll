@@ -86,7 +86,7 @@ public:
     {
         if (ln >= lines.size())
         {
-            throw std::out_of_range(fmt::format
+            throw std::out_of_range(std::format
             (
                 "Line out of range: target {}:{}, limit {}",
                 ln, col, lines.size()
@@ -94,7 +94,7 @@ public:
         }
         if (col == 0 || col > lines[ln].size())
         {
-            throw std::out_of_range(fmt::format
+            throw std::out_of_range(std::format
             (
                 "Column out of range: target {}:{}, limit {}",
                 ln, col, lines[ln].size()

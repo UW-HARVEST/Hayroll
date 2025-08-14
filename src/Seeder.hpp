@@ -104,7 +104,7 @@ public:
         int col
     )
     {
-        return fmt::format("{}:{}:{}", path.string(), line, col);
+        return std::format("{}:{}:{}", path.string(), line, col);
     }
 
     // Tag structure to be serialized and instrumented into C code
@@ -120,13 +120,14 @@ public:
         std::string name;
         std::string locBegin; // For invocation: invocation begin; for arg: arg begin
         std::string locEnd;   // For invocation: invocation end; for arg: arg end
-        std::string cuLocBegin; // Line number in compilation unit file
-        std::string cuLocEnd;
+        std::string cuLnColBegin; // Loc in the CU file, without filename (only "l:c")
+        std::string cuLnColEnd;
         std::string locRefBegin; // For invocation: definition begin; for arg: invocation begin
 
         bool canFn;
 
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, locRefBegin, canFn)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
+                                       cuLnColBegin, cuLnColEnd, locRefBegin, canFn);
 
         // Escape the JSON string to make it a valid C string that embeds into C code
         std::string stringLiteral() const
@@ -150,7 +151,7 @@ public:
 
         std::string toString() const
         {
-            return fmt::format("{}:{}: {}", line, col, str);
+            return std::format("{}:{}: {}", line, col, str);
         }
     };
 
@@ -201,6 +202,8 @@ public:
         std::string srcLocBegin = makeLocation(srcPath, srcLine, col);
         std::string srcLocEnd = makeLocation(srcPath, srcLineEnd, colEnd);
         std::string srcLocRefBegin = makeLocation(locRefSrcPath, locRefSrcLine, locRefCol);
+        std::string cuLnColBegin = std::format("{}:{}", line, col);
+        std::string cuLnColEnd = std::format("{}:{}", lineEnd, colEnd);
 
         Tag tagBegin
         {
@@ -212,8 +215,8 @@ public:
             .name = std::string(name),
             .locBegin = srcLocBegin,
             .locEnd = srcLocEnd,
-            .cuLocBegin = std::string(locBegin),
-            .cuLocEnd = std::string(locEnd),
+            .cuLnColBegin = cuLnColBegin,
+            .cuLnColEnd = cuLnColEnd,
             .locRefBegin = srcLocRefBegin,
 
             .canFn = canFn
@@ -322,19 +325,19 @@ public:
         else if (astKind == "Decl" || astKind == "Decls")
         {
             // Template:
-            // const char * HAYROLL_TAG_FOR_<ORIGINAL_INVOCATION> = tagBegin;\n
+            // ORIGINAL_INVOCATION const char * HAYROLL_TAG_FOR_<ORIGINAL_INVOCATION> = tagBegin;\n
             InstrumentationTask taskLeft
             {
                 .line = line,
-                .col = col,
+                .col = colEnd, // Avoid affecting ORIGINAL_INVOCATION's col
                 .str = 
                 (
                     std::stringstream()
-                    << "const char * HAYROLL_TAG_FOR_"
+                    << " const char * HAYROLL_TAG_FOR_"
                     << name
                     << " = "
                     << tagBegin.stringLiteral()
-                    << ";\n"
+                    << ";"
                 ).str()
             };
             tasks.push_back(taskLeft);

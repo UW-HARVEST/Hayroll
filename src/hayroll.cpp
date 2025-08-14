@@ -24,7 +24,7 @@ int main(const int argc, const char* argv[])
     using namespace Hayroll;
     using json = nlohmann::json;
 
-    spdlog::set_level(spdlog::level::info);
+    spdlog::set_level(spdlog::level::debug);
 
     std::filesystem::path compileCommandsJsonPath;
     std::filesystem::path outputDir;
