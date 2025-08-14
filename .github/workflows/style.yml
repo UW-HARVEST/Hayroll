@@ -21,6 +21,7 @@ jobs:
     - run: echo "GITHUB_SHA=$GITHUB_SHA"
     - run: git status
     - run: git rev-parse HEAD
+# This shows the *same* SHA but a *different* diff than locally!
     - run: git show
     - name: Check style
       run: make style-check
