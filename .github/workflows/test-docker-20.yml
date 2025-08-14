@@ -12,6 +12,9 @@ jobs:
       with:
         fetch-depth: 1
         show-progress: false
+    - run: |
+        clang --version
+        llvm-config --version
     - name: Install curl
       run: |
         export DEBIAN_FRONTEND=noninteractive
@@ -23,5 +26,4 @@ jobs:
         sh ./rust-init.sh -y
     - run: ./prerequisites.bash --no-sudo
     - run: ./build.bash
-    - run: cd ./build
-    - run: ctest
+    - run: cd ./build && ctest

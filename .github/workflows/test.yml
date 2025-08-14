@@ -40,5 +40,4 @@ jobs:
         sh ./rust-init.sh -y
     - run: ./prerequisites.bash
     - run: ./build.bash
-    - run: cd ./build
-    - run: ctest
+    - run: cd ./build && ctest
