@@ -1,0 +1,18 @@
+name: Run smoke test
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: silkeh/clang:20
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+        show-progress: false
+    - run: ./prerequisites.bash --no-sudo
+    - run: ./build.bash
+    - run: cd ./build
+    - run: ctest

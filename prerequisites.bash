@@ -137,7 +137,7 @@ if [[ "${need_apt_install}" == "yes" ]]; then
   echo "[*] Installing system packages via apt"
   run_quiet apt-get.log ${USE_SUDO:+sudo} apt-get update
   # shellcheck disable=SC2086
-  run_quiet apt-install.log ${USE_SUDO:+sudo} apt-get install -y --no-install-recommends ${apt_packages}
+  DEBIAN_FRONTEND=noninteractive run_quiet apt-install.log ${USE_SUDO:+sudo} apt-get install -y --no-install-recommends ${apt_packages}
 fi
 
 check_version clang 17
