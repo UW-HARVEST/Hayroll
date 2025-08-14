@@ -11,9 +11,7 @@ jobs:
       with:
         fetch-depth: 1
         show-progress: false
-    - name: Run tests
-      run: |
-        ./prerequisites.bash --no-sudo
-        ./build.bash
-        cd ./build
-        ctest
+    - run: ./prerequisites.bash --no-sudo
+    - run: ./build.bash
+    - run: cd ./build
+    - run: ctest
