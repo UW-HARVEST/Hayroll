@@ -18,7 +18,9 @@ jobs:
         apt update
         apt install -y curl
     - name: Install Rust
-      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -y
+      run: |
+        curl -o rust-init.sh --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs
+        sh ./rust-init.sh -y
     - run: ./prerequisites.bash --no-sudo
     - run: ./build.bash
     - run: cd ./build
