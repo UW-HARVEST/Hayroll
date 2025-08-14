@@ -217,79 +217,31 @@ impl HayrollRegion {
         }
     }
 
-    // Find the code region, which is the node(s) that contains the tagged region
-    // For lvalue expr, the returned code region does not include the star PrefixExpr
-    // An rvalue expr is not dereferenced by nature
-    // Stmts are not dereferenced either
-    // Returns immutable node(s)
-    fn get_code_region_no_deref(&self) -> CodeRegion {
+    // Returns immutable code region on the original AST
+    // Useful for locating where to be replaced
+    fn get_raw_code_region_immut(&self, with_deref: bool) -> CodeRegion {
         match self {
             HayrollRegion::Expr(seed) => {
                 let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
-                CodeRegion::Expr(if_expr.into())
+                let region = CodeRegion::Expr(if_expr.clone().into());
+                let region = if with_deref && self.is_lvalue() {
+                    let star_expr = parent_until_kind_and_cond::<ast::PrefixExpr>(
+                        &if_expr,
+                        |prefix_expr| prefix_expr.op_kind().unwrap() == ast::UnaryOp::Deref
+                    ).unwrap();
+                    CodeRegion::Expr(star_expr.into())
+                } else {
+                    region
+                };
+                region
             }
             HayrollRegion::Stmts(seed_begin, seed_end) => {
                 let stmt_begin = parent_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
                 let stmt_end = parent_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
                 let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
                 let elements = stmt_begin..=stmt_end;
-                CodeRegion::Stmts{parent: stmt_list, elements}
-            }
-            HayrollRegion::Decls(_) => {
-                panic!("Decls not supported in code region");
-            }
-        }
-    }
-
-    // Find the code region, which is the node(s) that contains the tagged region
-    // For lvalue expr, the returned code region includes the star PrefixExpr
-    // An rvalue expr is not dereferenced by nature
-    // Stmts are not dereferenced either
-    // Returns immutable node(s)
-    fn get_code_region_with_deref(&self) -> CodeRegion {
-        let region = self.get_code_region_no_deref();
-        assert!(self.is_lvalue());
-        region.with_parent_deref()
-    }
-
-    // Peel the tag from the region, and return the body of the region. 
-    // Delete the tags we inserted into the C source which later got translated to Rust.
-    // Since our tagging was done in a way that does not change the program behavior, peeling if off also keeps the semantics. 
-    // For lvalue expr, the body includes the star PrefixExpr
-    // Returns mutable node(s)
-    fn peel_tag_keep_deref(&self) -> (CodeRegion, TreeMutator) {
-        match self {
-            HayrollRegion::Expr(seed) => {
-                let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
-                let then_branch = if_expr.then_branch().unwrap();
-                // If this is lvalue, then there should be an address-of operator (RefExpr) in then_branch
-                // and also a star PrefixExpr in the parent of the if expression
-                // In that case, we should build a new Expr with the RefExpr's expr as the body
-                if self.is_lvalue() {
-                    let star_expr = parent_until_kind::<ast::PrefixExpr>(&if_expr).unwrap();
-                    let mutator = TreeMutator::new(&star_expr.syntax().clone());
-                    let star_expr = mutator.make_mut(&star_expr);
-                    let if_expr = mutator.make_mut(&if_expr);
-                    let then_branch = mutator.make_mut(&then_branch);
-                    ted::replace(if_expr.syntax(), then_branch.syntax());
-                    (CodeRegion::Expr(star_expr.into()), mutator)
-                } else {
-                    let mutator = TreeMutator::new(&then_branch.syntax().clone());
-                    let then_branch = mutator.make_mut(&then_branch);
-                    (CodeRegion::Expr(then_branch.into()), mutator)
-                }
-            }
-            HayrollRegion::Stmts(seed_begin, seed_end) => {
-                let stmt_begin = parent_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
-                let stmt_begin_next: ast::Stmt = ast::Stmt::cast(stmt_begin.syntax().next_sibling().unwrap()).unwrap();
-                let stmt_end = parent_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
-                let stmt_end_prev = ast::Stmt::cast(stmt_end.syntax().prev_sibling().unwrap()).unwrap();
-                let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
-                let mutator = TreeMutator::new(&stmt_list.syntax().clone());
-                let stmt_list = mutator.make_mut(&stmt_list);
-                let stmt_begin_next = mutator.make_mut(&stmt_begin_next);
-                let stmt_end_prev = mutator.make_mut(&stmt_end_prev);
-                (CodeRegion::Stmts{parent: stmt_list, elements: stmt_begin_next..=stmt_end_prev}, mutator)
+                let region = CodeRegion::Stmts { parent: stmt_list, elements };
+                region
             }
             HayrollRegion::Decls(seed) => {
                 // Collect all the Items in the SourceFile where the seed is
@@ -299,29 +251,74 @@ impl HayrollRegion {
                 let cu_loc_end = LnCol::from_cu_ln_col(&self.cu_ln_col_end());
                 let range = cu_loc_begin..=cu_loc_end;
                 let items = find_items_in_range(&source_file, range);
-                
-                let mutator = TreeMutator::new(&source_file.syntax().clone());
-                let code_region = CodeRegion::Decls(items);
-                (code_region, mutator)
+                CodeRegion::Decls(items)
             }
         }
     }
 
-    // Peel the tag from the region, and return the body of the region
-    // For lvalue expr, the body does not include the star PrefixExpr
-    // Returns mutable node(s)
-    fn peel_tag_no_deref(&self) -> (CodeRegion, TreeMutator) {
-        let (region, mutator) = self.peel_tag_keep_deref();
-        if self.is_lvalue() {
-            if let CodeRegion::Expr(expr) = region {
-                // Assert that the expr is a PrefixExpr with Deref operator
-                let star_expr = ast::PrefixExpr::cast(expr.syntax().clone()).unwrap();
-                (CodeRegion::Expr(star_expr.expr().unwrap().into()), mutator)
-            } else {
-                panic!("Expected an Expr region");
+    // Code region for replacement?
+    // Code region for copying?
+
+    fn get_code_region(&self, with_deref: bool, peel_tag: bool) -> (CodeRegion, TreeMutator) {
+        assert!(!peel_tag); // Not supported yet
+        match self {
+            HayrollRegion::Expr(seed) => {
+                let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
+                let region = CodeRegion::Expr(if_expr.clone().into());
+                let region = if with_deref && self.is_lvalue() {
+                    let star_expr = parent_until_kind_and_cond::<ast::PrefixExpr>(
+                        &if_expr,
+                        |prefix_expr| prefix_expr.op_kind().unwrap() == ast::UnaryOp::Deref
+                    ).unwrap();
+                    CodeRegion::Expr(star_expr.into())
+                } else {
+                    region
+                };
+                let mutator = TreeMutator::new(&region.lub());
+                let region = region.make_mut_with_mutator(&mutator);
+                (region, mutator)
             }
-        } else {
-            (region, mutator)
+            HayrollRegion::Stmts(seed_begin, seed_end) => {
+                let stmt_begin = parent_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
+                let stmt_end = parent_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
+                let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
+                let elements = stmt_begin..=stmt_end;
+                let region = CodeRegion::Stmts { parent: stmt_list, elements };
+                let mutator = TreeMutator::new(&region.lub());
+                let region = region.make_mut_with_mutator(&mutator);
+                (region, mutator)
+            }
+            HayrollRegion::Decls(seed) => {
+                // Collect all the Items in the SourceFile where the seed is
+                // whose #[c2rust::src_loc = "l:c"] tags are within the cuLocBegin and cuLocEnd range in the tag
+                let source_file = get_source_file(&seed.literal);
+                let cu_loc_begin = LnCol::from_cu_ln_col(&self.cu_ln_col_begin());
+                let cu_loc_end = LnCol::from_cu_ln_col(&self.cu_ln_col_end());
+                let range = cu_loc_begin..=cu_loc_end;
+                let items = find_items_in_range(&source_file, range);
+
+                let mutator = TreeMutator::new(&source_file.syntax());
+
+                // For each item, if it is not surrounded by an extern "C", then return as-is.
+                // Otherwise, create an extern "C" that wraps around it.
+                let items_processed: Vec<ast::Item> = items.into_iter().map(|item| {
+                    if let Some(_) = parent_until_kind_and_cond::<ast::ExternBlock>(&item, |ext| {
+                        ext.abi().map_or(false, |abi| {
+                            abi.abi_string().map_or(false, |s| s.value().unwrap() == "C")
+                        })
+                    }) {
+                        // If the item is wrapped in extern "C", return it as-is
+                        let new_extern_c_str = format!("extern \"C\" {{\n    {}\n}}", item.to_string());
+                        let new_extern_c = expr_from_text(&new_extern_c_str);
+                        let new_extern_c = mutator.make_mut(&new_extern_c);
+                        ast::Item::cast(new_extern_c.syntax().clone()).unwrap()
+                    } else {
+                        mutator.make_mut(&item)
+                    }
+                }).collect::<Vec<_>>();
+
+                (CodeRegion::Decls(items_processed), mutator)
+            }
         }
     }
 
@@ -386,21 +383,6 @@ impl CodeRegion {
                 CodeRegion::Stmts { parent, elements: begin..=end }
             }
             CodeRegion::Decls(decls) => CodeRegion::Decls(decls.iter().map(|decl| decl.clone_subtree()).collect()),
-        }
-    }
-
-    fn with_parent_deref(&self) -> CodeRegion {
-        if let CodeRegion::Expr(if_expr) = self {
-            if let Some(star_expr) = parent_until_kind_and_cond::<ast::PrefixExpr>(
-                if_expr,
-                |prefix_expr| prefix_expr.op_kind().unwrap() == ast::UnaryOp::Deref
-            ) {
-                CodeRegion::Expr(star_expr.into())
-            } else {
-                self.clone()
-            }
-        } else {
-            self.clone()
         }
     }
 
@@ -558,27 +540,16 @@ impl HayrollMacroInv {
         substitute: fn(&HayrollRegion) -> Vec<SyntaxElement>
     ) -> CodeRegion {
         let mut delayed_tasks: Vec<Box<dyn FnOnce()>> = Vec::new();
-        let (region, mutator) = match (peel_tag, return_inv_region_with_deref) {
-            (true, true) => self.region.peel_tag_keep_deref(),
-            (true, false) => self.region.peel_tag_no_deref(),
-            (false, _) => {
-                let region = if return_inv_region_with_deref {
-                    self.region.get_code_region_with_deref()
-                } else {
-                    self.region.get_code_region_no_deref()
-                };
-                let mutator = TreeMutator::new(&region.lub());
-                let region = region.make_mut_with_mutator(&mutator);
-                (region, mutator)
-            }
-        };
+        let region = self.region.get_raw_code_region_immut(
+            return_inv_region_with_deref
+        );
+        let mutator = TreeMutator::new(&region.lub());
+        let region = region.make_mut_with_mutator(&mutator);
         for (_, arg_regions) in self.args.iter() {
             for arg_region in arg_regions {
-                let arg_code_region = if replace_arg_region_with_deref {
-                    arg_region.get_code_region_with_deref()
-                } else {
-                    arg_region.get_code_region_no_deref()
-                };
+                let arg_code_region = arg_region.get_raw_code_region_immut(
+                    replace_arg_region_with_deref
+                );
                 let arg_code_region = arg_code_region.make_mut_with_mutator(&mutator);
                 let arg_code_region_range = arg_code_region.syntax_element_range();
                 let new_tokens = substitute(arg_region);
@@ -632,9 +603,10 @@ impl HayrollMacroInv {
         let macro_name = self.region.name();
         let args_spelling: String = self.args.iter()
             .map(|(_, arg_regions)| {
-                // For each arg, we take the first HayrollRegion and peel the tag
-                // arg.peel_tag_keep_deref().to_string()
-                let (arg_code_region, _mutator) = arg_regions[0].peel_tag_keep_deref();
+                let arg_code_region = arg_regions[0].get_raw_code_region_immut(
+                    true // pass lvalue to macro actual args
+                    // TODO: peel tag
+                );
                 arg_code_region.to_string()
             })
             .collect::<Vec<String>>()
@@ -682,7 +654,10 @@ impl HayrollMacroInv {
         let fn_name = self.region.name();
         let args_spelling: String = self.args.iter()
             .map(|(_, arg_regions)| {
-                let (arg_code_region, _mutator) = arg_regions[0].peel_tag_no_deref();
+                let arg_code_region = arg_regions[0].get_raw_code_region_immut(
+                    false, // pass rvalue to fn actual args
+                    // TODO: peel tag
+                );
                 arg_code_region.to_string()
             })
             .collect::<Vec<String>>()
@@ -962,9 +937,11 @@ fn main() -> Result<()> {
                 ted::insert_all(pos, vec![syntax::NodeOrToken::Token(empty_line), fn_.syntax().syntax_element()]);
             }));
 
-            // Replace the macro invocations with the function calls
+            // Replace the macro expansions with the function calls
             for hayroll_macro_inv in hayroll_macros.iter() {
-                let code_region = hayroll_macro_inv.region.get_code_region_with_deref();
+                let code_region = hayroll_macro_inv.region.get_raw_code_region_immut(
+                    false // A C function always returns an rvalue
+                );
                 let (_, builder) = syntax_roots.get_mut(&hayroll_macro_inv.region.file_id()).unwrap();
                 let builder = builder.as_mut().unwrap();
                 let region_mut = code_region.make_mut_with_builder(builder);
@@ -987,7 +964,9 @@ fn main() -> Result<()> {
 
             // Replace the macro invocations with the macro calls
             for hayroll_macro_inv in hayroll_macros.iter() {
-                let code_region = hayroll_macro_inv.region.get_code_region_with_deref();
+                let code_region = hayroll_macro_inv.region.get_raw_code_region_immut(
+                    true // A macro invocation can be an lvalue or rvalue, so we pass true
+                );
                 let (_, builder) = syntax_roots.get_mut(&hayroll_macro_inv.region.file_id()).unwrap();
                 let builder = builder.as_mut().unwrap();
                 let region_mut = code_region.make_mut_with_builder(builder);
