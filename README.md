@@ -78,6 +78,13 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
 
 To install Hayroll:
 
+First, install Rust:
+```
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -y
+```
+
+Now, install Hayroll:
+
 ```
 git clone https://github.com/UW-HARVEST/Hayroll
 cd Hayroll
