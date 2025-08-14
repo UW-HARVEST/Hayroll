@@ -29,6 +29,11 @@ jobs:
             || true
         done
         sudo apt install -y clang llvm llvm-dev
+    - name: Install curl
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt update
+        sudo apt install -y curl
     - name: Install Rust
       run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -y
     - run: ./prerequisites.bash
