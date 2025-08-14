@@ -1,0 +1,19 @@
+name: Run Small test
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+        show-progress: false
+    - name: Run tests
+      run: |
+        ./prerequisites.bash --no-sudo
+        ./build.bash
+        cd ./build
+        ctest
