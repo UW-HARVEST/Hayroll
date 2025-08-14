@@ -62,11 +62,6 @@ for d in "${THIRD_PARTY_DIRS[@]}"; do
   echo "  - ${INSTALL_DIR}/${d}"
 done
 echo "=========================================================="
-read -rp "Proceed? [y/N] " yn
-[[ "${yn:-N}" =~ ^[Yy]$ ]] || {
-  echo "Aborted."
-  exit 1
-}
 
 mkdir -p "${INSTALL_DIR}"
 cd "${INSTALL_DIR}"
