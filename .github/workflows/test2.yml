@@ -1,4 +1,4 @@
-name: Run smoke test
+name: Run smoke test in Docker container
 on: [push, pull_request]
 jobs:
   test:
