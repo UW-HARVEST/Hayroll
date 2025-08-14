@@ -1,3 +1,6 @@
+# This file is unrelated to the cmake system and any Makefiles it creates.
+# Perhaps this should be incorporated into the cmake system.
+
 all default: style-fix style-check
 
 style-fix: shell-style-fix
