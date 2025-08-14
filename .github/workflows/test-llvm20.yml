@@ -1,0 +1,43 @@
+name: Smoke test with LLVM 20
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+        show-progress: false
+    - name: Install consistent, recent versions of clang and llvm (needed by c2rust)
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt update
+        sudo apt remove -y \
+          clang \
+          llvm \
+          llvm-dev \
+          llvm-runtime:amd64 \
+          || true
+        for ver in 14 15 16 17 18 19 20; do
+          sudo apt remove -y \
+            clang-${ver} clang-tools-${ver} clangd-${ver} lld-${ver} \
+            libclang-common-${ver}-dev libclang-common-${ver}-dev:amd64 libclang-cpp${ver} \
+            llvm-${ver} llvm-${ver}-dev llvm-${ver}-linker-tools llvm-${ver}-runtime llvm-${ver}-tools \
+            || true
+        done
+        sudo apt install -y clang-20 llvm-20 llvm-20-dev
+    - name: Install curl
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt update
+        sudo apt install -y curl
+    - name: Install Rust
+      run: |
+        curl -o rust-init.sh --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs
+        sh ./rust-init.sh -y
+    - run: ./prerequisites.bash
+    - run: ./build.bash
+    - run: cd ./build && ctest

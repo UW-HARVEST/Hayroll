@@ -1,4 +1,4 @@
-name: Run smoke test
+name: Smoke test with LLVM 17
 on: [push, pull_request]
 jobs:
   test:
@@ -28,7 +28,7 @@ jobs:
             llvm-${ver} llvm-${ver}-dev llvm-${ver}-linker-tools llvm-${ver}-runtime llvm-${ver}-tools \
             || true
         done
-        sudo apt install -y clang llvm llvm-dev
+        sudo apt install -y clang-17 llvm-17 llvm-17-dev
     - name: Install curl
       run: |
         export DEBIAN_FRONTEND=noninteractive
