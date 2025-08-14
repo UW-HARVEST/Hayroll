@@ -1,5 +1,9 @@
 name: Smoke test with LLVM 20
 on: [push, pull_request]
+env:
+  LLVM_VERSION: 20
+  SUDO: 
+  NOSUDO: --no-sudo
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,30 +19,31 @@ jobs:
     - name: Install consistent, recent versions of clang and llvm (needed by c2rust)
       run: |
         export DEBIAN_FRONTEND=noninteractive
-        apt update
-        apt remove -y \
+        $SUDO apt update
+        $SUDO apt remove -y \
           clang \
           llvm \
           llvm-dev \
           llvm-runtime:amd64 \
           || true
         for ver in 14 15 16 17 18 19 20; do
-          apt remove -y \
+          $SUDO apt remove -y \
             clang-${ver} clang-tools-${ver} clangd-${ver} lld-${ver} \
             libclang-common-${ver}-dev libclang-common-${ver}-dev:amd64 libclang-cpp${ver} \
             llvm-${ver} llvm-${ver}-dev llvm-${ver}-linker-tools llvm-${ver}-runtime llvm-${ver}-tools \
             || true
         done
-        apt install -y clang-20 libclang-20-dev llvm-20 llvm-20-dev
+        $SUDO apt install -y clang-$LLVM_VERSION libclang-$LLVM_VERSION-dev \
+          llvm-$LLVM_VERSION llvm-$LLVM_VERSION-dev
     - name: Install curl
       run: |
         export DEBIAN_FRONTEND=noninteractive
-        apt update
-        apt install -y curl
+        $SUDO apt update
+        $SUDO apt install -y curl
     - name: Install Rust
       run: |
         curl -o rust-init.sh --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs
         sh ./rust-init.sh -y
-    - run: ./prerequisites.bash --no-sudo
+    - run: ./prerequisites.bash $NOSUDO
     - run: ./build.bash
-    - run: cd ./build && ctest
+    - run: cd ./build && ctest && ctest --rerun-failed --output-on-failure
