@@ -88,7 +88,7 @@ cd ./build && ctest
 ```
 
 The `prerequisites.bash` script has been tested on Ubuntu.
-For installation on other operating systems, follow the instructions in [prerequisites.md](prerequisites.md), and contribute back your instructions or a pull request to make `prerequisites.bash` work on more operating systems.
+For installation on other operating systems, follow the instructions in [prerequisites.md](prerequisites.md), and please contribute back your instructions or a pull request to make `prerequisites.bash` work on more operating systems.  Thanks!
 
 ## Usage
 
