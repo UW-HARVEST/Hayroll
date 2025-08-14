@@ -46,6 +46,7 @@ jobs:
         sh ./rust-init.sh -y
     - run: ./prerequisites.bash $NOSUDO
     - run: ./build.bash
-    - run: |
+    - name: Run ctest
+      run: |
         cd ./build
         ctest || ctest --rerun-failed --output-on-failure
