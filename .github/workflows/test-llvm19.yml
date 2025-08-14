@@ -1,9 +1,8 @@
-name: Smoke test with LLVM 20
+name: Smoke test with LLVM 19
 on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
-    container: ubuntu:25.04
     defaults:
       run:
         shell: bash -l {0}
@@ -29,7 +28,7 @@ jobs:
             llvm-${ver} llvm-${ver}-dev llvm-${ver}-linker-tools llvm-${ver}-runtime llvm-${ver}-tools \
             || true
         done
-        sudo apt install -y clang-20 llvm-20 llvm-20-dev
+        sudo apt install -y clang-19 llvm-19 llvm-19-dev
     - name: Install curl
       run: |
         export DEBIAN_FRONTEND=noninteractive
