@@ -28,7 +28,7 @@ jobs:
             llvm-${ver} llvm-${ver}-dev llvm-${ver}-linker-tools llvm-${ver}-runtime llvm-${ver}-tools \
             || true
         done
-        sudo apt install -y clang-19 llvm-19 llvm-19-dev
+        sudo apt install -y clang-19 libclang-19-dev llvm-19 llvm-19-dev
     - name: Install curl
       run: |
         export DEBIAN_FRONTEND=noninteractive

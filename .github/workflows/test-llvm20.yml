@@ -29,7 +29,7 @@ jobs:
             llvm-${ver} llvm-${ver}-dev llvm-${ver}-linker-tools llvm-${ver}-runtime llvm-${ver}-tools \
             || true
         done
-        apt install -y clang-20 llvm-20 llvm-20-dev
+        apt install -y clang-20 libclang-20-dev llvm-20 llvm-20-dev
     - name: Install curl
       run: |
         export DEBIAN_FRONTEND=noninteractive
