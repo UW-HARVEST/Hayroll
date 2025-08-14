@@ -29,7 +29,9 @@ jobs:
             || true
         done
         sudo apt install -y clang llvm llvm-dev
-    - run: ./prerequisites.bash --no-sudo
+    - name: Install Rust
+      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -y
+    - run: ./prerequisites.bash
     - run: ./build.bash
     - run: cd ./build
     - run: ctest
