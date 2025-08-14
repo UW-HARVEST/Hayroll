@@ -128,7 +128,7 @@ apt_packages="\
 need_apt_install=no
 # shellcheck disable=SC2086
 for apt_package in ${apt_packages} ; do
-  if ! /usr/bin/dpkg-query "$apt_package" > /dev/null 2>&1 ; then
+  if ! /usr/bin/dpkg-query --show "$apt_package" > /dev/null 2>&1 ; then
     need_apt_install=yes
   fi
 done
