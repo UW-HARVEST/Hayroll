@@ -39,6 +39,6 @@ jobs:
       run: |
         curl -o rust-init.sh --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs
         sh ./rust-init.sh -y
-    - run: ./prerequisites.bash
+    - run: ./prerequisites.bash --no-sudo
     - run: ./build.bash
     - run: cd ./build && ctest
