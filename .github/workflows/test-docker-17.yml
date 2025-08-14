@@ -24,6 +24,9 @@ jobs:
       run: |
         curl -o rust-init.sh --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs
         sh ./rust-init.sh -y
+    - run: |
+        clang --version
+        llvm-config --version
     - run: ./prerequisites.bash --no-sudo
     - run: ./build.bash
     - run: cd ./build && ctest
