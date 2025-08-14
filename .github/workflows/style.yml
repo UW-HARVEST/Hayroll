@@ -17,5 +17,6 @@ jobs:
         sudo apt install shfmt shellcheck devscripts
     - run: pwd
     - run: ls
+    - run: ls ..
     - name: Check style
       run: make style-check
