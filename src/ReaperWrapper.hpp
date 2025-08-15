@@ -61,8 +61,7 @@ public:
         {
             SPDLOG_ERROR("Reaper exited with code {}", retcode);
             // Include a snippet of stderr (avoid extremely long messages)
-            std::string errStr = std::string(err.buf.data());
-            if (errStr.size() > 2048) errStr = errStr.substr(0, 2048) + "...<truncated>";
+            std::string errStr = std::string(out.buf.data()) + '\n' + std::string(err.buf.data());
             throw std::runtime_error("Reaper failed (exit code " + std::to_string(retcode) + "): " + errStr);
         }
 
