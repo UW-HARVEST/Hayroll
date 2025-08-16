@@ -42,6 +42,22 @@ fn get_dollar_token_mut() -> SyntaxToken {
     dollar_token_mut
 }
 
+fn get_empty_line_element_mut() -> SyntaxElement {
+    let empty_line = ast::make::tokens::whitespace("\n");
+    syntax::NodeOrToken::Token(empty_line)
+}
+
+fn top_pos(source_file: &ast::SourceFile) -> Position {
+    let first_node = source_file.syntax().children()
+        .find(|element| !ast::Attr::can_cast(element.kind())).unwrap().clone();
+    Position::before(&first_node)
+}
+
+fn bot_pos(source_file: &ast::SourceFile) -> Position {
+    let last_node = source_file.syntax().children().last().unwrap().clone();
+    Position::after(&last_node)
+}
+
 // Takes a node and keeps climbing up to the parent node until the node itself is of the given kind i.e. IfExpr
 // Also takes a predicate to check if the node satisfies the extra condition
 fn parent_until_kind_and_cond<T>(node: &impl ast::AstNode, condition: fn(&T) -> bool) -> Option<T>
@@ -250,6 +266,16 @@ impl HayrollRegion {
                 let range = cu_loc_begin..=cu_loc_end;
                 let items = find_items_in_range(&source_file, range);
                 CodeRegion::Decls(items)
+            }
+        }
+    }
+
+    fn get_raw_decls_tag_item(&self) -> ast::Item {
+        match self {
+            HayrollRegion::Expr(_) => panic!("get_raw_decls_tag_item() is not applicable to Expr"),
+            HayrollRegion::Stmts(_, _) => panic!("get_raw_decls_tag_item() is not applicable to Stmts"),
+            HayrollRegion::Decls(seed) => {
+                parent_until_kind::<ast::Item>(&seed.literal).unwrap()
             }
         }
     }
@@ -562,7 +588,7 @@ impl HayrollMacroInv {
                     replace_arg_region_with_deref
                 );
                 let arg_code_region_mut = arg_code_region.make_mut_with_mutator(&mutator);
-                // Note: it's safe to call syntax_element_range() because decls is not allowed as an arg
+                // It's safe to call syntax_element_range() because decls is not allowed as an arg
                 let arg_code_region_range = arg_code_region_mut.syntax_element_range();
                 let new_tokens = substitute(arg_region);
                 delayed_tasks.push(Box::new(move || {
@@ -596,18 +622,25 @@ impl HayrollMacroInv {
             })
             .collect::<Vec<String>>()
             .join(", ");
-        let macro_body = self.replace_arg_regions_into(
-            true,
-            true,
-            true, 
-            |arg_region| {
-                let name = arg_region.name();
-                let name_token = ast::make::tokens::ident(&name);
-                let name_node = name_token.parent().unwrap().clone_for_update();
-                let dollar_token_mut = get_dollar_token_mut();
-                vec![syntax::NodeOrToken::Token(dollar_token_mut), syntax::NodeOrToken::Node(name_node)]
+        let macro_body = match self.region {
+            HayrollRegion::Expr(_) | HayrollRegion::Stmts(_, _) => {
+                self.replace_arg_regions_into(
+                    true,
+                    true,
+                    true, 
+                    |arg_region| {
+                        let name = arg_region.name();
+                        let name_token = ast::make::tokens::ident(&name);
+                        let name_node = name_token.parent().unwrap().clone_for_update();
+                        let dollar_token_mut = get_dollar_token_mut();
+                        vec![syntax::NodeOrToken::Token(dollar_token_mut), syntax::NodeOrToken::Node(name_node)]
+                    }
+                )
             }
-        );
+            HayrollRegion::Decls(_) => {
+                self.region.get_raw_code_region(true).individualize_decls()
+            }
+        };
         let macro_def = format!("macro_rules! {}\n{{\n    ({}) => {{\n    {}\n    }}\n}}", macro_name, macro_args, macro_body);
         // Convert the macro definition into a syntax node
         let macro_rules_node = ast_from_text::<ast::MacroRules>(&macro_def);
@@ -687,7 +720,7 @@ impl HayrollMacroInv {
     }
 
     // Returns mutable node
-    fn call_expr_or_stmt(&self) -> SyntaxNode {
+    fn call_expr_or_stmt_mut(&self) -> SyntaxNode {
         let call_expr = self.call_expr();
         if self.region.is_expr() {
             call_expr.syntax().clone()
@@ -913,14 +946,6 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    // Print all token trees from the macro invs
-    for mac in hayroll_macro_invs.iter() {
-        let fn_body = mac.fn_();
-        println!("Function Body: {}\nEND\n", fn_body);
-        let fn_call = mac.call_expr();
-        println!("Function Call: {}\nEND\n", fn_call);
-    }
-
     let hayroll_macro_db = HayrollMacroDB::from_hayroll_macro_invs(&hayroll_macro_invs);
 
     // Print consumed time, tag "hayroll_literals"
@@ -940,16 +965,14 @@ fn main() -> Result<()> {
         let hayroll_macro_inv = &hayroll_macros[0];
         let (syntax_root, builder) = syntax_roots.get_mut(&hayroll_macro_inv.region.file_id()).unwrap();
         let builder = builder.as_mut().unwrap();
-        let syntax_root = builder.make_mut(syntax_root.clone());
+        let syntax_root_mut = builder.make_mut(syntax_root.clone());
 
         if hayroll_macro_inv.region.can_fn() {
             // Add the function definition to the bottom of the file
             let fn_ = hayroll_macro_inv.fn_();
+            let fn_elem = fn_.syntax().syntax_element().clone();
             delayed_tasks.push(Box::new(move || {
-                let pos = syntax_root.syntax().children().last().unwrap().clone();
-                let pos = Position::after(&pos);
-                let empty_line = ast::make::tokens::whitespace("\n");
-                ted::insert_all(pos, vec![syntax::NodeOrToken::Token(empty_line), fn_.syntax().syntax_element()]);
+                ted::insert_all(bot_pos(&syntax_root_mut), vec![get_empty_line_element_mut(), fn_elem]);
             }));
 
             // Replace the macro expansions with the function calls
@@ -960,21 +983,19 @@ fn main() -> Result<()> {
                 let (_, builder) = syntax_roots.get_mut(&hayroll_macro_inv.region.file_id()).unwrap();
                 let builder = builder.as_mut().unwrap();
                 let region_mut = code_region.make_mut_with_builder(builder);
-                let fn_call_node = hayroll_macro_inv.call_expr_or_stmt().syntax_element();
+                let region_mut_element_range = region_mut.syntax_element_range();
+                let fn_call_node = hayroll_macro_inv.call_expr_or_stmt_mut().syntax_element();
+                // We can call syntax_element_range() here because decls macro cannot be wrapped into a function
                 delayed_tasks.push(Box::new(move || {
-                    ted::replace_all(region_mut.syntax_element_range(), vec![fn_call_node]);
+                    ted::replace_all(region_mut_element_range, vec![fn_call_node]);
                 }));
             }
         } else {
             let macro_rules = hayroll_macro_inv.macro_rules();
-            // Add the macro definition to the top of the file
-            // prepend_tasks.push((syntax_root, macro_rules_node.syntax().clone()));
+            let macro_rules_elem = macro_rules.syntax().syntax_element();
+            let top = top_pos(&syntax_root_mut);
             delayed_tasks.push(Box::new(move || {
-                let pos = syntax_root.syntax().children()
-                    .find(|element| !ast::Attr::can_cast(element.kind())).unwrap().clone();
-                let pos = Position::before(&pos);
-                let empty_line = ast::make::tokens::whitespace("\n");
-                ted::insert_all(pos, vec![macro_rules.syntax().syntax_element(), syntax::NodeOrToken::Token(empty_line)])
+                ted::insert_all(top, vec![macro_rules_elem, get_empty_line_element_mut()])
             }));
 
             // Replace the macro invocations with the macro calls
@@ -986,9 +1007,34 @@ fn main() -> Result<()> {
                 let builder = builder.as_mut().unwrap();
                 let region_mut = code_region.make_mut_with_builder(builder);
                 let macro_call_node = hayroll_macro_inv.macro_call().syntax().syntax_element();
-                delayed_tasks.push(Box::new(move || {
-                    ted::replace_all(region_mut.syntax_element_range(), vec![macro_call_node]);
-                }));
+
+                match code_region {
+                    CodeRegion::Expr(_) | CodeRegion::Stmts { .. } => {
+                        // Replace the macro invocation with the macro call
+                        let region_mut_element_range = region_mut.syntax_element_range();
+                        delayed_tasks.push(Box::new(move || {
+                            ted::replace_all(region_mut_element_range, vec![macro_call_node]);
+                        }));
+                    }
+                    CodeRegion::Decls(_) => {
+                        // Remove all original items, plus the seed item itself
+                        // Then insert the macro call to the end of the file
+                        let mut items = region_mut.syntax_element_vec();
+                        let seed_item = hayroll_macro_inv.region.get_raw_decls_tag_item();
+                        let seed_item_mut = builder.make_mut(seed_item);
+                        items.push(seed_item_mut.syntax().syntax_element().clone());
+                        let bot = bot_pos(&syntax_root_mut);
+                        // print all items to be removed
+                        print!("Removing items: ");
+                        for item in &items {
+                            print!("{:?}, ", item);
+                        }
+                        delayed_tasks.push(Box::new(move || {
+                            ted::remove_all_iter(items);
+                            ted::insert_all(bot, vec![get_empty_line_element_mut(), macro_call_node]);
+                        }));
+                    }
+                }
             }
         }
     }
