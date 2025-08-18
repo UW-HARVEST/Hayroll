@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-#  Hayroll automatic dependency installer
+#  Hayroll dependency installer
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
@@ -62,11 +62,12 @@ for d in "${THIRD_PARTY_DIRS[@]}"; do
   echo "  - ${INSTALL_DIR}/${d}"
 done
 echo "=========================================================="
-read -rp "Proceed? [y/N] " yn
-[[ "${yn:-N}" =~ ^[Yy]$ ]] || {
-  echo "Aborted."
-  exit 1
-}
+
+# read -rp "Proceed? [y/N] " yn
+# [[ "${yn:-N}" =~ ^[Yy]$ ]] || {
+#   echo "Aborted."
+#   exit 1
+# }
 
 mkdir -p "${INSTALL_DIR}"
 cd "${INSTALL_DIR}"
@@ -77,22 +78,20 @@ LOG_DIR=$(mktemp -d /tmp/hayroll-prereq-logs-XXXXXX)
 git_clone_or_checkout() {
   local dir=$1 url=$2 tag=$3
   if [[ -d "${dir}/.git" ]]; then
-    echo "[*] ${dir} exists – fetching & checking out ${tag}"
-    git -C "${dir}" fetch --tags --quiet
-    if [[ "${tag}" == "main" ]]; then
-      git -C "${dir}" fetch origin main --quiet
-      git -C "${dir}" reset --hard origin/main --quiet
-    else
-      git -C "${dir}" checkout --quiet "${tag}"
+    if [[ "$(git -C "${dir}" rev-parse HEAD)" != "$(git -C "${dir}" rev-parse "${tag}")" ]]; then
+      echo "[*] ${dir} exists – fetching & checking out ${tag}"
+      git -C "${dir}" fetch --tags --quiet
+      if [[ "${tag}" == "main" ]]; then
+        git -C "${dir}" fetch origin main --quiet
+        git -C "${dir}" reset --hard origin/main --quiet
+      else
+        git -C "${dir}" checkout --quiet "${tag}"
+      fi
     fi
   else
     echo "[*] Cloning ${url} into ${dir}"
     git clone --quiet "${url}" "${dir}"
-    if [[ "${tag}" == "main" ]]; then
-      git -C "${dir}" checkout --quiet main
-    else
-      git -C "${dir}" checkout --quiet "${tag}"
-    fi
+    git -C "${dir}" checkout --quiet "${tag}"
   fi
 }
 
@@ -109,8 +108,8 @@ check_version() {
 
 run_quiet() {
   local log="$LOG_DIR/$1"
-  echo "Running command: $* > $log"
   shift
+  echo "Running command: $* > $log"
   if ! "$@" > "$log" 2>&1; then
     echo "Error: Command failed: $*"
     echo "========== Output from $log =========="
@@ -120,13 +119,26 @@ run_quiet() {
   fi
 }
 
-echo "[*] Installing system packages via apt"
-run_quiet apt-get.log ${USE_SUDO:+sudo} apt-get update
-run_quiet apt-install.log ${USE_SUDO:+sudo} apt-get install -y --no-install-recommends \
+apt_packages="\
   build-essential git cmake ninja-build pkg-config python3 \
   libspdlog-dev libboost-stacktrace-dev \
   clang libclang-dev llvm llvm-dev \
-  curl autoconf automake libtool bear
+  curl autoconf automake libtool bear"
+
+need_apt_install=no
+# shellcheck disable=SC2086
+for apt_package in ${apt_packages} ; do
+  if ! /usr/bin/dpkg-query --show "$apt_package" > /dev/null 2>&1 ; then
+    need_apt_install=yes
+  fi
+done
+
+if [[ "${need_apt_install}" == "yes" ]]; then
+  echo "[*] Installing system packages via apt"
+  run_quiet apt-get.log ${USE_SUDO:+sudo} apt-get update
+  # shellcheck disable=SC2086
+  run_quiet apt-install.log ${USE_SUDO:+sudo} apt-get install -y --no-install-recommends ${apt_packages}
+fi
 
 check_version clang 17
 check_version libclang-dev 17
