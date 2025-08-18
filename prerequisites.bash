@@ -28,21 +28,39 @@ LIBMCS_TAG="1.2.0"
 # --- Parse arguments --------------------------------------------------------
 USE_LATEST=false
 SUDO=sudo
-if [[ $# -gt 0 ]]; then
+LLVM_VERSION=""
+
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --latest)
       USE_LATEST=true
+      shift
       ;;
     --no-sudo)
       SUDO=
+      shift
+      ;;
+    --llvm-version)
+      if [[ -n "${2:-}" ]]; then
+        LLVM_VERSION="$2"
+        shift 2
+      else
+        echo "Error: --llvm-version requires a version number"
+        exit 1
+      fi
+      ;;
+    --llvm-version=*)
+      LLVM_VERSION="${1#*=}"
+      shift
       ;;
     -h | --help)
-      echo "Usage: $0 [--latest] [--no-sudo] [-h|--help]"
+      echo "Usage: $0 [--latest] [--no-sudo] [--llvm-version VERSION] [-h|--help]"
       echo
       echo "Options:"
-      echo "  --latest   Fetch the latest main/HEAD versions of Maki and tree-sitter-c_preproc."
-      echo "  --no-sudo  Run the script without using sudo for package installation."
-      echo "  -h, --help Show this help message."
+      echo "  --latest             Fetch the latest main/HEAD versions of Maki and tree-sitter-c_preproc."
+      echo "  --no-sudo            Run the script without using sudo for package installation."
+      echo "  --llvm-version VER   Specify LLVM/Clang version to install (default: use system default version)."
+      echo "  -h, --help           Show this help message."
       exit 0
       ;;
     *)
@@ -51,11 +69,20 @@ if [[ $# -gt 0 ]]; then
       exit 1
       ;;
   esac
-fi
+done
 
 echo "=========================================================="
 echo "Hayroll prerequisites installer"
 echo "Target root directory : ${INSTALL_DIR}"
+if [[ -n "${LLVM_VERSION}" ]]; then
+  echo "LLVM/Clang version    : ${LLVM_VERSION}"
+  if [[ "${LLVM_VERSION}" != "17" ]]; then
+    echo "WARNING: Hayroll has been tested with LLVM/Clang version 17."
+    echo "         Using version ${LLVM_VERSION} may cause compatibility issues."
+  fi
+else
+  echo "LLVM/Clang version    : system default"
+fi
 echo
 echo "The following directories will be created / updated:"
 for d in "${THIRD_PARTY_DIRS[@]}"; do
@@ -98,11 +125,21 @@ git_clone_or_checkout() {
 check_version() {
   local pkg=$1
   local min_version=$2
+  local max_version=$3
   local installed_version
   installed_version=$(dpkg-query -W -f='${Version}' "$pkg" 2> /dev/null || echo "0")
-  if dpkg --compare-versions "$installed_version" lt "$min_version"; then
-    echo "Error: $pkg version >= $min_version is required. Installed version: $installed_version"
-    exit 1
+  
+  if [[ "$installed_version" == "0" ]]; then
+    echo "Warning: $pkg is not installed."
+    return
+  fi
+  
+  # Extract major version number for comparison
+  local installed_major
+  installed_major=$(echo "$installed_version" | grep -oE '^[0-9]+' || echo "0")
+  
+  if dpkg --compare-versions "$installed_major" lt "$min_version" || dpkg --compare-versions "$installed_major" gt "$max_version"; then
+    echo "Warning: $pkg version in [$min_version, $max_version] is recommended. Installed version: $installed_version"
   fi
 }
 
@@ -119,10 +156,23 @@ run_quiet() {
   fi
 }
 
+# Generate LLVM package names based on whether version is specified
+if [[ -n "${LLVM_VERSION}" ]]; then
+  CLANG_PKG="clang-${LLVM_VERSION}"
+  LIBCLANG_PKG="libclang-${LLVM_VERSION}-dev"
+  LLVM_PKG="llvm-${LLVM_VERSION}"
+  LLVM_DEV_PKG="llvm-${LLVM_VERSION}-dev"
+else
+  CLANG_PKG="clang"
+  LIBCLANG_PKG="libclang-dev"
+  LLVM_PKG="llvm"
+  LLVM_DEV_PKG="llvm-dev"
+fi
+
 apt_packages="\
   build-essential git cmake ninja-build pkg-config python3 \
   libspdlog-dev libboost-stacktrace-dev \
-  clang libclang-dev llvm llvm-dev \
+  ${CLANG_PKG} ${LIBCLANG_PKG} ${LLVM_PKG} ${LLVM_DEV_PKG} \
   curl autoconf automake libtool bear"
 
 need_apt_install=no
@@ -140,10 +190,10 @@ if [[ "${need_apt_install}" == "yes" ]]; then
   DEBIAN_FRONTEND=noninteractive run_quiet apt-install.log ${SUDO} apt-get install -y --no-install-recommends ${apt_packages}
 fi
 
-check_version clang 17
-check_version libclang-dev 17
-check_version llvm 17
-check_version llvm-dev 17
+check_version clang 17 17
+check_version libclang-dev 17 17
+check_version llvm 17 17
+check_version llvm-dev 17 17
 
 # --- Rust tool-chain (for c2rust & Maki) -------------------------------------
 if ! command -v rustc > /dev/null 2>&1; then

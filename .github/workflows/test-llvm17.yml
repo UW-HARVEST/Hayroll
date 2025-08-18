@@ -32,8 +32,6 @@ jobs:
             llvm-${ver} llvm-${ver}-dev llvm-${ver}-linker-tools llvm-${ver}-runtime llvm-${ver}-tools \
             || true
         done
-        $SUDO apt install -y clang-$LLVM_VERSION libclang-$LLVM_VERSION-dev \
-          llvm-$LLVM_VERSION llvm-$LLVM_VERSION-dev
     - name: Install curl
       run: |
         export DEBIAN_FRONTEND=noninteractive
@@ -43,7 +41,7 @@ jobs:
       run: |
         curl -o rust-init.sh --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs
         sh ./rust-init.sh -y
-    - run: ./prerequisites.bash $NOSUDO
+    - run: ./prerequisites.bash --no-sudo --llvm-version=LLVM_VERSION
     - run: ./build.bash
     - name: Run ctest
       run: |

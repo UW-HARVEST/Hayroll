@@ -1,13 +1,12 @@
-name: Smoke test with LLVM 20
+name: Smoke test with LLVM 17
 on: [push, pull_request]
 env:
-  LLVM_VERSION: 20
-  SUDO: 
-  NOSUDO: --no-sudo
+  LLVM_VERSION: 18
+  SUDO: sudo
+  NOSUDO: 
 jobs:
   test:
     runs-on: ubuntu-latest
-    container: ubuntu:25.04
     defaults:
       run:
         shell: bash -l {0}
