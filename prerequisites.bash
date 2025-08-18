@@ -27,14 +27,14 @@ LIBMCS_TAG="1.2.0"
 
 # --- Parse arguments --------------------------------------------------------
 USE_LATEST=false
-USE_SUDO=true
+SUDO=sudo
 if [[ $# -gt 0 ]]; then
   case "$1" in
     --latest)
       USE_LATEST=true
       ;;
     --no-sudo)
-      USE_SUDO=false
+      SUDO=
       ;;
     -h | --help)
       echo "Usage: $0 [--latest] [--no-sudo] [-h|--help]"
@@ -127,17 +127,17 @@ apt_packages="\
 
 need_apt_install=no
 # shellcheck disable=SC2086
-for apt_package in ${apt_packages} ; do
-  if ! /usr/bin/dpkg-query --show "$apt_package" > /dev/null 2>&1 ; then
+for apt_package in ${apt_packages}; do
+  if ! /usr/bin/dpkg-query --show "$apt_package" > /dev/null 2>&1; then
     need_apt_install=yes
   fi
 done
 
 if [[ "${need_apt_install}" == "yes" ]]; then
   echo "[*] Installing system packages via apt"
-  run_quiet apt-get.log ${USE_SUDO:+sudo} apt-get update
+  run_quiet apt-get.log ${SUDO} apt-get update
   # shellcheck disable=SC2086
-  run_quiet apt-install.log ${USE_SUDO:+sudo} apt-get install -y --no-install-recommends ${apt_packages}
+  DEBIAN_FRONTEND=noninteractive run_quiet apt-install.log ${SUDO} apt-get install -y --no-install-recommends ${apt_packages}
 fi
 
 check_version clang 17
@@ -170,7 +170,7 @@ echo "[*] Building Z3"
 mkdir -p build && cd build
 run_quiet z3-cmake.log cmake -DCMAKE_BUILD_TYPE=Release -DZ3_BUILD_PYTHON_BINDINGS=OFF ..
 run_quiet z3-make.log make -j"$(nproc)"
-run_quiet z3-install.log ${USE_SUDO:+sudo} make install
+run_quiet z3-install.log ${SUDO} make install
 popd > /dev/null
 
 # --- tree-sitter core --------------------------------------------------------
