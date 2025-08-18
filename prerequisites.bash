@@ -102,9 +102,9 @@ git_clone_or_checkout() {
       git -C "${dir}" fetch --tags --quiet
       local target_ref="${tag}"
     fi
-    if [[ "$(git -C "${dir}" rev-parse HEAD)" != "$(git -C "${dir}" rev-parse ${target_ref})" ]]; then
+    if [[ "$(git -C "${dir}" rev-parse HEAD)" != "$(git -C "${dir}" rev-parse "${target_ref}")" ]]; then
       echo "[*] ${dir} exists – syncing to latest ${target_ref}"
-      git -C "${dir}" reset --hard ${target_ref} --quiet
+      git -C "${dir}" reset --hard "${target_ref}" --quiet
     fi
   else
     echo "[*] Cloning ${url} into ${dir}"
