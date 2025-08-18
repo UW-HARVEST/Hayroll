@@ -15,7 +15,7 @@ jobs:
       with:
         fetch-depth: 1
         show-progress: false
-    - name: Install consistent, recent versions of clang and llvm (needed by c2rust)
+    - name: Remove old versions of clang and llvm
       run: |
         export DEBIAN_FRONTEND=noninteractive
         $SUDO apt update
