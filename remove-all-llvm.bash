@@ -3,6 +3,29 @@
 set -euo pipefail
 
 SUDO="${SUDO:-sudo}"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-sudo)
+      SUDO=""
+      shift
+      ;;
+    -h | --help)
+      echo "Usage: $0 [--no-sudo] [-h|--help]"
+      echo
+      echo "Options:"
+      echo "  --no-sudo    Run without using sudo for package removal."
+      echo "  -h, --help   Show this help message."
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
+  esac
+done
+
 export DEBIAN_FRONTEND=noninteractive
 
 "$SUDO" apt update

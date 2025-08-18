@@ -18,7 +18,7 @@ jobs:
         show-progress: false
     - name: Remove old versions of clang and llvm
       run: |
-        ./remove-all-llvm.bash
+        ./remove-all-llvm.bash $NOSUDO
     - name: Install curl
       run: |
         export DEBIAN_FRONTEND=noninteractive
