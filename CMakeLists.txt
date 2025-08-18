@@ -3,14 +3,17 @@ project(Hayroll LANGUAGES C CXX)
 
 # Clang executable
 
+find_package(LLVM REQUIRED CONFIG)
+set(CLANG_VERSION "${LLVM_VERSION_MAJOR}")
 find_program(CLANG_EXE 
     NAMES clang-${CLANG_VERSION} clang
-    HINTS "${CT_LLVM_INSTALL_DIR}/bin"
-    DOC "Path to clang++ compiler"
+    HINTS "${CT_LLVM_INSTALL_DIR}/bin" "${LLVM_TOOLS_BINARY_DIR}"
+    DOC "Path to clang compiler"
 )
 if(NOT CLANG_EXE)
-    message(FATAL_ERROR "clang executable not found. Check CT_LLVM_INSTALL_DIR or install Clang.")
+    message(FATAL_ERROR "clang executable not found. Check CT_LLVM_INSTALL_DIR or install Clang ${CLANG_VERSION}.")
 endif()
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "CLANG_EXE: ${CLANG_EXE}")
 
 # Z3
