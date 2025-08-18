@@ -128,16 +128,16 @@ check_version() {
   local max_version=$3
   local installed_version
   installed_version=$(dpkg-query -W -f='${Version}' "$pkg" 2> /dev/null || echo "0")
-  
+
   if [[ "$installed_version" == "0" ]]; then
     echo "Warning: $pkg is not installed."
     return
   fi
-  
+
   # Extract major version number for comparison
   local installed_major
   installed_major=$(echo "$installed_version" | grep -oE '^[0-9]+' || echo "0")
-  
+
   if dpkg --compare-versions "$installed_major" lt "$min_version" || dpkg --compare-versions "$installed_major" gt "$max_version"; then
     echo "Warning: $pkg version in [$min_version, $max_version] is recommended. Installed version: $installed_version"
   fi

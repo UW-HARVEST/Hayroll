@@ -1,4 +1,4 @@
-name: Smoke test with LLVM 17
+name: Smoke test with LLVM 18
 on: [push, pull_request]
 env:
   LLVM_VERSION: 18
@@ -41,7 +41,7 @@ jobs:
       run: |
         curl -o rust-init.sh --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs
         sh ./rust-init.sh -y
-    - run: ./prerequisites.bash --no-sudo --llvm-version=LLVM_VERSION
+    - run: ./prerequisites.bash --llvm-version=LLVM_VERSION
     - run: ./build.bash
     - name: Run ctest
       run: |
