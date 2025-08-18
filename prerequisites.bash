@@ -124,9 +124,11 @@ check_version() {
     return
   fi
 
-  # Extract major version number for comparison
+  # Extract major version number for comparison, handling Debian epoch format
   local installed_major
-  installed_major=$(echo "$installed_version" | grep -oE '^[0-9]+' || echo "0")
+  # Remove epoch (e.g., "1:" from "1:17.0.6-9ubuntu1") and extract major version
+  local version_without_epoch="${installed_version#*:}"
+  installed_major=$(echo "$version_without_epoch" | grep -oE '^[0-9]+' || echo "0")
 
   if dpkg --compare-versions "$installed_major" lt "$min_version" || dpkg --compare-versions "$installed_major" gt "$max_version"; then
     echo "Warning: $pkg version in [$min_version, $max_version] is recommended. Installed version: $installed_version"
