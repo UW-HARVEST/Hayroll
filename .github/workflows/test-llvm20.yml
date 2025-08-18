@@ -1,4 +1,4 @@
-name: Smoke test with LLVM 20
+name: Smoke test with LLVM 20 (ubuntu:25.04)
 on: [push, pull_request]
 env:
   LLVM_VERSION: 20
@@ -7,6 +7,7 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    container: ubuntu:25.04
     defaults:
       run:
         shell: bash -l {0}
