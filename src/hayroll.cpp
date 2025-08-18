@@ -281,7 +281,10 @@ int main(const int argc, const char* argv[])
             SPDLOG_ERROR("  {} -> {}", p.first.string(), p.second);
         }
     }
-    SPDLOG_INFO("Hayroll pipeline completed. See output directory: {}", outputDir.string());
+    else
+    {
+        SPDLOG_INFO("Hayroll pipeline completed. See output directory: {}", outputDir.string());
+    }
 
     return failedTasks.empty() ? 0 : 1;
 }

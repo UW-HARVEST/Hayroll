@@ -62,8 +62,12 @@ for d in "${THIRD_PARTY_DIRS[@]}"; do
   echo "  - ${INSTALL_DIR}/${d}"
 done
 echo "=========================================================="
+
 # read -rp "Proceed? [y/N] " yn
-# [[ "${yn:-N}" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
+# [[ "${yn:-N}" =~ ^[Yy]$ ]] || {
+#   echo "Aborted."
+#   exit 1
+# }
 
 mkdir -p "${INSTALL_DIR}"
 cd "${INSTALL_DIR}"
@@ -87,11 +91,7 @@ git_clone_or_checkout() {
   else
     echo "[*] Cloning ${url} into ${dir}"
     git clone --quiet "${url}" "${dir}"
-    if [[ "${tag}" == "main" ]]; then
-      git -C "${dir}" checkout --quiet main
-    else
-      git -C "${dir}" checkout --quiet "${tag}"
-    fi
+    git -C "${dir}" checkout --quiet "${tag}"
   fi
 }
 
