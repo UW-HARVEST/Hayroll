@@ -76,10 +76,6 @@ echo "Hayroll prerequisites installer"
 echo "Target root directory : ${INSTALL_DIR}"
 if [[ -n "${LLVM_VERSION}" ]]; then
   echo "LLVM/Clang version    : ${LLVM_VERSION}"
-  if [[ "${LLVM_VERSION}" != "17" ]]; then
-    echo "WARNING: Hayroll has been tested with LLVM/Clang version 17."
-    echo "         Using version ${LLVM_VERSION} may cause compatibility issues."
-  fi
 else
   echo "LLVM/Clang version    : system default"
 fi
@@ -89,12 +85,6 @@ for d in "${THIRD_PARTY_DIRS[@]}"; do
   echo "  - ${INSTALL_DIR}/${d}"
 done
 echo "=========================================================="
-
-# read -rp "Proceed? [y/N] " yn
-# [[ "${yn:-N}" =~ ^[Yy]$ ]] || {
-#   echo "Aborted."
-#   exit 1
-# }
 
 mkdir -p "${INSTALL_DIR}"
 cd "${INSTALL_DIR}"
@@ -162,11 +152,13 @@ if [[ -n "${LLVM_VERSION}" ]]; then
   LIBCLANG_PKG="libclang-${LLVM_VERSION}-dev"
   LLVM_PKG="llvm-${LLVM_VERSION}"
   LLVM_DEV_PKG="llvm-${LLVM_VERSION}-dev"
+  LLVM_CONFIG_EXE="llvm-config-${LLVM_VERSION}"
 else
   CLANG_PKG="clang"
   LIBCLANG_PKG="libclang-dev"
   LLVM_PKG="llvm"
   LLVM_DEV_PKG="llvm-dev"
+  LLVM_CONFIG_EXE="llvm-config"
 fi
 
 apt_packages="\
@@ -190,10 +182,18 @@ if [[ "${need_apt_install}" == "yes" ]]; then
   DEBIAN_FRONTEND=noninteractive run_quiet apt-install.log ${SUDO} apt-get install -y --no-install-recommends ${apt_packages}
 fi
 
-check_version clang 17 17
-check_version libclang-dev 17 17
-check_version llvm 17 17
-check_version llvm-dev 17 17
+# Check versions of installed LLVM packages
+if [[ -n "${LLVM_VERSION}" ]]; then
+  check_version "${CLANG_PKG}" 17 17
+  check_version "${LIBCLANG_PKG}" 17 17
+  check_version "${LLVM_PKG}" 17 17
+  check_version "${LLVM_DEV_PKG}" 17 17
+else
+  check_version clang 17 17
+  check_version libclang-dev 17 17
+  check_version llvm 17 17
+  check_version llvm-dev 17 17
+fi
 
 # --- Rust tool-chain (for c2rust & Maki) -------------------------------------
 if ! command -v rustc > /dev/null 2>&1; then
@@ -208,7 +208,7 @@ fi
 # --- C2Rust ------------------------------------------------------------------
 if ! command -v c2rust > /dev/null 2>&1; then
   echo "[*] Installing c2rust ${C2RUST_TAG}"
-  run_quiet c2rust-install.log cargo install --git "${C2RUST_GIT}" --tag "${C2RUST_TAG}" --locked c2rust
+  run_quiet c2rust-install.log LLVM_CONFIG_PATH=${LLVM_CONFIG_EXE} cargo install --git "${C2RUST_GIT}" --tag "${C2RUST_TAG}" --locked c2rust
 else
   echo "[*] c2rust already installed, version: $(c2rust --version)"
 fi
