@@ -95,15 +95,16 @@ LOG_DIR=$(mktemp -d /tmp/hayroll-prereq-logs-XXXXXX)
 git_clone_or_checkout() {
   local dir=$1 url=$2 tag=$3
   if [[ -d "${dir}/.git" ]]; then
-    if [[ "$(git -C "${dir}" rev-parse HEAD)" != "$(git -C "${dir}" rev-parse "${tag}")" ]]; then
-      echo "[*] ${dir} exists – fetching & checking out ${tag}"
+    if [[ "${tag}" == "main" ]]; then
+      git -C "${dir}" fetch origin main --quiet
+      local target_ref="origin/main"
+    else
       git -C "${dir}" fetch --tags --quiet
-      if [[ "${tag}" == "main" ]]; then
-        git -C "${dir}" fetch origin main --quiet
-        git -C "${dir}" reset --hard origin/main --quiet
-      else
-        git -C "${dir}" checkout --quiet "${tag}"
-      fi
+      local target_ref="${tag}"
+    fi
+    if [[ "$(git -C "${dir}" rev-parse HEAD)" != "$(git -C "${dir}" rev-parse ${target_ref})" ]]; then
+      echo "[*] ${dir} exists – syncing to latest ${target_ref}"
+      git -C "${dir}" reset --hard ${target_ref} --quiet
     fi
   else
     echo "[*] Cloning ${url} into ${dir}"
