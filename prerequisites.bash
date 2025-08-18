@@ -208,7 +208,8 @@ fi
 # --- C2Rust ------------------------------------------------------------------
 if ! command -v c2rust > /dev/null 2>&1; then
   echo "[*] Installing c2rust ${C2RUST_TAG}"
-  run_quiet c2rust-install.log LLVM_CONFIG_PATH=${LLVM_CONFIG_EXE} cargo install --git "${C2RUST_GIT}" --tag "${C2RUST_TAG}" --locked c2rust
+  export LLVM_CONFIG_PATH="${LLVM_CONFIG_EXE}"
+  run_quiet c2rust-install.log cargo install --git "${C2RUST_GIT}" --tag "${C2RUST_TAG}" --locked c2rust
 else
   echo "[*] c2rust already installed, version: $(c2rust --version)"
 fi
