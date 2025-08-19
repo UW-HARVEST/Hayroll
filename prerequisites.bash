@@ -13,7 +13,7 @@ THIRD_PARTY_DIRS=(Maki tree-sitter tree-sitter-c_preproc c2rust z3 libmcs)
 
 # --- Git URLs + tags -------------------------------------------------------------------
 C2RUST_GIT="https://github.com/immunant/c2rust.git"
-C2RUST_TAG="v0.19.0"
+C2RUST_TAG="v0.20.0"
 MAKI_GIT="https://github.com/UW-HARVEST/Maki.git"
 MAKI_TAG="0.1.3"
 TS_GIT="https://github.com/tree-sitter/tree-sitter.git"

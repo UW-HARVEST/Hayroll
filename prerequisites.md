@@ -15,7 +15,7 @@ installation_folder/
 
 ## C2Rust
 
-Tested version: 0.19.0
+Tested version: 0.20.0
 
 [C2Rust](https://github.com/immunant/c2rust) is a static-analysis-based C-to-Rust translation tool.
 
