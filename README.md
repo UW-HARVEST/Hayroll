@@ -9,7 +9,7 @@ Hayroll converts C macros into Rust code.  Hayroll wraps the [c2rust](https://gi
 
 The `c2rust` program runs the C preprocessor before translating from C to Rust.  This means that macros are expanded (which destroys abstractions that the programmer put in the code) and that conditionally-compiled code is lost.
 
-For example, consider translating this C code:
+For example, consider translating this C code (note especially the code comments):
 
 ```c
 float sinhf(float x) {
@@ -28,7 +28,7 @@ float sinhf(float x) {
     ...
 ```
 
-The output of `c2rust` is:
+The output of `c2rust` is (note again the code comments):
 
 ```rust
 pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
@@ -54,7 +54,7 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
     ...
 ```
 
-By contrast, the output of Hayroll is:
+By contrast, the output of Hayroll is (the code comments highlight improvements):
 
 ```rust
 pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
@@ -76,11 +76,13 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
 
 ## Installation
 
-To install Hayroll:
+Ensure that only one version of LLVM and Clang are installed on your computer,
+and that they are the same version and not version 20.
+(This is necessary for c2rust.)
 
-First, install Rust:
+Install Rust, if it is not already installed:
 ```
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -y
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 Now, install Hayroll:
