@@ -1,3 +1,5 @@
+# This CI job does not work yet because c2rust fails with LLVM 20.
+
 name: Smoke test with LLVM 20 (ubuntu:25.04)
 on: [push, pull_request]
 env:
