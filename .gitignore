@@ -81,3 +81,7 @@ output/
 /remove-non-preprocessor
 /macro-skeleton
 /hayroll
+
+# Miscellaneous
+/note.*
+/temp/
