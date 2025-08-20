@@ -85,3 +85,4 @@ output/
 # Miscellaneous
 /note*
 /temp/
+/.checkbashisms
