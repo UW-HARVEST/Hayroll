@@ -187,15 +187,15 @@ fi
 
 # Check versions of installed LLVM packages
 if [[ -n "${LLVM_VERSION}" ]]; then
-  check_version "${CLANG_PKG}" 17 17
-  check_version "${LIBCLANG_PKG}" 17 17
-  check_version "${LLVM_PKG}" 17 17
-  check_version "${LLVM_DEV_PKG}" 17 17
+  check_version "${CLANG_PKG}" 17 19
+  check_version "${LIBCLANG_PKG}" 17 19
+  check_version "${LLVM_PKG}" 17 19
+  check_version "${LLVM_DEV_PKG}" 17 19
 else
-  check_version clang 17 17
-  check_version libclang-dev 17 17
-  check_version llvm 17 17
-  check_version llvm-dev 17 17
+  check_version clang 17 19
+  check_version libclang-dev 17 19
+  check_version llvm 17 19
+  check_version llvm-dev 17 19
 fi
 
 # --- Rust tool-chain (for c2rust & Maki) -------------------------------------
