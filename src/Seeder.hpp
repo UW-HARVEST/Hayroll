@@ -26,43 +26,14 @@ namespace Hayroll
 class Seeder
 {
 public:
+    // Use nlohmann::json to escape a string as a C string literal (without surrounding quotes)
     static std::string escapeString(std::string_view str)
     {
-        std::string result;
-        for (char c : str)
-        {
-            switch (c)
-            {
-            case '\\':
-                result += "\\\\";
-                break;
-            case '\"':
-                result += "\\\"";
-                break;
-            case '\n':
-                result += "\\n";
-                break;
-            case '\r':
-                result += "\\r";
-                break;
-            case '\t':
-                result += "\\t";
-                break;
-            case '\b':
-                result += "\\b";
-                break;
-            case '\f':
-                result += "\\f";
-                break;
-            case '\v':
-                result += "\\v";
-                break;
-            default:
-                result += c;
-                break;
-            }
-        }
-        return result;
+        std::string dumped = nlohmann::json(str).dump();
+        // Remove the surrounding quotes
+        assert(dumped.size() >= 2 && dumped.front() == '"' && dumped.back() == '"');
+        std::string escaped = dumped.substr(1, dumped.size() - 2);
+        return escaped;
     }
 
     // Parse a location string in the format "path:line:col" into a tuple of (path, line, col).
