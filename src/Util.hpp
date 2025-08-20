@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <cassert>
 
 #include <spdlog/spdlog.h>
 #include <z3++.h>
