@@ -927,7 +927,7 @@ fn main() -> Result<()> {
                 }
                 // Assert found
                 if !found {
-                    panic!("{}", format!("No matching macro found for arg: {:?}", region.loc_ref_begin()));
+                    panic!("{}", format!("No matching macro found for arg: {:?}", region.loc_begin()));
                 }
             }
             acc

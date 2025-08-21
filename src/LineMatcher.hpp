@@ -34,6 +34,11 @@ public:
     <
         std::unordered_map<IncludeTreePtr, std::vector<int>>, // lineMap
         std::vector<std::pair<IncludeTreePtr, int>> // inverseLineMap
+        // TODO: even for a line that does not map to an existing IncludeTreePtr
+        // (possibly because that file was concretely executed)
+        // there should be at least a mapping to the header file path
+        // so that Seeder can seed those invocations in the user source
+        // whose definitions are in standard libraries
     >
     run
     (

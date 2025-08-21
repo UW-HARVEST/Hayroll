@@ -10,6 +10,7 @@
 #include <list>
 #include <tuple>
 #include <filesystem>
+#include <format>
 
 #include <spdlog/spdlog.h>
 #include "json.hpp"
@@ -150,16 +151,17 @@ public:
         assert(locRefPath == path); // Should all be the only CU file
 
         // Map the compilation unit line numbers back to the source file line numbers
-        auto [includeTree, srcLine] = inverseLineMap[line];
-        auto [includeTreeEnd, srcLineEnd] = inverseLineMap[lineEnd];
-        auto [locRefIncludeTree, locRefSrcLine] = inverseLineMap[locRefLine];
+        auto [includeTree, srcLine] = inverseLineMap.at(line);
+        auto [includeTreeEnd, srcLineEnd] = inverseLineMap.at(lineEnd);
+        auto [locRefIncludeTree, locRefSrcLine] = inverseLineMap.at(locRefLine);
         assert(includeTree == includeTreeEnd);
 
-        if (!includeTree)
+        if (!includeTree || includeTree->isSystemInclude || !locRefIncludeTree || locRefIncludeTree->isSystemInclude)
         {
-            // This code section was copied from a header file which was concretely executed
-            // by Hayroll Pioneer, so the include tree is not available.
+            // Either the expansion or the definition of this macro is
+            // in a file that was concretely executed by Hayroll Pioneer.
             // We don't instrument this code section.
+            // This may result in standard library macros not being instrumented.
             SPDLOG_TRACE
             (
                 "Skipping instrumentation for {}: {}:{} (no include tree)",

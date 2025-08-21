@@ -71,7 +71,7 @@ link_libraries(
 add_compile_definitions(
     BOOST_STACKTRACE_USE_ADDR2LINE
     BOOST_STACKTRACE_LINK
-    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG
+    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
 )
 
 # For backtraces
@@ -175,7 +175,7 @@ enable_testing()
 
 add_library(testing_config INTERFACE)
 target_compile_definitions(testing_config INTERFACE
-    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG
+    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
 )
 
 add_executable(TempDir_test tests/TempDir_test.cpp)
