@@ -4,15 +4,20 @@ project(Hayroll LANGUAGES C CXX)
 # Clang executable
 
 find_package(LLVM REQUIRED CONFIG)
-set(CLANG_VERSION "${LLVM_VERSION_MAJOR}")
-find_program(CLANG_EXE 
-    NAMES clang-${CLANG_VERSION} clang
-    HINTS "${CT_LLVM_INSTALL_DIR}/bin" "${LLVM_TOOLS_BINARY_DIR}"
-    DOC "Path to clang compiler"
-)
-if(NOT CLANG_EXE)
-    message(FATAL_ERROR "clang executable not found. Check CT_LLVM_INSTALL_DIR or install Clang ${CLANG_VERSION}.")
+if(LLVM_PACKAGE_VERSION VERSION_LESS 17.0)
+message(FATAL_ERROR "Found LLVM ${LLVM_PACKAGE_VERSION}, but need at least LLVM 17.0")
 endif()
+if(LLVM_PACKAGE_VERSION VERSION_GREATER_EQUAL 20.0)
+message(WARNING "Found LLVM ${LLVM_PACKAGE_VERSION}, but cpp2c has not been tested with LLVM 20.0 or greater")
+endif()
+find_package(Clang REQUIRED CONFIG)
+set(CLANG_VERSION "${LLVM_VERSION_MAJOR}")
+
+set(CLANG_EXE "${LLVM_TOOLS_BINARY_DIR}/clang-${CLANG_VERSION}")
+if(NOT EXISTS "${CLANG_EXE}")
+  message(ERROR "Clang executable not found at ${CLANG_EXE}")
+endif()
+
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "CLANG_EXE: ${CLANG_EXE}")
 
