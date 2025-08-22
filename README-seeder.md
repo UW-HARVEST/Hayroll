@@ -1,13 +1,13 @@
-# The Hayroll Seeder: Precise AST Region Tagging for Macro Reconstruction
+# The Hayroll Seeder: AST Region Tagging for Macro Reconstruction
 
 ## Role in the Hayroll Pipeline and Design Intent
 
-Hayroll ultimately needs to reconstruct C macro invocations and reason about which regions of original C code correspond to what Rust constructs.  Before Rust‐side reconstruction (**Reaper**) can happen, the **Seeder** stage walks a *single compilation unit (CU)* (the result of copying all `#include`s into one file) and inserts lightweight **tags** or **seeds** into the C text. These tags:
+Hayroll ultimately needs to reconstruct C macro invocations and reason about which regions of original C code correspond to what Rust constructs.  Before Rust‐side reconstruction (**Reaper**) can happen, the **Seeder** stage walks a single compilation unit (CU) (the result of copying all `#include`s into one file) and inserts **tags** or **seeds** into the C text. These tags:
 
 - Delimit precise AST regions (expressions, statement spans, declaration clusters) relevant to later Rust macro/function extraction.
-- Carry semantic hints: AST category, whether a region is an lvalue, whether it is eligible to become a Rust function or a Rust macro.
-- Enable the downstream Reaper (Rust side) to unambiguously locate and classify regions without re‑parsing original C with macro context.
-- Do not change observable C program behavior. All inserted content is wrapped in syntactic forms that are semantically inert (e.g., string literals in comma/void contexts, statement no‑ops, etc.)
+- Carry semantic hints: AST category, whether a region is an lvalue, whether it can be reconstructed into a Rust function or a Rust macro.
+- Enable the downstream Reaper (Rust side) to unambiguously locate and classify regions for macro reconstruction.
+- Do not change observable C program behavior. All inserted content is wrapped in syntactic forms that are semantic-preserving (e.g., string literals that have no side-effects, statement no‑ops, etc.)
 
 The seeded CU file is then translated into Rust by **C2Rust** before the **Reaper** stage processes it.
 
@@ -18,7 +18,7 @@ The seeded CU file is then translated into Rust by **C2Rust** before the **Reape
 - **Input CU**: A single C source string representing one compilation unit, with `#include`s expanded and line markers removed.
 - **Invocation summaries**: A list of invocation and argument summaries from Maki. Each entry specifies source coordinates for the invocation/argument and its AST category, and for expressions, whether it is an lvalue.
 
-**Output**: A modified C source string containing embedded tags.  These tags are inserted as C string literals or declarations in places that preserve the original semantics.
+**Output**: A modified C source string containing embedded tags.
 
 ## Tag Structure
 
@@ -28,21 +28,21 @@ A `Stmt`/`Stmts` region needs a pair of tags (begin/end); An `Expr`/`Decl`/`Decl
 
 | Field name | Purpose |
 |-----------|-----------------|
-| `hayroll` | Always `true`. A constant boolean marker to quickly filter tags. |
-| `begin` | `true` for opening tag; `false` for closing tag.  Expression and statement spans have paired begin/end tags. |
-| `isArg` | `true` if this region is an argument of a macro invocation; `false` for the invocation itself. |
-| `argNames` | List of macro parameter identifiers for the surrounding invocation.  Used only on invocation tags. |
+| `hayroll` | A constant boolean marker to quickly filter tags.  Always `true`. |
 | `astKind` | Coarse AST category: one of `Expr`, `Stmt`, `Stmts`, `Decl`, `Decls`. |
 | `isLvalue` | Whether an `Expr` region yields an lvalue.  This controls how the wrapper is generated (see below). Always `false` for non-`Expr` regions. |
+| `begin` | `Stmt`/`Stmts` regions have paired begin/end tags; `true` for opening tag; `false` for closing tag.  Always `true` for `Expr`/`Decl`/`Decls`. |
+| `isArg` | `true` if this region is an argument of a macro invocation; `false` for the invocation itself. |
 | `name` | Macro name (for invocation tags) or argument name (for argument tags). |
+| `argNames` | List of macro parameter identifiers for the surrounding invocation.  Used only on invocation tags. |
 | `locBegin`/`locEnd` | `file:line:col` positions delimiting the region in the original source file. |
-| `cuLnColBegin`/`cuLnColEnd` | `line:col` positions in the CU file.  Reaper uses these to quickly locate tags in the Rust AST. |
+| `cuLnColBegin`/`cuLnColEnd` | `line:col` positions in the CU file.  Reaper uses these to locate `Decl`/`Decls` tags in the Rust AST. |
 | `locRefBegin` | For invocation regions, this refers to the location of the macro definition in the original source file; for argument regions, it refers to the `locBegin` of the invocation region it belongs to. |
-| `canFn` | Whether the invocation body could be lifted into a Rust function.  Only true when Maki reports the expansion as hygienic and free of various kinds of side effects.  Invocations that could not be lifted into Rust functions will be turned into Rust macros. |
+| `canFn` | Whether the invocation body could be lifted into a Rust function.  Only true when Maki reports the expansion as hygienic and free of various kinds of side effects.  Invocations that could not be lifted into Rust functions will be turned into Rust macros.  Always false for argument tags. |
 
 ## Tagging Strategies by Region Category
 
-Seeder treats expressions, statement spans and declaration clusters differently in order to preserve both behaviour and syntactic meaning.  The code snippets below illustrate the shape of the inserted instrumentation.
+Seeder treats expressions, statement spans and declaration clusters differently in order to preserve both behaviour and syntactic meaning.  The code snippets below illustrate the shape of the instrumentations.
 
 ### Expression regions (`Expr`)
 
@@ -86,13 +86,13 @@ The conditional `(*TAG)? ... : ...` evaluates the tag string literal and yields 
 
 #### Expression Tagging Summary
 
-The difference between lvalue and rvalue macro arguments is an important subtlety.  In C, some macros expand to expressions that can appear on the left hand side of an assignment (lvalues), while others are mere values.  If Seeder were to wrap both the same way, it might accidentally convert an lvalue into a non-modifiable value.  The lvalue wrapper uses `&EXPR` to obtain a pointer and dereferences it at the outermost level; this ensures the wrapper is itself an lvalue of the same type, so operations like `++` or taking an address still work.  The rvalue wrapper omits the address-of and instead dereferences a null pointer on the unused branch, preserving rvalue semantics.  The `isLvalue` field in the tag tells Reaper which wrapper was used and thus whether the underlying expression is assignable.
+The difference between lvalue and rvalue macro arguments is an important subtlety.  In C, some macros expand to expressions that can appear on the left hand side of an assignment (lvalue), while others cannot (rvalue).  If Seeder were to wrap both the same way, it might accidentally loose the assignability of an lvalue, or try to take the address of an rvalue.  The lvalue wrapper uses `&EXPR` to obtain a pointer and dereferences it at the outermost level; this ensures the wrapper is itself an lvalue of the same type, so operations like `++` or taking an address still work.  The rvalue wrapper omits the address-of and instead dereferences a null pointer on the unused branch, preserving rvalue semantics.  The `isLvalue` field in the tag tells Reaper which wrapper was used and thus whether the underlying expression is assignable.
 
-These expression wrappers guarantee:
+These expression tagging strategies guarantee:
 
 - **Preserved value category**: The result is still an lvalue or an rvalue as appropriate.
 - **No changed side effects**: Only the selected branch is evaluated; the unused branch has no side effects.
-- **Type correctness**: The use of `__typeof__` ensures the wrapper has the same type as the original expression.
+- **Type correctness**: The use of `__typeof__` ensures the wrapper has the same type as the original expression on both branches.
 
 ### Statement spans (`Stmt` and `Stmts`)
 
@@ -104,7 +104,7 @@ ORIGINAL_STATEMENTS;
 *TAG_END;
 ```
 
-Control flow semantics (loops, conditionals, etc.) remain unchanged because the block does not alter scopes or variable lifetimes.
+Control flow semantics (loops, conditionals, etc.) remain unchanged because the tags do not alter scopes or variable lifetimes.
 
 ### Declaration clusters (`Decl` and `Decls`)
 
@@ -234,7 +234,7 @@ Seeder executes the following high-level algorithm:
 
 ## Limitations
 
-Seeder deliberately **skips** instrumentation when it cannot confidently map a region back to user code:
+Seeder deliberately skips instrumentation when it cannot confidently map a region back to user code:
 
 - If either the expansion or the definition of the macro lies in a non-project header (usually system headers) that Hayroll Pioneer executes concretely, Seeder does not insert tags (see the early return in the implementation).  This avoids polluting standard library macros.
 - AST categories outside the supported set (`Expr`, `Stmt`, `Stmts`, `Decl`, `Decls`) are ignored.
