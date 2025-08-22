@@ -13,10 +13,10 @@ The seeded CU file is then translated into Rust by **C2Rust** before the **Reape
 
 ## Inputs and Outputs
 
-| Component | Description |
-|-----------|-------------|
-| **Input CU** | A single C source string representing one compilation unit, with `#include`s expanded and line‐markers removed. |
-| **Invocation summaries** | A list of invocation and argument summaries from Maki.  Each entry specifies source coordinates for the invocation/argument and its AST category, and for expressions, whether it is an lvalue. |
+**Inputs**
+
+- **Input CU**: A single C source string representing one compilation unit, with `#include`s expanded and line markers removed.
+- **Invocation summaries**: A list of invocation and argument summaries from Maki. Each entry specifies source coordinates for the invocation/argument and its AST category, and for expressions, whether it is an lvalue.
 
 **Output**: A modified C source string containing embedded tags.  These tags are inserted as C string literals or declarations in places that preserve the original semantics.
 
@@ -26,7 +26,7 @@ Each tag is a JSON object that gets serialized into a C string literal.  The tag
 
 A `Stmt`/`Stmts` region needs a pair of tags (begin/end); An `Expr`/`Decl`/`Decls` region needs only one tag.  Unknown or unsupported AST categories are skipped.
 
-| Field name | Purpose (short) |
+| Field name | Purpose |
 |-----------|-----------------|
 | `hayroll` | Always `true`. A constant boolean marker to quickly filter tags. |
 | `begin` | `true` for opening tag; `false` for closing tag.  Expression and statement spans have paired begin/end tags. |
