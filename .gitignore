@@ -70,7 +70,7 @@ stackcollapse-perf.pl
 
 # Trace files
 trace*.txt
-output/
+output*/
 
 # Soft links
 /seeder

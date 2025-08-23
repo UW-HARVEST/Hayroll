@@ -364,7 +364,7 @@ struct MakiInvocationSummary
 
     // HAYROLL original concept
     // Whether the function can be turned into a Rust function
-    bool canRustFn() const
+    bool canBeRustFn() const
     {
         return 
             !(

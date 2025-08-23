@@ -182,7 +182,7 @@ impl HayrollMeta for HayrollSeed {
     fn cu_ln_col_begin(&self) -> String { self.tag["cuLnColBegin"].as_str().unwrap().to_string() }
     fn cu_ln_col_end(&self) -> String { self.tag["cuLnColEnd"].as_str().unwrap().to_string() }
     fn loc_ref_begin(&self) -> String { self.tag["locRefBegin"].as_str().unwrap().to_string() }
-    fn can_fn(&self) -> bool { self.tag["canFn"] == true }
+    fn can_fn(&self) -> bool { self.tag["canBeFn"] == true }
     fn file_id(&self) -> FileId { self.file_id }
     fn is_lvalue(&self) -> bool { self.tag["isLvalue"] == true }
     fn ast_kind(&self) -> String { self.tag["astKind"].as_str().unwrap().to_string() }

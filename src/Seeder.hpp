@@ -97,10 +97,10 @@ public:
         std::string cuLnColEnd;
         std::string locRefBegin; // For invocation: definition begin; for arg: invocation begin
 
-        bool canFn;
+        bool canBeFn;
 
         NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
-                                       cuLnColBegin, cuLnColEnd, locRefBegin, canFn);
+                                       cuLnColBegin, cuLnColEnd, locRefBegin, canBeFn);
 
         // Escape the JSON string to make it a valid C string that embeds into C code
         std::string stringLiteral() const
@@ -140,7 +140,7 @@ public:
         std::string_view name,
         std::string_view locRefBegin,
         std::string_view spelling,
-        bool canFn,
+        bool canBeFn,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
@@ -193,7 +193,7 @@ public:
             .cuLnColEnd = cuLnColEnd,
             .locRefBegin = srcLocRefBegin,
 
-            .canFn = canFn
+            .canBeFn = canBeFn
         };
 
         Tag tagEnd = tagBegin;
@@ -374,14 +374,14 @@ public:
             arg.Name,
             arg.InvocationLocation,
             arg.Spelling,
-            false, // canFn
+            false, // canBeFn
             inverseLineMap
         );
     }
 
     // HAYROLL original concept
     // Whether the function can be turned into a Rust function
-    static bool canRustFn(const MakiInvocationSummary & inv)
+    static bool canBeRustFn(const MakiInvocationSummary & inv)
     {
         return 
             !(
@@ -450,7 +450,7 @@ public:
             inv.Name,
             inv.DefinitionLocation,
             inv.Spelling,
-            canRustFn(inv),
+            canBeRustFn(inv),
             inverseLineMap
         );
         tasks.splice(tasks.end(), invocationTasks);
@@ -646,7 +646,7 @@ public:
                 //     premiseTreeNode->premise.to_string(),
                 //     "", // locRef
                 //     "", // spelling
-                //     false, // canFn
+                //     false, // canBeFn
                 //     inverseLineMap
                 // );
 
