@@ -137,9 +137,9 @@ fn find_items_in_range(source_file: &ast::SourceFile, range: std::ops::RangeIncl
         .collect()
 }
 
-// HayrollSeed is a tag literal in the source code
+// HayrollTag literal in the source code
 #[derive(Clone)]
-struct HayrollSeed {
+struct HayrollTag {
     literal: ast::Literal,
     tag: serde_json::Value,
     file_id: FileId,
@@ -168,7 +168,7 @@ trait HayrollMeta {
 }
 
 // Methods that logically belong to a single seed (moved from HayrollRegion)
-impl HayrollMeta for HayrollSeed {
+impl HayrollMeta for HayrollTag {
     fn is_arg(&self) -> bool { self.tag["isArg"] == true }
     fn name(&self) -> String { self.tag["name"].as_str().unwrap().to_string() }
     fn arg_names(&self) -> Vec<String> {
@@ -197,13 +197,13 @@ impl HayrollMeta for HayrollSeed {
 // HayrollRegion is a tagged region in the source code
 // This can be either a single expression or a span of statements
 #[derive(Clone)]
-enum HayrollRegion {
-    Expr(HayrollSeed),
-    Stmts(HayrollSeed, HayrollSeed),
-    Decls(HayrollSeed),
+enum HayrollSeed {
+    Expr(HayrollTag),
+    Stmts(HayrollTag, HayrollTag),
+    Decls(HayrollTag),
 }
 
-impl HayrollMeta for HayrollRegion {
+impl HayrollMeta for HayrollSeed {
     fn is_arg(&self) -> bool { self.first_seed().is_arg() }
     fn name(&self) -> String { self.first_seed().name() }
     fn arg_names(&self) -> Vec<String> { self.first_seed().arg_names() }
@@ -224,12 +224,12 @@ impl HayrollMeta for HayrollRegion {
     fn is_decls(&self) -> bool { self.first_seed().is_decls() }
 }
 
-impl HayrollRegion {
-    fn first_seed(&self) -> &HayrollSeed {
+impl HayrollSeed {
+    fn first_seed(&self) -> &HayrollTag {
         match self {
-            HayrollRegion::Expr(seed) => seed,
-            HayrollRegion::Stmts(seed_begin, _) => seed_begin,
-            HayrollRegion::Decls(seed) => seed,
+            HayrollSeed::Expr(seed) => seed,
+            HayrollSeed::Stmts(seed_begin, _) => seed_begin,
+            HayrollSeed::Decls(seed) => seed,
         }
     }
 
@@ -237,7 +237,7 @@ impl HayrollRegion {
     // Useful for locating where to be replaced
     fn get_raw_code_region(&self, with_deref: bool) -> CodeRegion {
         match self {
-            HayrollRegion::Expr(seed) => {
+            HayrollSeed::Expr(seed) => {
                 let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
                 if with_deref && self.is_lvalue() {
                     let star_expr = parent_until_kind_and_cond::<ast::PrefixExpr>(
@@ -249,7 +249,7 @@ impl HayrollRegion {
                     CodeRegion::Expr(if_expr.into())
                 }
             }
-            HayrollRegion::Stmts(seed_begin, seed_end) => {
+            HayrollSeed::Stmts(seed_begin, seed_end) => {
                 let stmt_begin = parent_until_kind::<ast::Stmt>(&seed_begin.literal).unwrap();
                 let stmt_end = parent_until_kind::<ast::Stmt>(&seed_end.literal).unwrap();
                 let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
@@ -257,7 +257,7 @@ impl HayrollRegion {
                 let region = CodeRegion::Stmts { parent: stmt_list, elements };
                 region
             }
-            HayrollRegion::Decls(seed) => {
+            HayrollSeed::Decls(seed) => {
                 // Collect all the Items in the SourceFile where the seed is
                 // whose #[c2rust::src_loc = "l:c"] tags are within the cuLocBegin and cuLocEnd range in the tag
                 let source_file = get_source_file(&seed.literal);
@@ -272,9 +272,9 @@ impl HayrollRegion {
 
     fn get_raw_decls_tag_item(&self) -> ast::Item {
         match self {
-            HayrollRegion::Expr(_) => panic!("get_raw_decls_tag_item() is not applicable to Expr"),
-            HayrollRegion::Stmts(_, _) => panic!("get_raw_decls_tag_item() is not applicable to Stmts"),
-            HayrollRegion::Decls(seed) => {
+            HayrollSeed::Expr(_) => panic!("get_raw_decls_tag_item() is not applicable to Expr"),
+            HayrollSeed::Stmts(_, _) => panic!("get_raw_decls_tag_item() is not applicable to Stmts"),
+            HayrollSeed::Decls(seed) => {
                 parent_until_kind::<ast::Item>(&seed.literal).unwrap()
             }
         }
@@ -284,7 +284,7 @@ impl HayrollRegion {
         // lvalue: *if{}else{0 as *mut T} -> *mut T
         // rvalue: if{}else{*(0 as *mut T)} -> T
         match self {
-            HayrollRegion::Expr(ref seed) => {
+            HayrollSeed::Expr(ref seed) => {
                 let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
                 let else_branch = if_expr.else_branch().unwrap();
                 let else_block = if let ast::ElseBranch::Block(block) = else_branch {
@@ -302,10 +302,10 @@ impl HayrollRegion {
                     Some(ptr_type.ty().unwrap())
                 }
             }
-            HayrollRegion::Stmts(_, _) => {
+            HayrollSeed::Stmts(_, _) => {
                 None
             }
-            HayrollRegion::Decls(_) => {
+            HayrollSeed::Decls(_) => {
                 None
             }
         }
@@ -560,9 +560,9 @@ impl std::fmt::Display for CodeRegion {
 // It contains the CodeRegion of the expansion range and the CodeRegions of the arguments
 #[derive(Clone)]
 struct HayrollMacroInv {
-    region: HayrollRegion,
+    seed: HayrollSeed,
     // Args is a list of (argument name, list of HayrollRegion) pairs
-    args: Vec<(String, Vec<HayrollRegion>)>,
+    args: Vec<(String, Vec<HayrollSeed>)>,
 }
 
 impl HayrollMacroInv {
@@ -574,10 +574,10 @@ impl HayrollMacroInv {
         peel_tag: bool,
         return_inv_region_with_deref: bool,
         replace_arg_region_with_deref: bool,
-        substitute: fn(&HayrollRegion) -> Vec<SyntaxElement>
+        substitute: fn(&HayrollSeed) -> Vec<SyntaxElement>
     ) -> CodeRegion {
         let mut delayed_tasks: Vec<Box<dyn FnOnce()>> = Vec::new();
-        let region = self.region.get_raw_code_region(
+        let region = self.seed.get_raw_code_region(
             return_inv_region_with_deref
         );
         let mutator = TreeMutator::new(&region.lub());
@@ -609,21 +609,21 @@ impl HayrollMacroInv {
 
     // Returns mutable ast::MacroRules node
     fn macro_rules(&self) -> ast::MacroRules {
-        let macro_name = self.region.name();
+        let macro_name = self.seed.name();
         // arg format: ($x:expr) or ($x:stmt)
         let macro_args = self.args.iter()
             .map(|(arg_name, arg_regions)| {
                 let arg_type = match arg_regions[0] {
-                    HayrollRegion::Expr(_) => "expr",
-                    HayrollRegion::Stmts(_, _) => "stmt",
-                    HayrollRegion::Decls(_) => panic!("Decls not supported as macro arg"),
+                    HayrollSeed::Expr(_) => "expr",
+                    HayrollSeed::Stmts(_, _) => "stmt",
+                    HayrollSeed::Decls(_) => panic!("Decls not supported as macro arg"),
                 };
                 format!("${}:{}", arg_name, arg_type)
             })
             .collect::<Vec<String>>()
             .join(", ");
-        let macro_body = match self.region {
-            HayrollRegion::Expr(_) | HayrollRegion::Stmts(_, _) => {
+        let macro_body = match self.seed {
+            HayrollSeed::Expr(_) | HayrollSeed::Stmts(_, _) => {
                 self.replace_arg_regions_into(
                     true,
                     true,
@@ -637,8 +637,8 @@ impl HayrollMacroInv {
                     }
                 )
             }
-            HayrollRegion::Decls(_) => {
-                self.region.get_raw_code_region(true).individualize_decls()
+            HayrollSeed::Decls(_) => {
+                self.seed.get_raw_code_region(true).individualize_decls()
             }
         };
         let macro_def = format!("macro_rules! {}\n{{\n    ({}) => {{\n    {}\n    }}\n}}", macro_name, macro_args, macro_body);
@@ -650,7 +650,7 @@ impl HayrollMacroInv {
 
     // Returns mutable node
     fn macro_call(&self) -> ast::MacroCall {
-        let macro_name = self.region.name();
+        let macro_name = self.seed.name();
         let args_spelling: String = self.args.iter()
             .map(|(_, arg_regions)| {
                 let arg_code_region = arg_regions[0].get_raw_code_region(
@@ -660,7 +660,7 @@ impl HayrollMacroInv {
             })
             .collect::<Vec<String>>()
             .join(", ");        
-        let macro_call = if self.region.is_expr() {
+        let macro_call = if self.seed.is_expr() {
             format!("{}!({})", macro_name, args_spelling)
         } else {
             format!("{}!({});", macro_name, args_spelling)
@@ -669,7 +669,7 @@ impl HayrollMacroInv {
     }
 
     fn fn_(&self) -> ast::Fn {
-        let return_type: String = match self.region.lrvalue_type() {
+        let return_type: String = match self.seed.lrvalue_type() {
             Some(t) => " -> ".to_string() + &t.to_string(),
             None => "".to_string(),
         };
@@ -691,7 +691,7 @@ impl HayrollMacroInv {
                 vec![syntax::NodeOrToken::Node(name_node)]
             }
         );
-        let fn_ = format!("unsafe fn {}({}){} {{\n    {}\n}}", self.region.name(), arg_with_types, return_type, fn_body);
+        let fn_ = format!("unsafe fn {}({}){} {{\n    {}\n}}", self.seed.name(), arg_with_types, return_type, fn_body);
         ast_from_text::<ast::Fn>(&fn_).clone_for_update()
     }
 
@@ -700,7 +700,7 @@ impl HayrollMacroInv {
         // lvalue: *if{}else{} -> *NAME(*mut (lvalue_spelling), rvalue_spelling)
         // rvalue: if{}else{} -> NAME(*mut (lvalue_spelling), rvalue_spelling)
         // stmt: *"";{};*""; -> NAME(*mut (lvalue_spelling), rvalue_spelling); // WE ARE NOT HANDLING IT SEMICOLON HERE
-        let fn_name = self.region.name();
+        let fn_name = self.seed.name();
         let args_spelling: String = self.args.iter()
             .map(|(_, arg_regions)| {
                 let arg_code_region = arg_regions[0].get_raw_code_region(
@@ -711,7 +711,7 @@ impl HayrollMacroInv {
             .collect::<Vec<String>>()
             .join(", ");
         let call_expr = format!("{}({})", fn_name, args_spelling);
-        let call_expr = if self.region.is_lvalue() {
+        let call_expr = if self.seed.is_lvalue() {
             format!("*{}", call_expr)
         } else {
             call_expr
@@ -722,7 +722,7 @@ impl HayrollMacroInv {
     // Returns mutable node
     fn call_expr_or_stmt_mut(&self) -> SyntaxNode {
         let call_expr = self.call_expr();
-        if self.region.is_expr() {
+        if self.seed.is_expr() {
             call_expr.syntax().clone()
         } else {
             let stmt = ast::make::expr_stmt(call_expr).clone_for_update();
@@ -747,7 +747,7 @@ impl HayrollMacroDB {
         // Collect macros by locDecl
         let mut db = HayrollMacroDB::new();
         for mac in hayroll_macros.iter() {
-            let loc_decl = mac.region.loc_begin();
+            let loc_decl = mac.seed.loc_begin();
             if !db.map.contains_key(&loc_decl) {
                 db.map.insert(loc_decl.clone(), Vec::new());
             }
@@ -816,7 +816,7 @@ fn main() -> Result<()> {
         println!("File: {}", vfs.file_path(*file_id));
     }
 
-    let hayroll_seeds: Vec<HayrollSeed> = syntax_roots
+    let hayroll_seeds: Vec<HayrollTag> = syntax_roots
         .iter()
         .flat_map(|(file_id, (root, _))| {
             root.syntax().descendants_with_tokens()
@@ -837,7 +837,7 @@ fn main() -> Result<()> {
                     println!("Byte String: {}, Tag: {:?}", content, tag);
                     if let Ok(tag) = tag {
                         if tag["hayroll"] == true {
-                            return Some(HayrollSeed {
+                            return Some(HayrollTag {
                                 literal: ast::Literal::cast(element.parent()?)?,
                                 tag,
                                 file_id: file_id.clone(),
@@ -864,22 +864,22 @@ fn main() -> Result<()> {
     // println!("Items within c2rust::src_loc 1000:1..=10000:1: {:?}", items);
 
     // Pair up stmt hayroll_literals that are in the same scope and share the locInv in info
-    let hayroll_regions : Vec<HayrollRegion> = hayroll_seeds.iter()
+    let hayroll_regions : Vec<HayrollSeed> = hayroll_seeds.iter()
         .fold(Vec::new(), |mut acc, seed| {
             if seed.is_expr() {
                 assert!(seed.begin());
-                acc.push(HayrollRegion::Expr(seed.clone()));
+                acc.push(HayrollSeed::Expr(seed.clone()));
             } else if (seed.is_stmt() || seed.is_stmts()) && seed.begin() == true {
-                acc.push(HayrollRegion::Stmts(seed.clone(), seed.clone())); // For now seedBegin == seedEnd
+                acc.push(HayrollSeed::Stmts(seed.clone(), seed.clone())); // For now seedBegin == seedEnd
             } else if seed.is_decl() || seed.is_decls() {
                 assert!(seed.begin());
-                acc.push(HayrollRegion::Decls(seed.clone()));
+                acc.push(HayrollSeed::Decls(seed.clone()));
             } else if !seed.begin() {
                 // Search through the acc to find the begin stmt with the same locInv
                 let mut found = false;
                 for region in acc.iter_mut().rev() {
                     match region {
-                        HayrollRegion::Stmts(seed_begin, seed_end) => {
+                        HayrollSeed::Stmts(seed_begin, seed_end) => {
                             if seed_begin.loc_begin() == seed.loc_begin() {
                                 *seed_end = seed.clone();
                                 found = true;
@@ -906,13 +906,13 @@ fn main() -> Result<()> {
         .fold(Vec::new(), |mut acc, region| {
             if region.is_arg() == false {
                 acc.push(HayrollMacroInv {
-                    region: region.clone(),
+                    seed: region.clone(),
                     args: Vec::new(),
                 });
             } else {
                 let mut found = false;
                 for mac in acc.iter_mut().rev() {
-                    if mac.region.loc_begin() == region.loc_ref_begin() {
+                    if mac.seed.loc_begin() == region.loc_ref_begin() {
                         if mac.args.iter().any(|(name, _)| name == &region.name()) {
                             // If the arg already exists, just push the region to the existing arg
                             let arg = mac.args.iter_mut().find(|(name, _)| name == &region.name()).unwrap();
@@ -934,7 +934,7 @@ fn main() -> Result<()> {
         })
         .into_iter()
         .map(|mut mac| {
-            let arg_names = mac.region.arg_names();
+            let arg_names = mac.seed.arg_names();
             print!("Sorting according to arg names: ");
             println!("{:?}", arg_names);
             mac.args.sort_by_key(|arg| {
@@ -963,11 +963,11 @@ fn main() -> Result<()> {
     for (_loc_decl, hayroll_macros) in hayroll_macro_db.map.iter() {
         // There is at least one macro invocation for each locDecl
         let hayroll_macro_inv = &hayroll_macros[0];
-        let (syntax_root, builder) = syntax_roots.get_mut(&hayroll_macro_inv.region.file_id()).unwrap();
+        let (syntax_root, builder) = syntax_roots.get_mut(&hayroll_macro_inv.seed.file_id()).unwrap();
         let builder = builder.as_mut().unwrap();
         let syntax_root_mut = builder.make_mut(syntax_root.clone());
 
-        if hayroll_macro_inv.region.can_fn() {
+        if hayroll_macro_inv.seed.can_fn() {
             // Add the function definition to the bottom of the file
             let fn_ = hayroll_macro_inv.fn_();
             let fn_elem = fn_.syntax().syntax_element().clone();
@@ -977,10 +977,10 @@ fn main() -> Result<()> {
 
             // Replace the macro expansions with the function calls
             for hayroll_macro_inv in hayroll_macros.iter() {
-                let code_region = hayroll_macro_inv.region.get_raw_code_region(
+                let code_region = hayroll_macro_inv.seed.get_raw_code_region(
                     false // A C function always returns an rvalue
                 );
-                let (_, builder) = syntax_roots.get_mut(&hayroll_macro_inv.region.file_id()).unwrap();
+                let (_, builder) = syntax_roots.get_mut(&hayroll_macro_inv.seed.file_id()).unwrap();
                 let builder = builder.as_mut().unwrap();
                 let region_mut = code_region.make_mut_with_builder(builder);
                 let region_mut_element_range = region_mut.syntax_element_range();
@@ -1000,10 +1000,10 @@ fn main() -> Result<()> {
 
             // Replace the macro invocations with the macro calls
             for hayroll_macro_inv in hayroll_macros.iter() {
-                let code_region = hayroll_macro_inv.region.get_raw_code_region(
+                let code_region = hayroll_macro_inv.seed.get_raw_code_region(
                     true // A macro invocation can be an lvalue or rvalue, so we pass true
                 );
-                let (_, builder) = syntax_roots.get_mut(&hayroll_macro_inv.region.file_id()).unwrap();
+                let (_, builder) = syntax_roots.get_mut(&hayroll_macro_inv.seed.file_id()).unwrap();
                 let builder = builder.as_mut().unwrap();
                 let region_mut = code_region.make_mut_with_builder(builder);
                 let macro_call_node = hayroll_macro_inv.macro_call().syntax().syntax_element();
@@ -1020,7 +1020,7 @@ fn main() -> Result<()> {
                         // Remove all original items, plus the seed item itself
                         // Then insert the macro call to the end of the file
                         let mut items = region_mut.syntax_element_vec();
-                        let seed_item = hayroll_macro_inv.region.get_raw_decls_tag_item();
+                        let seed_item = hayroll_macro_inv.seed.get_raw_decls_tag_item();
                         let seed_item_mut = builder.make_mut(seed_item);
                         items.push(seed_item_mut.syntax().syntax_element().clone());
                         let bot = bot_pos(&syntax_root_mut);
