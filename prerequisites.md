@@ -23,7 +23,7 @@ Please follow the steps on their [README](https://github.com/immunant/c2rust/blo
 
 ## Maki (Hayroll-modified Version):
 
-Tested version: tag 0.1.3
+Tested version: tag 0.1.4
 
 [Maki](https://github.com/UW-HARVEST/Maki) is a C macro analysis tool. Hayroll uses a modified version.
 
@@ -50,7 +50,7 @@ make -C tree-sitter
 
 ## Hayroll Tree-sitter-c_preproc
 
-Tested version: tag 0.1.3
+Tested version: tag 0.1.4
 
 [tree-sitter-c_preproc](https://github.com/UW-HARVEST/tree-sitter-c_preproc) is a parser for C macros.
 
