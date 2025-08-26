@@ -155,20 +155,8 @@ public:
         auto [includeTreeEnd, srcLineEnd] = inverseLineMap.at(lineEnd);
         auto [locRefIncludeTree, locRefSrcLine] = inverseLineMap.at(locRefLine);
         assert(includeTree == includeTreeEnd);
-
-        if (!includeTree || includeTree->isSystemInclude || !locRefIncludeTree || locRefIncludeTree->isSystemInclude)
-        {
-            // Either the expansion or the definition of this macro is
-            // in a file that was concretely executed by Hayroll Pioneer.
-            // We don't instrument this code section.
-            // This may result in standard library macros not being instrumented.
-            SPDLOG_TRACE
-            (
-                "Skipping instrumentation for {}: {}:{} (no include tree)",
-                name, path.string(), srcLine
-            );
-            return {};
-        }
+        // Non-project include filtering should have been done
+        assert(includeTree && !includeTree->isSystemInclude && locRefIncludeTree && !locRefIncludeTree->isSystemInclude);
 
         std::filesystem::path srcPath = includeTree->path;
         std::filesystem::path locRefSrcPath = locRefIncludeTree->path;
@@ -427,6 +415,31 @@ public:
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
+        // Skip instrumentation for system includes
+        {
+            auto [path, line, col] = parseLocation(inv.InvocationLocation);
+            auto [locRefPath, locRefLine, locRefCol] = parseLocation(inv.DefinitionLocation);
+            assert(locRefPath == path); // Should all be the only CU file
+    
+            // Map the compilation unit line numbers back to the source file line numbers
+            auto [includeTree, srcLine] = inverseLineMap.at(line);
+            auto [locRefIncludeTree, locRefSrcLine] = inverseLineMap.at(locRefLine);
+            
+            if (!includeTree || includeTree->isSystemInclude || !locRefIncludeTree || locRefIncludeTree->isSystemInclude)
+            {
+                // Either the expansion or the definition of this macro is
+                // in a file that was concretely executed by Hayroll Pioneer.
+                // We don't instrument this code section.
+                // This may result in standard library macros not being instrumented.
+                SPDLOG_TRACE
+                (
+                    "Skipping instrumentation for {}: {}:{} (no include tree)",
+                    inv.Name, path.string(), srcLine
+                );
+                return {};
+            }
+        }
+
         std::list<InstrumentationTask> tasks;
         for (const MakiArgSummary & arg : inv.Args)
         {

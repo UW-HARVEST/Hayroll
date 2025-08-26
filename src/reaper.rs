@@ -166,7 +166,7 @@ trait HayrollMeta {
     fn cu_ln_col_begin(&self) -> String;
     fn cu_ln_col_end(&self) -> String;
     fn loc_ref_begin(&self) -> String;
-    fn can_fn(&self) -> bool;
+    fn can_be_fn(&self) -> bool;
     fn file_id(&self) -> FileId;
     fn is_lvalue(&self) -> bool;
     fn ast_kind(&self) -> String;
@@ -187,7 +187,7 @@ impl<T: HasHayrollTag> HayrollMeta for T {
     fn cu_ln_col_begin(&self) -> String { self.hayroll_tag().tag["cuLnColBegin"].as_str().unwrap().to_string() }
     fn cu_ln_col_end(&self) -> String { self.hayroll_tag().tag["cuLnColEnd"].as_str().unwrap().to_string() }
     fn loc_ref_begin(&self) -> String { self.hayroll_tag().tag["locRefBegin"].as_str().unwrap().to_string() }
-    fn can_fn(&self) -> bool { self.hayroll_tag().tag["canBeFn"] == true }
+    fn can_be_fn(&self) -> bool { self.hayroll_tag().tag["canBeFn"] == true }
     fn file_id(&self) -> FileId { self.hayroll_tag().file_id }
     fn is_lvalue(&self) -> bool { self.hayroll_tag().tag["isLvalue"] == true }
     fn ast_kind(&self) -> String { self.hayroll_tag().tag["astKind"].as_str().unwrap().to_string() }
@@ -199,7 +199,7 @@ impl<T: HasHayrollTag> HayrollMeta for T {
     fn is_decls(&self) -> bool { self.ast_kind() == "Decls" }
 }
 
-// HayrollRegion is a tagged region in the source code
+// HayrollSeed is a tagged region in the source code
 // This can be either a single expression or a span of statements
 #[derive(Clone)]
 enum HayrollSeed {
@@ -298,6 +298,35 @@ impl HayrollSeed {
             }
         }
     }
+
+    fn base_type(&self) -> Option<ast::Type> {
+        // lvalue: *if{}else{0 as *mut T} -> T
+        // rvalue: if{}else{*(0 as *mut T)} -> T
+        match self.lrvalue_type() {
+            Some(ast::Type::PtrType(ptr_type)) if self.is_lvalue() => ptr_type.ty(),
+            Some(ty) => Some(ty),
+            None => None,
+        }
+    }
+
+    fn is_structurally_compatible_with(&self, other: &Self) -> bool {
+        match (self, other) {
+            (HayrollSeed::Expr(_seed1), HayrollSeed::Expr(_seed2)) => true,
+            (HayrollSeed::Stmts(_, _), HayrollSeed::Stmts(_, _)) => true,
+            (HayrollSeed::Decls(_), HayrollSeed::Decls(_)) => true,
+            _ => false,
+        }
+    }
+
+    fn is_type_compatible_with(&self, other: &Self) -> bool {
+        self.is_structurally_compatible_with(other)
+        && match (self, other) {
+            (HayrollSeed::Expr(_seed1), HayrollSeed::Expr(_seed2)) => {
+                self.base_type() == other.base_type()
+            }
+            _ => true,
+        }
+    }
 }
 
 // A CodeRegion can be either a single expression, a span of statements,
@@ -383,7 +412,7 @@ impl CodeRegion {
     }
 
     // Peels tag from expr or stmts, does nothing for decls
-    // The CodeRegion must align with that generated from HayrollRegion::get_raw_code_region
+    // The CodeRegion must align with that generated from HayrollSeed::get_raw_code_region
     // Returns immutable CodeRegion that is no longer part of the original syntax tree
     fn peel_tag(&self) -> CodeRegion {
         let mutator = TreeMutator::new(&self.lub());
@@ -549,7 +578,7 @@ impl std::fmt::Display for CodeRegion {
 #[derive(Clone)]
 struct HayrollMacroInv {
     seed: HayrollSeed,
-    // Args is a list of (argument name, list of HayrollRegion) pairs
+    // Args is a list of (argument name, list of HayrollSeed) pairs
     args: Vec<(String, Vec<HayrollSeed>)>,
 }
 
@@ -559,7 +588,7 @@ impl HasHayrollTag for HayrollMacroInv {
 
 impl HayrollMacroInv {
     // Replace the args tagged code regions into $argName, for generating macro definition
-    // Takes a lambda that inputs a &HayrollRegion (arg) then generates a vec::SyntaxElement to replace the code region
+    // Takes a lambda that inputs a &HayrollSeed (arg) then generates a vec::SyntaxElement to replace the code region
     // Returns immutable CodeRegion
     fn replace_arg_regions_into(
         &self,
@@ -666,9 +695,15 @@ impl HayrollMacroInv {
             None => "".to_string(),
         };
         let arg_with_types = self.args.iter()
-            .map(|(arg_name, arg_regions)| {
-                let t = arg_regions[0].lrvalue_type().unwrap();
-                format!("{}: {}", arg_name, t)
+            .filter_map(|(arg_name, arg_regions)| {
+                if arg_regions.is_empty() {
+                    // Ignore args that are never used, but print a warning
+                    eprintln!("Warning: in macro {} argument {} is never used", self.name(), arg_name);
+                    None
+                } else {
+                    let t = arg_regions[0].lrvalue_type().unwrap();
+                    Some(format!("{}: {}", arg_name, t))
+                }
             })
             .collect::<Vec<String>>()
             .join(", ");
@@ -694,11 +729,17 @@ impl HayrollMacroInv {
         // stmt: *"";{};*""; -> NAME(*mut (lvalue_spelling), rvalue_spelling); // WE ARE NOT HANDLING IT SEMICOLON HERE
         let fn_name = self.name();
         let args_spelling: String = self.args.iter()
-            .map(|(_, arg_regions)| {
-                let arg_code_region = arg_regions[0].get_raw_code_region(
-                    false, // pass rvalue to fn actual args
-                ).peel_tag();
-                arg_code_region.to_string()
+            .filter_map(|(_, arg_regions)| {
+                if arg_regions.is_empty() {
+                    // Ignore args that are never used, but print a warning
+                    eprintln!("Warning: in macro {} an argument is never used", self.name());
+                    None
+                } else {
+                    let arg_code_region = arg_regions[0].get_raw_code_region(
+                        false, // pass rvalue to fn actual args
+                    ).peel_tag();
+                    Some(arg_code_region.to_string())
+                }
             })
             .collect::<Vec<String>>()
             .join(", ");
@@ -721,11 +762,117 @@ impl HayrollMacroInv {
             stmt.syntax().clone()
         }
     }
+
+    fn args_internally_structurally_compatible(&self) -> bool {
+        // For an argument that is used more than once,
+        // check that all of its uses have the same ASTKind
+        self.args.iter().all(|(_, seeds)| {
+            seeds.is_empty()
+            || seeds.iter().all(|seed| seed.is_structurally_compatible_with(&seeds[0]))
+        })
+    }
+
+    fn args_internally_type_compatible(&self) -> bool {
+        // For an argument that is used more than once,
+        // check that all of its uses have the same ASTKind,
+        // and for Expr, also have the same type
+        self.args.iter().all(|(_, seeds)| {
+            seeds.is_empty()
+            || seeds.iter().all(|seed| seed.is_type_compatible_with(&seeds[0]))
+        })
+    }
+
+    fn is_structurally_compatible_with(&self, other: &Self) -> bool {
+        self.seed.is_structurally_compatible_with(&other.seed)
+        && self.args_internally_structurally_compatible() && other.args_internally_structurally_compatible()
+        && self.args.len() == other.args.len()
+        && self.args.iter().zip(other.args.iter()).all(|((_, seeds1), (_, seeds2))| {
+            if seeds1.is_empty() && seeds2.is_empty() {
+                true
+            } else if seeds1.is_empty() != seeds2.is_empty() {
+                false
+            } else {
+                seeds1[0].is_structurally_compatible_with(&seeds2[0])
+            }
+        })
+    }
+
+    fn is_type_compatible_with(&self, other: &Self) -> bool {
+        self.seed.is_type_compatible_with(&other.seed)
+        && self.args_internally_type_compatible() && other.args_internally_type_compatible()
+        && self.args.len() == other.args.len()
+        && self.args.iter().zip(other.args.iter()).all(|((_, seeds1), (_, seeds2))| {
+            if seeds1.is_empty() && seeds2.is_empty() {
+                true
+            } else if seeds1.is_empty() != seeds2.is_empty() {
+                false
+            } else {
+                seeds1[0].is_type_compatible_with(&seeds2[0])
+            }
+        })
+    }
+}
+
+struct HayrollMacroCluster {
+    invocations: Vec<HayrollMacroInv>,
+}
+
+impl HasHayrollTag for HayrollMacroCluster {
+    fn hayroll_tag(&self) -> &HayrollTag { self.invocations[0].hayroll_tag() }
+}
+
+impl HayrollMacroCluster {
+    fn can_be_fn(&self) -> bool {
+        self.invs_internally_type_compatible()
+        && self.invocations.iter().all(|inv| inv.can_be_fn())
+    }
+
+    fn invs_internally_structurally_compatible(&self) -> bool {
+        assert!(!self.invocations.is_empty());
+        let first = &self.invocations[0];
+        self.invocations.iter().all(|inv| {
+            inv.is_structurally_compatible_with(&first)
+        })
+    }
+
+    fn invs_internally_type_compatible(&self) -> bool {
+        assert!(!self.invocations.is_empty());
+        let first = &self.invocations[0];
+        self.invocations.iter().all(|inv| {
+            inv.is_type_compatible_with(&first)
+        })
+    }
+
+    fn macro_rules(&self) -> ast::MacroRules {
+        assert!(self.invs_internally_structurally_compatible());
+        self.invocations[0].macro_rules()
+    }
+
+    fn macro_call(&self) -> ast::MacroCall {
+        assert!(self.invs_internally_structurally_compatible());
+        self.invocations[0].macro_call()
+    }
+
+    fn fn_(&self) -> ast::Fn {
+        assert!(self.invs_internally_type_compatible());
+        self.invocations[0].fn_()
+    }
+
+    fn call_expr(&self) -> ast::Expr {
+        assert!(self.invs_internally_type_compatible());
+        self.invocations[0].call_expr()
+    }
+
+    fn call_expr_or_stmt_mut(&self) -> SyntaxNode {
+        assert!(self.invs_internally_type_compatible());
+        self.invocations[0].call_expr_or_stmt_mut()
+    }
+
 }
 
 // HayrollMacroDB is a database of HayrollMacroInv collected from the source code
 struct HayrollMacroDB{
-    map: HashMap<String, Vec<HayrollMacroInv>>, // definition location -> invocations
+    map: HashMap<String, HayrollMacroCluster>, // definition location -> invocations
 }
 
 impl HayrollMacroDB {
@@ -741,9 +888,9 @@ impl HayrollMacroDB {
         for mac in hayroll_macros.iter() {
             let loc_decl = mac.loc_begin();
             if !db.map.contains_key(&loc_decl) {
-                db.map.insert(loc_decl.clone(), Vec::new());
+                db.map.insert(loc_decl.clone(), HayrollMacroCluster { invocations: Vec::new() });
             }
-            db.map.get_mut(&loc_decl).unwrap().push(mac.clone());
+            db.map.get_mut(&loc_decl).unwrap().invocations.push(mac.clone());
         }
         db
     }
@@ -884,46 +1031,34 @@ fn main() -> Result<()> {
     let hayroll_macro_invs: Vec<HayrollMacroInv> = hayroll_seeds.iter()
         .fold(Vec::new(), |mut acc, region| {
             if region.is_arg() == false {
+                // Pre-populate all expected argument names with empty vectors
+                let preset_args: Vec<(String, Vec<HayrollSeed>)> = region.arg_names()
+                    .into_iter()
+                    .map(|name| (name, Vec::new()))
+                    .collect();
                 acc.push(HayrollMacroInv {
                     seed: region.clone(),
-                    args: Vec::new(),
+                    args: preset_args,
                 });
             } else {
                 let mut found = false;
                 for mac in acc.iter_mut().rev() {
                     if mac.loc_begin() == region.loc_ref_begin() {
-                        if mac.args.iter().any(|(name, _)| name == &region.name()) {
-                            // If the arg already exists, just push the region to the existing arg
-                            let arg = mac.args.iter_mut().find(|(name, _)| name == &region.name()).unwrap();
-                            arg.1.push(region.clone());
-                        } else {
-                            // Otherwise, create a new arg with the region
-                            mac.args.push((region.name(), vec![region.clone()]));
-                        }
+                        assert!(mac.args.iter().any(|(name, _)| name == &region.name()));
+                        // The arg must already exist, push the region to the existing arg
+                        let arg = mac.args.iter_mut().find(|(name, _)| name == &region.name()).unwrap();
+                        arg.1.push(region.clone());
                         found = true;
                         break;
                     }
                 }
                 // Assert found
                 if !found {
-                    panic!("{}", format!("No matching macro found for arg: {:?}", region.loc_begin()));
+                    panic!("No matching macro found for arg: {:?}", region.loc_begin());
                 }
             }
             acc
-        })
-        .into_iter()
-        .map(|mut mac| {
-            let arg_names = mac.arg_names();
-            print!("Sorting according to arg names: ");
-            println!("{:?}", arg_names);
-            mac.args.sort_by_key(|arg| {
-                arg_names.iter().position(|name| name == &arg.0).unwrap_or(usize::MAX)
-            });
-            // Print sorted args
-            println!("Sorted args: {:?}", mac.args.iter().map(|arg| arg.0.clone()).collect::<Vec<String>>());
-            mac
-        })
-        .collect();
+        });
 
     let hayroll_macro_db = HayrollMacroDB::from_hayroll_macro_invs(&hayroll_macro_invs);
 
@@ -939,38 +1074,37 @@ fn main() -> Result<()> {
 
     // For each macro db entry, generate a new macro/func definition and add that to the top/bottom of the file
     // For each macro invocation, replace the invocation with a macro/func call
-    for (_loc_decl, hayroll_macros) in hayroll_macro_db.map.iter() {
+    for (_loc_decl, cluster) in hayroll_macro_db.map.iter() {
         // There is at least one macro invocation for each locDecl
-        let hayroll_macro_inv = &hayroll_macros[0];
-        let (syntax_root, builder) = syntax_roots.get_mut(&hayroll_macro_inv.seed.file_id()).unwrap();
+        let (syntax_root, builder) = syntax_roots.get_mut(&cluster.file_id()).unwrap();
         let builder = builder.as_mut().unwrap();
         let syntax_root_mut = builder.make_mut(syntax_root.clone());
 
-        if hayroll_macro_inv.can_fn() {
+        if cluster.can_be_fn() {
             // Add the function definition to the bottom of the file
-            let fn_ = hayroll_macro_inv.fn_();
+            let fn_ = cluster.fn_();
             let fn_elem = fn_.syntax().syntax_element().clone();
             delayed_tasks.push(Box::new(move || {
                 ted::insert_all(bot_pos(&syntax_root_mut), vec![get_empty_line_element_mut(), fn_elem]);
             }));
 
             // Replace the macro expansions with the function calls
-            for hayroll_macro_inv in hayroll_macros.iter() {
-                let code_region = hayroll_macro_inv.seed.get_raw_code_region(
+            for inv in cluster.invocations.iter() {
+                let code_region = inv.seed.get_raw_code_region(
                     false // A C function always returns an rvalue
                 );
-                let (_, builder) = syntax_roots.get_mut(&hayroll_macro_inv.file_id()).unwrap();
+                let (_, builder) = syntax_roots.get_mut(&inv.file_id()).unwrap();
                 let builder = builder.as_mut().unwrap();
                 let region_mut = code_region.make_mut_with_builder(builder);
                 let region_mut_element_range = region_mut.syntax_element_range();
-                let fn_call_node = hayroll_macro_inv.call_expr_or_stmt_mut().syntax_element();
+                let fn_call_node = cluster.call_expr_or_stmt_mut().syntax_element();
                 // We can call syntax_element_range() here because decls macro cannot be wrapped into a function
                 delayed_tasks.push(Box::new(move || {
                     ted::replace_all(region_mut_element_range, vec![fn_call_node]);
                 }));
             }
-        } else {
-            let macro_rules = hayroll_macro_inv.macro_rules();
+        } else if cluster.invs_internally_structurally_compatible() {
+            let macro_rules = cluster.macro_rules();
             let macro_rules_elem = macro_rules.syntax().syntax_element();
             let top = top_pos(&syntax_root_mut);
             delayed_tasks.push(Box::new(move || {
@@ -978,14 +1112,14 @@ fn main() -> Result<()> {
             }));
 
             // Replace the macro invocations with the macro calls
-            for hayroll_macro_inv in hayroll_macros.iter() {
-                let code_region = hayroll_macro_inv.seed.get_raw_code_region(
+            for inv in cluster.invocations.iter() {
+                let code_region = inv.seed.get_raw_code_region(
                     true // A macro invocation can be an lvalue or rvalue, so we pass true
                 );
-                let (_, builder) = syntax_roots.get_mut(&hayroll_macro_inv.file_id()).unwrap();
+                let (_, builder) = syntax_roots.get_mut(&inv.file_id()).unwrap();
                 let builder = builder.as_mut().unwrap();
                 let region_mut = code_region.make_mut_with_builder(builder);
-                let macro_call_node = hayroll_macro_inv.macro_call().syntax().syntax_element();
+                let macro_call_node = cluster.macro_call().syntax().syntax_element();
 
                 match code_region {
                     CodeRegion::Expr(_) | CodeRegion::Stmts { .. } => {
@@ -999,7 +1133,7 @@ fn main() -> Result<()> {
                         // Remove all original items, plus the seed item itself
                         // Then insert the macro call to the end of the file
                         let mut items = region_mut.syntax_element_vec();
-                        let seed_item = hayroll_macro_inv.seed.get_raw_decls_tag_item();
+                        let seed_item = inv.seed.get_raw_decls_tag_item();
                         let seed_item_mut = builder.make_mut(seed_item);
                         items.push(seed_item_mut.syntax().syntax_element().clone());
                         let bot = bot_pos(&syntax_root_mut);
@@ -1015,6 +1149,8 @@ fn main() -> Result<()> {
                     }
                 }
             }
+        } else {
+            eprintln!("Warning: Hayroll macro at {} cannot be converted to function or macro_rules! due to incompatible argument usage. Skipping.", cluster.invocations[0].loc_begin());
         }
     }
 
