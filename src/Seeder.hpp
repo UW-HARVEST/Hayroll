@@ -408,6 +408,11 @@ public:
             );
     }
 
+    static bool requiresLvalue(const MakiArgSummary & inv)
+    {
+        return inv.ExpandedWhereAddressableValueRequired || inv.ExpandedWhereModifiableValueRequired;
+    }
+
     // Collect the instrumentation tasks for the invocation and its arguments
     static std::list<InstrumentationTask> collectInvocationInstrumentationTasks
     (
