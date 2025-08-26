@@ -46,7 +46,8 @@ if ! cmake .. -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"; then
 fi
 
 echo "Building project..."
-if ! make "-j$(nproc)"; then
+# Use `cmake --build` so the script works with any CMake generator (Ninja, Unix Makefiles, etc.)
+if ! cmake --build . -- -j"$(nproc)"; then
   echo "Build failed!"
   exit 1
 fi
