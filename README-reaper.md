@@ -59,3 +59,33 @@ Construction process:
 1. Start from the full list of `HayrollMacroInv`.
 2. Partition them by `inv.seed.locRefBegin` (the body seed’s definition anchor). Each partition becomes one cluster; that anchor becomes `def_anchor`.
 
+## Reconstruction Categories based on Compatibility Levels
+
+Reconstruction involves folding multiple macro invocations that sourced from the same macro definition site, either into a Rust function or a macro, before which Reaper needs to check the **structural** and **type** compatibility across invocations.
+
+### Structural Compatibility
+
+- Definition: Same `astKind` for the invocation seeds across invocations; for each formal parameter, all of its uses across an invocation share the same `astKind`. (For example, an `x` that is always used as `Expr` vs. sometimes as `Stmt` would fail.)
+- What it enables: If **all** invocations in a cluster are structurally compatible, they can be reconstructed as a `macro_rules!` macro (token-level substitution with `:expr` / `:stmt` matchers).
+
+### Type Compatibility (Stronger)
+
+- Definition: Structural compatibility **and**, for every parameter occurrence that is an `Expr`, the **types** match across uses and across invocations; also the invocation bodies themselves are type-compatible. (Type is deduced from the expression context already present in Rust.)
+- What it enables: If **all** invocations in a cluster are type-compatible **and** each invocation is individually eligible (`canBeFn=true`, an analysis result from Maki, marking that the macro is free from side effects), the cluster can be reconstructed as a **Rust `fn`**.
+
+### Decision Lattice
+
+- **Cluster -> `fn`** when: (i) cluster is type-compatible; (ii) every invocation has property `canBeFn=true`.
+- **Else, Cluster -> `macro_rules!`** when: (i) cluster is structurally compatible.
+- **Else**: leave the expanded code as-is (emit a warning and skip).
+
+## Lvalue/Rvalue-Aware Calling Convention (for `fn` Reconstruction)
+
+For the function case, Reaper picks a single, stable API per cluster that works across all call sites while preserving lvalue/rvalue semantics:
+
+- For each parameter position `i`, scan all invocations and all uses of that parameter within each invocation.
+  - If **every** occurrence is supplied an **lvalue** (`isLvalue=true`), parameter `i` is an **lvalue parameter** and the synthesized function takes `*mut T` (unsafe pointer). At call sites Reaper passes `&mut ARG_EXPR` (address-of), so the callee can mutate it.
+  - If **any** occurrence is supplied an **rvalue**, parameter `i` becomes an **rvalue parameter** and the function takes plain `T`. Call sites pass the expression value directly.
+- The reconstructed function’s **return** is modeled as an **rvalue** value `R` unless the invocation body itself was tagged as an lvalue expression in **any** invocation; in that case, Reaper wraps the call in a leading `*` at the call site to preserve the lvalue use context. (The synthesized `fn` still returns an rvalue; the lvalue context is restored at the call site.)
+
+This rule yields a single function type usable at all call sites without losing mutability or requiring extra mutability.
