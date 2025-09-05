@@ -60,7 +60,7 @@ int main(int argc, char **argv)
     std::vector<CompileCommand> compileCommands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
     std::vector<CodeRangeAnalysisTask> codeRanges = {codeRangeAnalysisTask};
 
-    std::string cpp2cCuStr = MakiWrapper::runCpp2cOnCu(compileCommands[0], codeRanges);
+    std::string cpp2cCuStr = MakiWrapper::runCpp2cOnCu(compileCommands[0], LibmcsDir, codeRanges);
 
     std::cout << "Maki cpp2c on CU output:\n" << cpp2cCuStr << std::endl;
 

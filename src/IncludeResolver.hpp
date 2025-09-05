@@ -26,7 +26,7 @@ public:
     {
         for (const auto & includePath : includePaths)
         {
-            this->includePaths.push_back(std::filesystem::canonical(includePath));
+            this->includePaths.push_back(std::filesystem::weakly_canonical(includePath));
         }
     }
 

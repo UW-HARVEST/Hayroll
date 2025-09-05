@@ -178,6 +178,7 @@ trait HayrollMeta {
     fn name(&self) -> String;
     fn arg_names(&self) -> Vec<String>;
     fn loc_begin(&self) -> String;
+    #[allow(dead_code)]
     fn loc_end(&self) -> String;
     fn cu_ln_col_begin(&self) -> String;
     fn cu_ln_col_end(&self) -> String;

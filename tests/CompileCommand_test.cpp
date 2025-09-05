@@ -60,13 +60,13 @@ int main(int argc, char **argv)
     assert(includePaths[4] == LibmcsDir / "libm/mathf/internal");
 
     CompileCommand updatedCommandCu = command
-        .withUpdatedDirectory("/tmp/hayroll")
-        .withUpdatedExtension(".cu.c");
-    assert(updatedCommandCu.directory == "/tmp/hayroll");
+        .withUpdatedFilePathPrefix("/tmp/hayroll", LibmcsDir)
+        .withUpdatedFileExtension(".cu.c");
+    assert(updatedCommandCu.directory == LibmcsDir); // Directory is unchanged.
     assert(updatedCommandCu.file == "/tmp/hayroll/libm/mathf/sinhf.cu.c");
 
-    CompileCommand updatedCommandSeedCu = updatedCommandCu.withUpdatedExtension(".seed.cu.c");
-    assert(updatedCommandSeedCu.directory == "/tmp/hayroll");
+    CompileCommand updatedCommandSeedCu = updatedCommandCu.withUpdatedFileExtension(".seed.cu.c");
+    assert(updatedCommandSeedCu.directory == LibmcsDir); // Directory is unchanged.
     assert(updatedCommandSeedCu.file == "/tmp/hayroll/libm/mathf/sinhf.seed.cu.c");
 
     return 0;

@@ -37,7 +37,6 @@ public:
         saveStringToFile(seededCuNolmStr, inputFilePath);
 
         CompileCommand newCompileCommand = compileCommand
-            .withUpdatedDirectory(inputDirPath)
             .withUpdatedFile(inputFilePath);
 
         TempDir compileCommandsDir;

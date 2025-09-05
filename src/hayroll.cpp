@@ -4,6 +4,7 @@
 #include <mutex>
 #include <atomic>
 #include <optional>
+#include <unordered_set>
 
 #include <spdlog/spdlog.h>
 #include "json.hpp"
@@ -29,6 +30,7 @@ int main(const int argc, const char* argv[])
     std::filesystem::path compileCommandsJsonPath;
     std::filesystem::path outputDir;
     std::optional<size_t> optNumThreads; // optional -j
+    std::optional<std::filesystem::path> optProjectDir; // optional -p / --project-dir
 
     if (argc >= 2 && std::string(argv[1]) == "transpile" && argc >= 5)
     {
@@ -41,7 +43,7 @@ int main(const int argc, const char* argv[])
         compileCommandsJsonPath = std::filesystem::path(argv[2]) / "compile_commands.json";
         outputDir = argv[4];
 
-        // optional: -j N | --jobs N | --threads N
+        // optional: -j N | --jobs N | --threads N | -p DIR | --project-dir DIR
         for (int i = 5; i + 1 < argc; )
         {
             std::string opt = argv[i];
@@ -51,10 +53,15 @@ int main(const int argc, const char* argv[])
                 catch (...) { std::cerr << "Invalid thread count: " << argv[i+1] << std::endl; return 1; }
                 i += 2;
             }
+            else if (opt == "-p" || opt == "--project-dir")
+            {
+                optProjectDir = std::filesystem::path(argv[i+1]);
+                i += 2;
+            }
             else
             {
                 std::cerr << "Unknown option: " << opt << std::endl;
-                std::cerr << "Usage: " << argv[0] << " transpile <path> -o|--output-dir <out> [-j|--jobs|--threads N]" << std::endl;
+                std::cerr << "Usage: " << argv[0] << " transpile <path> -o|--output-dir <out> [-p|--project-dir DIR] [-j|--jobs|--threads N]" << std::endl;
                 return 1;
             }
         }
@@ -65,7 +72,7 @@ int main(const int argc, const char* argv[])
         compileCommandsJsonPath = argv[1];
         outputDir = argv[2];
 
-        // optional: -j N | --jobs N | --threads N
+        // optional: -j N | --jobs N | --threads N | -p DIR | --project-dir DIR
         for (int i = 3; i + 1 < argc; )
         {
             std::string opt = argv[i];
@@ -75,18 +82,24 @@ int main(const int argc, const char* argv[])
                 catch (...) { std::cerr << "Invalid thread count: " << argv[i+1] << std::endl; return 1; }
                 i += 2;
             }
+            else if (opt == "-p" || opt == "--project-dir")
+            {
+                optProjectDir = std::filesystem::path(argv[i+1]);
+                i += 2;
+            }
             else
             {
                 std::cerr << "Unknown option: " << opt << std::endl;
-                std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory> [-j|--jobs|--threads N]" << std::endl;
+                std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory> [-p|--project-dir DIR] [-j|--jobs|--threads N]" << std::endl;
                 return 1;
             }
         }
     }
     else
     {
-        std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory> [-j|--jobs|--threads N]" << std::endl;
-        std::cerr << "   or: " << argv[0] << " transpile <path_to_folder_including_compile_commands.json> -o|--output-dir <output_directory> [-j|--jobs|--threads N]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory> [-p|--project-dir DIR] [-j|--jobs|--threads N]" << std::endl;
+        std::cerr << "   or: " << argv[0] << " transpile <path_to_folder_including_compile_commands.json> -o|--output-dir <output_directory> [-p|--project-dir DIR] [-j|--jobs|--threads N]" << std::endl;
+        std::cerr << "Notes: If --project-dir is omitted, the project directory defaults to the folder containing compile_commands.json." << std::endl;
         return 1;
     }
 
@@ -113,14 +126,18 @@ int main(const int argc, const char* argv[])
         SPDLOG_INFO(command.file.string());
     }
 
-    // Assume that all compile commands are from the same project directory.
-    std::filesystem::path projDir = compileCommands.front().directory;
-    for (const CompileCommand & command : compileCommands)
+    // Determine project directory: user override or folder containing compile_commands.json
+    std::filesystem::path projDir = optProjectDir.has_value()
+        ? std::filesystem::canonical(optProjectDir.value())
+        : compileCommandsJsonPath.parent_path();
+    SPDLOG_INFO("Project directory resolved to: {} ({} mode)", projDir.string(), (optProjectDir.has_value() ? "user-specified" : "default-from-compile_commands.json"));
+
+    // Warn (not fail) if compile command entries point to multiple directories.
     {
-        if (command.directory != projDir)
-        {
-            std::cerr << "Error: All compile commands must be from the same project directory." << std::endl;
-            return 1;
+        std::unordered_set<std::string> dirs;
+        for (const CompileCommand & c : compileCommands) dirs.insert(c.directory.string());
+        if (dirs.size() > 1) {
+            SPDLOG_WARN("compile_commands.json entries span across {} directories; using project dir: {}", dirs.size(), projDir.string());
         }
     }
 
@@ -151,7 +168,7 @@ int main(const int argc, const char* argv[])
                 // Copy all source files to the output directory
                 // compileCommands + src -> outputDir
                 {
-                    CompileCommand outputCommand = command.withUpdatedDirectory(outputDir);
+                    CompileCommand outputCommand = command.withUpdatedFilePathPrefix(outputDir, projDir);
                     std::filesystem::path outputPath = outputCommand.file;
                     std::string srcStr = loadFileToString(srcPath);
                     saveStringToFile(srcStr, outputPath);
@@ -163,8 +180,8 @@ int main(const int argc, const char* argv[])
                 std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
                 {
                     CompileCommand outputCommand = command
-                        .withUpdatedDirectory(outputDir)
-                        .withUpdatedExtension(".cu.c");
+                        .withUpdatedFilePathPrefix(outputDir, projDir)
+                        .withUpdatedFileExtension(".cu.c");
                     std::filesystem::path outputPath = outputCommand.file;
                     saveStringToFile(cuStr, outputPath);
                     SPDLOG_INFO("Compilation unit file for {} saved to: {}", command.file.string(), outputPath.string());
@@ -180,8 +197,8 @@ int main(const int argc, const char* argv[])
                 {
                     std::string premiseTreeStr = premiseTree->toString();
                     CompileCommand outputCommand = command
-                        .withUpdatedDirectory(outputDir)
-                        .withUpdatedExtension(".premise_tree.txt");
+                        .withUpdatedFilePathPrefix(outputDir, projDir)
+                        .withUpdatedFileExtension(".premise_tree.txt");
                     std::filesystem::path outputPath = outputCommand.file;
                     saveStringToFile(premiseTreeStr, outputPath);
                     SPDLOG_INFO("Premise tree for {} saved to: {}", command.file.string(), outputPath.string());
@@ -199,8 +216,8 @@ int main(const int argc, const char* argv[])
                 std::vector<CodeRangeAnalysisTask> tasks = premiseTree->getCodeRangeAnalysisTasks(lineMap);
                 {
                     CompileCommand outputCommand = command
-                        .withUpdatedDirectory(outputDir)
-                        .withUpdatedExtension(".range_tasks.json");
+                        .withUpdatedFilePathPrefix(outputDir, projDir)
+                        .withUpdatedFileExtension(".range_tasks.json");
                     std::filesystem::path outputPath = outputCommand.file;
                     saveStringToFile(json(tasks).dump(4), outputPath);
                     SPDLOG_INFO("Code range analysis tasks for {} saved to: {}", command.file.string(), outputPath.string());
@@ -208,11 +225,11 @@ int main(const int argc, const char* argv[])
 
                 // Analyze macro invocations using Maki
                 // compileCommands + src --Maki-> cpp2cStr
-                std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command, tasks);
+                std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command, projDir, tasks);
                 {
                     CompileCommand outputCommand = command
-                        .withUpdatedDirectory(outputDir)
-                        .withUpdatedExtension(".cpp2c");
+                        .withUpdatedFilePathPrefix(outputDir, projDir)
+                        .withUpdatedFileExtension(".cpp2c");
                     std::filesystem::path outputPath = outputCommand.file;
                     saveStringToFile(cpp2cStr, outputPath);
                     SPDLOG_INFO("Maki cpp2c output for {} saved to: {}", command.file.string(), outputPath.string());
@@ -223,8 +240,8 @@ int main(const int argc, const char* argv[])
                 std::string cuSeededStr = Seeder::run(cpp2cStr, std::nullopt, cuStr, lineMap, inverseLineMap);
                 {
                     CompileCommand outputCommand = command
-                        .withUpdatedDirectory(outputDir)
-                        .withUpdatedExtension(".seeded.cu.c");
+                        .withUpdatedFilePathPrefix(outputDir, projDir)
+                        .withUpdatedFileExtension(".seeded.cu.c");
                     std::filesystem::path outputPath = outputCommand.file;
                     saveStringToFile(cuSeededStr, outputPath);
                     SPDLOG_INFO("Hayroll Seeded compilation unit for {} saved to: {}", command.file.string(), outputPath.string());
@@ -234,8 +251,8 @@ int main(const int argc, const char* argv[])
                 std::string c2rustStr = C2RustWrapper::runC2Rust(cuSeededStr, command);
                 {
                     CompileCommand outputCommand = command
-                        .withUpdatedDirectory(outputDir)
-                        .withUpdatedExtension(".seeded.rs");
+                        .withUpdatedFilePathPrefix(outputDir, projDir)
+                        .withUpdatedFileExtension(".seeded.rs");
                     std::filesystem::path outputPath = outputCommand.file;
                     saveStringToFile(c2rustStr, outputPath);
                     SPDLOG_INFO("C2Rust output for {} saved to: {}", command.file.string(), outputPath.string());
@@ -245,8 +262,8 @@ int main(const int argc, const char* argv[])
                 std::string reaperStr = ReaperWrapper::runReaper(c2rustStr);
                 {
                     CompileCommand outputCommand = command
-                        .withUpdatedDirectory(outputDir)
-                        .withUpdatedExtension(".rs");
+                        .withUpdatedFilePathPrefix(outputDir, projDir)
+                        .withUpdatedFileExtension(".rs");
                     std::filesystem::path outputPath = outputCommand.file;
                     saveStringToFile(reaperStr, outputPath);
                     SPDLOG_INFO("Hayroll Reaper output for {} saved to: {}", command.file.string(), outputPath.string());

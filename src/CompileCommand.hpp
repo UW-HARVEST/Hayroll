@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <functional>
 
 #include <spdlog/spdlog.h>
 #include "subprocess.hpp"
@@ -44,54 +45,61 @@ struct CompileCommand
         return paths;
     }
 
-    std::filesystem::path getFilePathRelativeToDirectory() const
+    CompileCommand withUpdatedFilePathPrefix
+    (
+        const std::filesystem::path & newPrefix,
+        const std::filesystem::path & oldPrefix
+    ) const
     {
-        if (file.is_absolute())
+        // Attempt to compute path of file relative to its directory.
+        std::filesystem::path relativeFile;
+        bool contained = false;
+        try 
         {
-            return std::filesystem::relative(file, directory);
+            relativeFile = std::filesystem::relative(this->file, oldPrefix);
+            // If the relative path starts with ".." then file is not inside directory.
+            if (!relativeFile.empty())
+            {
+                auto firstComp = *relativeFile.begin();
+                contained = (firstComp != "..");
+            }
         }
-        return file; // If it's not absolute, just return it as is.
-    }
+        catch (...)
+        {
+            contained = false;
+        }
 
-    CompileCommand withUpdatedDirectory(const std::filesystem::path & newDirectory) const
-    {
-        CompileCommand updatedCommand = *this;
-        std::filesystem::path relativeFile = std::filesystem::relative(this->file, this->directory);
-        updatedCommand.file = newDirectory / relativeFile;
-        updatedCommand.directory = newDirectory;
-        return updatedCommand;
+        if (!contained)
+        {
+            // Original behavior: preserve relative layout under new directory.
+            SPDLOG_ERROR
+            (
+                "Error: file {} is not under the old prefix {}, cannot preserve relative layout.",
+                this->file.string(),
+                oldPrefix.string()
+            );
+            assert(false);
+        }
+
+        std::filesystem::path updatedFile = newPrefix / relativeFile;
+
+        return withUpdatedFile(updatedFile);
     }
 
     // Update the file extension of the command's file and arguments.
     // Multiple extensions are considered the extension of the file.
     // e.g. in "xxx.cu.c" the extension is ".cu.c".
-    CompileCommand withUpdatedExtension
+    CompileCommand withUpdatedFileExtension
     (
         const std::string & newExtension
     ) const
     {
-        CompileCommand updatedCommand = *this;
-        std::string filename = file.filename().string();
-        std::string newFilename = filename.substr(0, filename.find('.')) + newExtension;
-        updatedCommand.file = updatedCommand.file.replace_filename(newFilename);
-        // If the last argument is also a file path, update it as well.
-        // Do filtering on whether the last argument is a file path.
-        std::string lastArg = updatedCommand.arguments.back();
-        try
-        {
-            std::filesystem::path lastArgPath(lastArg);
-            std::string lastArgFilename = lastArgPath.filename().string();
-            if (lastArgFilename == filename)
-            {
-                lastArgPath = lastArgPath.replace_filename(newFilename);
-                updatedCommand.arguments.back() = lastArgPath.string();
-            }
-        }
-        catch (const std::exception & e)
-        {
-            SPDLOG_TRACE("Last argument is not a valid path: {}", e.what());
-        }
-        return updatedCommand;
+        std::string filename = this->file.filename().string();
+        size_t dotPos = filename.find('.');
+        std::string base = filename.substr(0, dotPos); // dotPos==npos -> whole string
+        std::string newFilename = base + newExtension;
+        std::filesystem::path updatedFile = this->file.parent_path() / newFilename;
+        return withUpdatedFile(updatedFile);
     }
 
     // Update the file using absolute path.
@@ -135,10 +143,18 @@ struct CompileCommand
         {
             CompileCommand command;
             command.arguments = item["arguments"].get<std::vector<std::string>>();
+            // Directory: require absolute, then weakly_canonical.
             command.directory = item["directory"].get<std::filesystem::path>();
+            assert(command.directory.is_absolute());
             command.directory = std::filesystem::weakly_canonical(command.directory);
+            // File: if relative, resolve against (already canonicalized) directory, then weakly_canonical.
             command.file = item["file"].get<std::filesystem::path>();
+            if (!command.file.is_absolute())
+            {
+                command.file = command.directory / command.file; // prefix directory
+            }
             command.file = std::filesystem::weakly_canonical(command.file);
+
             commands.push_back(command);
         }
 

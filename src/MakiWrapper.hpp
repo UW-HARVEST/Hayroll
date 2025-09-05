@@ -45,6 +45,7 @@ public:
     static std::string runCpp2cOnCu
     (
         const CompileCommand & compileCommand,
+        const std::filesystem::path & projDir,
         const std::vector<CodeRangeAnalysisTask> & codeRanges = {},
         int numThreads = 16
     )
@@ -55,8 +56,8 @@ public:
         std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(compileCommand);
         std::string cuNolmStr = LinemarkerEraser::run(cuStr);
         CompileCommand newCompileCommand = compileCommand
-            .withUpdatedDirectory(cuDirPath)
-            .withUpdatedExtension(".cu.c");
+            .withUpdatedFilePathPrefix(cuDirPath, projDir)
+            .withUpdatedFileExtension(".cu.c");
         saveStringToFile(cuNolmStr, newCompileCommand.file);
 
         return runCpp2c(newCompileCommand, cuDirPath, codeRanges, numThreads);
@@ -66,7 +67,7 @@ private:
     static std::string runCpp2c
     (
         const CompileCommand & compileCommand,
-        std::filesystem::path projDir,
+        const std::filesystem::path & projDir,
         const std::vector<CodeRangeAnalysisTask> & codeRanges = {},
         int numThreads = 16
     )
@@ -99,8 +100,6 @@ private:
                          codeRangesPath.string(),
                          codeRangesJson.dump(4));
         }
-        
-        projDir = std::filesystem::canonical(projDir);
         
         TempDir outputDir;
 
