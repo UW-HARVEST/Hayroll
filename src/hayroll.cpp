@@ -8,6 +8,7 @@
 
 #include <spdlog/spdlog.h>
 #include "json.hpp"
+#include "CLI11.hpp"
 
 #include "Util.hpp"
 #include "TempDir.hpp"
@@ -25,92 +26,112 @@ int main(const int argc, const char* argv[])
     using namespace Hayroll;
     using json = nlohmann::json;
 
-    spdlog::set_level(spdlog::level::debug);
+    size_t hardwareThreads = std::thread::hardware_concurrency();
+    if (hardwareThreads == 0) hardwareThreads = 2;
+    if (hardwareThreads > 16) hardwareThreads = 16; // Limit to 16 threads to avoid memory thrashin
+
+    // Default logging level (can be raised with -v / -vv)
+    spdlog::set_level(spdlog::level::info);
 
     std::filesystem::path compileCommandsJsonPath;
     std::filesystem::path outputDir;
-    std::optional<size_t> optNumThreads; // optional -j
-    std::optional<std::filesystem::path> optProjectDir; // optional -p / --project-dir
+    size_t jobs = 0;
+    std::filesystem::path projDir;
+    int verbose = 0;
 
-    if (argc >= 2 && std::string(argv[1]) == "transpile" && argc >= 5)
+    try
     {
-        // c2rust-style input format
-        if (!(std::string(argv[3]) == "-o" || std::string(argv[3]) == "--output-dir"))
+        CLI::App app
         {
-            std::cerr << "Usage: " << argv[0] << " transpile <path_to_folder_including_compile_commands.json> -o|--output-dir <output_directory> [-j|--jobs|--threads N]" << std::endl;
-            return 1;
-        }
-        compileCommandsJsonPath = std::filesystem::path(argv[2]) / "compile_commands.json";
-        outputDir = argv[4];
+            "Hayroll pipeline (supports C2Rust compatibility mode with the 'transpile' subcommand)\n"
+            "Patterns:\n 1) hayroll <compile_commands.json> <output_dir> [opts]\n 2) hayroll transpile <input_folder> -o <output_dir> [opts]"
+        };
+        app.set_help_flag("-h,--help", "Show help");
 
-        // optional: -j N | --jobs N | --threads N | -p DIR | --project-dir DIR
-        for (int i = 5; i + 1 < argc; )
+        // Shared options
+
+        app.add_option("-p,--project-dir", projDir,
+            "Project directory (defaults to folder containing compile_commands.json)")
+            ->default_str("");
+        app.add_option("-j,--jobs", jobs, "Worker threads")
+            ->default_val(hardwareThreads);
+        app.add_flag("-v,--verbose", verbose,
+            "Increase verbosity (-v=debug, -vv=trace)")
+            ->default_val(0);
+
+        // Main (default) pattern positionals
+        app.add_option("compile_commands", compileCommandsJsonPath, "Path to compile_commands.json");
+        app.add_option("output_dir", outputDir, "Output directory");
+
+        // Subcommand: transpile
+        std::filesystem::path transpileInputFolder;
+        CLI::App * subTranspile = app.add_subcommand("transpile", "C2Rust compatibility mode (expects <input_folder> and -o)");
+        subTranspile->add_option("input_folder", transpileInputFolder, "Input folder containing compile_commands.json")
+            ->required()
+            ->check(CLI::ExistingDirectory);
+        subTranspile->add_option("-o,--output-dir", outputDir,
+            "Output directory")
+            ->required();
+
+        app.require_subcommand(0, 1);
+
+        try
         {
-            std::string opt = argv[i];
-            if (opt == "-j" || opt == "--jobs" || opt == "--threads")
+            app.parse(argc, argv);
+        }
+        catch (const CLI::Error & e)
+        {
+            return app.exit(e);
+        }
+
+        if (subTranspile->parsed())
+        {
+            std::filesystem::path inputFolder = transpileInputFolder;
+            compileCommandsJsonPath = inputFolder / "compile_commands.json";
+            outputDir = outputDir;
+        }
+        else
+        {
+            // Normal mode requires two positionals
+            if (compileCommandsJsonPath.empty() || outputDir.empty())
             {
-                try { optNumThreads = static_cast<size_t>(std::stoul(argv[i+1])); }
-                catch (...) { std::cerr << "Invalid thread count: " << argv[i+1] << std::endl; return 1; }
-                i += 2;
-            }
-            else if (opt == "-p" || opt == "--project-dir")
-            {
-                optProjectDir = std::filesystem::path(argv[i+1]);
-                i += 2;
-            }
-            else
-            {
-                std::cerr << "Unknown option: " << opt << std::endl;
-                std::cerr << "Usage: " << argv[0] << " transpile <path> -o|--output-dir <out> [-p|--project-dir DIR] [-j|--jobs|--threads N]" << std::endl;
+                std::cerr << "Error: expected <compile_commands.json> <output_dir>.\n" << app.help() << std::endl;
                 return 1;
             }
         }
-    }
-    else if (argc >= 3 && std::string(argv[1]) != "transpile")
-    {
-        // Original input format
-        compileCommandsJsonPath = argv[1];
-        outputDir = argv[2];
 
-        // optional: -j N | --jobs N | --threads N | -p DIR | --project-dir DIR
-        for (int i = 3; i + 1 < argc; )
+        // Apply verbosity
+        switch (verbose)
         {
-            std::string opt = argv[i];
-            if (opt == "-j" || opt == "--jobs" || opt == "--threads")
-            {
-                try { optNumThreads = static_cast<size_t>(std::stoul(argv[i+1])); }
-                catch (...) { std::cerr << "Invalid thread count: " << argv[i+1] << std::endl; return 1; }
-                i += 2;
-            }
-            else if (opt == "-p" || opt == "--project-dir")
-            {
-                optProjectDir = std::filesystem::path(argv[i+1]);
-                i += 2;
-            }
-            else
-            {
-                std::cerr << "Unknown option: " << opt << std::endl;
-                std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory> [-p|--project-dir DIR] [-j|--jobs|--threads N]" << std::endl;
-                return 1;
-            }
+            case 1: spdlog::set_level(spdlog::level::debug); break;
+            case 2: spdlog::set_level(spdlog::level::trace); break;
+            default: spdlog::set_level(spdlog::level::info); break;
+        }
+
+        compileCommandsJsonPath = std::filesystem::canonical(compileCommandsJsonPath);
+        // Wipe the output directory if it exists
+        if (std::filesystem::exists(outputDir))
+        {
+            std::filesystem::remove_all(outputDir);
+        }
+        std::filesystem::create_directories(outputDir);
+        outputDir = std::filesystem::canonical(outputDir);
+
+        if (!projDir.empty())
+        {
+            projDir = std::filesystem::canonical(projDir);
+        }
+        else
+        {
+            projDir = std::filesystem::canonical(compileCommandsJsonPath.parent_path());
+            SPDLOG_INFO("Project directory not given, defaulting to: {}", projDir.string());
         }
     }
-    else
+    catch (const std::exception & e)
     {
-        std::cerr << "Usage: " << argv[0] << " <path_to_compile_commands.json> <output_directory> [-p|--project-dir DIR] [-j|--jobs|--threads N]" << std::endl;
-        std::cerr << "   or: " << argv[0] << " transpile <path_to_folder_including_compile_commands.json> -o|--output-dir <output_directory> [-p|--project-dir DIR] [-j|--jobs|--threads N]" << std::endl;
-        std::cerr << "Notes: If --project-dir is omitted, the project directory defaults to the folder containing compile_commands.json." << std::endl;
+        std::cerr << "Argument parse error: " << e.what() << std::endl;
         return 1;
     }
-
-    compileCommandsJsonPath = std::filesystem::canonical(compileCommandsJsonPath);
-    // Wipe the output directory if it exists
-    if (std::filesystem::exists(outputDir))
-    {
-        std::filesystem::remove_all(outputDir);
-    }
-    std::filesystem::create_directories(outputDir);
-    outputDir = std::filesystem::canonical(outputDir);
 
     // Load compile_commands.json
     // compileCommandJsonPath -> compileCommands
@@ -126,12 +147,6 @@ int main(const int argc, const char* argv[])
         SPDLOG_INFO(command.file.string());
     }
 
-    // Determine project directory: user override or folder containing compile_commands.json
-    std::filesystem::path projDir = optProjectDir.has_value()
-        ? std::filesystem::canonical(optProjectDir.value())
-        : compileCommandsJsonPath.parent_path();
-    SPDLOG_INFO("Project directory resolved to: {} ({} mode)", projDir.string(), (optProjectDir.has_value() ? "user-specified" : "default-from-compile_commands.json"));
-
     // Warn (not fail) if compile command entries point to multiple directories.
     {
         std::unordered_set<std::string> dirs;
@@ -141,17 +156,12 @@ int main(const int argc, const char* argv[])
         }
     }
 
+    if (jobs > static_cast<size_t>(numTasks)) jobs = static_cast<size_t>(numTasks);
+    SPDLOG_INFO("Using {} worker thread(s)", jobs);
+
     // Process tasks in parallel; skip failures and report at the end
     std::vector<std::pair<std::filesystem::path, std::string>> failedTasks; // Failed file -> error
     std::mutex failedMutex;
-
-    size_t hw = std::thread::hardware_concurrency();
-    if (hw == 0) hw = 2;
-    if (hw > 16) hw = 16; // Limit to 16 threads to avoid memory thrashing
-    size_t numThreads = optNumThreads.value_or(hw);
-    if (numThreads == 0) numThreads = 1;
-    if (numThreads > static_cast<size_t>(numTasks)) numThreads = static_cast<size_t>(numTasks);
-    SPDLOG_INFO("Using {} worker thread(s)", numThreads);
 
     std::atomic<size_t> nextIdx{0};
 
@@ -285,8 +295,8 @@ int main(const int argc, const char* argv[])
     };
 
     std::vector<std::thread> threads;
-    threads.reserve(numThreads);
-    for (size_t t = 0; t < numThreads; ++t) threads.emplace_back(worker);
+    threads.reserve(jobs);
+    for (size_t t = 0; t < jobs; ++t) threads.emplace_back(worker);
     for (auto & th : threads) th.join();
 
     // Print final results
