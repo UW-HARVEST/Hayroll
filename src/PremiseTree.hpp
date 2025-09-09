@@ -185,29 +185,19 @@ struct PremiseTree
         for (PremiseTreePtr & child : children)
         {
             child->refine();
-            // If the current node's premise implies the child's premise,
-            // or if the child is always false,
-            // we can remove the child node.
-            if
-            (
-                child->children.empty() && !child->isMacroExpansion()
-                    && z3Check(!z3::implies(getCompletePremise(), child->premise)) == z3::unsat
-                || !child->isMacroExpansion()
-                    && z3Check(child->getCompletePremise()) == z3::unsat
-            )
+            
+            // If the child is always false, we can remove the child node.
+            if (!child->isMacroExpansion() && z3Check(child->getCompletePremise()) == z3::unsat)
             {
-                SPDLOG_TRACE("Eliminating child node: {}", child->toString());
+                SPDLOG_TRACE("Eliminating constant-false child node: {}", child->toString());
                 continue;
             }
 
-            // If the child node's premise is always true, we can remove it and promote its children.
-            if
-            (
-                !child->isMacroExpansion()
-                    && z3Check(child->getCompletePremise() != getCompletePremise()) == z3::unsat
-            )
+            // If the current node's premise implies the child's premise,
+            // we can remove it and promote its children.
+            if (!child->isMacroExpansion() && z3Check(!z3::implies(getCompletePremise(), child->premise)) == z3::unsat)
             {
-                SPDLOG_TRACE("Promoting child node: {}", child->toString());
+                SPDLOG_TRACE("Eliminating implied child node: {}", child->toString());
                 for (PremiseTreePtr & grandchild : child->children)
                 {
                     grandchild->parent = this;
