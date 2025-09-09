@@ -125,10 +125,6 @@ int main(int argc, char **argv)
         std::cout << "Premise tree:\n";
         std::cout << premiseTree->toString() << std::endl;
 
-        premiseTree->refine();
-        std::cout << "Refined premise tree:\n";
-        std::cout << premiseTree->toString() << std::endl;
-
         std::cout << "Include tree:\n";
         std::cout << includeTree->toString() << std::endl;
 
@@ -174,6 +170,11 @@ int main(int argc, char **argv)
                 }
             }
         }
+
+        // Refine after the #check checkings in case some nodes are pruned
+        premiseTree->refine();
+        std::cout << "Refined premise tree:\n";
+        std::cout << premiseTree->toString() << std::endl;
     }
 
     if (!allPass) return 1;

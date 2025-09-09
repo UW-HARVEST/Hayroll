@@ -186,16 +186,38 @@ struct PremiseTree
         {
             child->refine();
             // If the current node's premise implies the child's premise,
+            // or if the child is always false,
             // we can remove the child node.
-            if (child->children.empty() && !child->isMacroExpansion())
+            if
+            (
+                child->children.empty() && !child->isMacroExpansion()
+                    && z3Check(!z3::implies(getCompletePremise(), child->premise)) == z3::unsat
+                || !child->isMacroExpansion()
+                    && z3Check(child->getCompletePremise()) == z3::unsat
+            )
             {
-                if (z3Check(!z3::implies(getCompletePremise(), child->premise)) == z3::unsat)
+                SPDLOG_TRACE("Eliminating child node: {}", child->toString());
+                continue;
+            }
+
+            // If the child node's premise is always true, we can remove it and promote its children.
+            if
+            (
+                !child->isMacroExpansion()
+                    && z3Check(child->getCompletePremise() != getCompletePremise()) == z3::unsat
+            )
+            {
+                SPDLOG_TRACE("Promoting child node: {}", child->toString());
+                for (PremiseTreePtr & grandchild : child->children)
                 {
-                    SPDLOG_TRACE("Eliminating child node: {}", child->toString());
-                    continue;
+                    grandchild->parent = this;
+                    newChildren.push_back(std::move(grandchild));
                 }
             }
-            newChildren.push_back(std::move(child));
+            else
+            {
+                newChildren.push_back(std::move(child));
+            }
         }
         children = std::move(newChildren);
     }
@@ -236,6 +258,11 @@ struct PremiseTree
         std::vector<CodeRangeAnalysisTask> tasks;
         for (const PremiseTree * premiseNode : getDescendants())
         {
+            if (premiseNode->isMacroExpansion())
+            {
+                // We do not generate code range analysis tasks for macro expansions.
+                continue;
+            }
             const ProgramPoint & programPoint = premiseNode->programPoint;
             const IncludeTreePtr & includeTree = programPoint.includeTree;
             const TSNode & tsNode = programPoint.node;
