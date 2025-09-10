@@ -105,7 +105,7 @@ int main(int argc, char **argv)
     executors.push_back(std::move(SymbolicExecutor(entryPath, tmpPath)));
 
     executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/mathf/sinhf.c", LibmcsDir, {LibmcsDir / "libm/include/"})));
-    executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/complexd/cabsd.c", LibmcsDir, {LibmcsDir / "libm/include/"})));
+    executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/mathd/roundd.c", LibmcsDir, {LibmcsDir / "libm/include/"})));
     
     bool allPass = true;
 
@@ -155,10 +155,8 @@ int main(int argc, char **argv)
                     writtenPremise = simplifyOrOfAnd(writtenPremise);
                     z3::expr premise = premiseTreeNode->getCompletePremise();
                     z3::expr premiseEqWrittenPremise = premise == writtenPremise;
-                    z3::solver s(*executor.ctx);
-                    s.add(!premiseEqWrittenPremise);
                     std::cout << std::format("Checking written premise at {}\n", programPoint.toString());
-                    if (s.check() == z3::unsat)
+                    if (z3CheckTautology(premiseEqWrittenPremise))
                     {
                         std::cout << std::format("Pass: Premise {} is equivalent to written premise {}\n", premise.to_string(), writtenPremise.to_string());
                     }
@@ -175,6 +173,14 @@ int main(int argc, char **argv)
         premiseTree->refine();
         std::cout << "Refined premise tree:\n";
         std::cout << premiseTree->toString() << std::endl;
+
+        // Print the premise and models of each node
+        std::cout << "PremiseTree models:\n";
+        for (const PremiseTree * node : premiseTree->getDescendants())
+        {
+            std::cout << std::format("Node premise: {}\n", node->premise.to_string());
+            std::cout << node->getDefineSet().toString() << std::endl;
+        }
     }
 
     if (!allPass) return 1;

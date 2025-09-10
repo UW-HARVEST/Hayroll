@@ -13,6 +13,7 @@
 #include "IncludeTree.hpp"
 #include "TreeSitter.hpp"
 #include "MakiWrapper.hpp"
+#include "DefineSet.hpp"
 
 namespace Hayroll
 {
@@ -164,6 +165,24 @@ struct PremiseTree
         return str;
     }
 
+    z3::model getModel() const
+    {
+        z3::expr complete = getCompletePremise();
+        z3::solver s(complete.ctx());
+        s.add(complete);
+        z3::check_result r = s.check();
+        if (r == z3::sat)
+        {
+            return s.get_model();
+        }
+        throw std::runtime_error("Cannot get model: premise is not satisfiable.");
+    }
+
+    DefineSet getDefineSet() const
+    {
+        return DefineSet(getModel());
+    }
+
     // Simplify premises of all descendants.
     void refine()
     {
@@ -171,7 +190,7 @@ struct PremiseTree
         std::unordered_map<ProgramPoint, z3::expr, ProgramPoint::Hasher> newMacroPremises;
         for (auto & [macroProgramPoint, macroPremise] : macroPremises)
         {
-            if (z3Check(!z3::implies(getCompletePremise(), macroPremise)) == z3::unsat)
+            if (z3CheckTautology(z3::implies(getCompletePremise(), macroPremise)))
             {
                 SPDLOG_TRACE("Eliminating macro premise: {}", macroPremise.to_string());
                 continue;
@@ -187,7 +206,7 @@ struct PremiseTree
             child->refine();
             
             // If the child is always false, we can remove the child node.
-            if (!child->isMacroExpansion() && z3Check(child->getCompletePremise()) == z3::unsat)
+            if (!child->isMacroExpansion() && z3CheckContradiction(child->getCompletePremise()))
             {
                 SPDLOG_TRACE("Eliminating constant-false child node: {}", child->toString());
                 continue;
@@ -195,7 +214,7 @@ struct PremiseTree
 
             // If the current node's premise implies the child's premise,
             // we can remove it and promote its children.
-            if (!child->isMacroExpansion() && z3Check(!z3::implies(getCompletePremise(), child->premise)) == z3::unsat)
+            if (!child->isMacroExpansion() && z3CheckTautology(z3::implies(getCompletePremise(), child->premise)))
             {
                 SPDLOG_TRACE("Eliminating implied child node: {}", child->toString());
                 for (PremiseTreePtr & grandchild : child->children)

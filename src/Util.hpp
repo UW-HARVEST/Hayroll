@@ -183,6 +183,16 @@ z3::check_result z3Check(const z3::expr & expr)
     return result;
 }
 
+bool z3CheckTautology(const z3::expr & expr)
+{
+    return z3Check(!expr) == z3::unsat;
+}
+
+bool z3CheckContradiction(const z3::expr & expr)
+{
+    return z3Check(expr) == z3::unsat;
+}
+
 z3::expr ctxSolverSimplify(const z3::expr & expr)
 {
     z3::context & ctx = expr.ctx();
@@ -195,11 +205,11 @@ z3::expr ctxSolverSimplify(const z3::expr & expr)
 
 z3::expr tryTrueFalseSimplify(const z3::expr & expr)
 {
-    if (z3Check(!expr) == z3::unsat)
+    if (z3CheckTautology(expr))
     {
         return expr.ctx().bool_val(true);
     }
-    if (z3Check(expr) == z3::unsat)
+    if (z3CheckContradiction(expr))
     {
         return expr.ctx().bool_val(false);
     }

@@ -732,6 +732,10 @@ public:
         {
             disallowed = disallowed || state.premise;
         }
+        if (z3CheckTautology(disallowed))
+        {
+            SPDLOG_WARN("All states lead to #error at {}.", startWarp.programPoint.toString());
+        }
         scribe.conjunctPremiseOntoRoot(!simplifyOrOfAnd(disallowed));
         startWarp.programPoint = startWarp.programPoint.nextSibling();
         return std::move(startWarp);
