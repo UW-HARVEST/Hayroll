@@ -4,6 +4,7 @@
 #include <memory>
 #include <variant>
 #include <unordered_map>
+#include <list>
 
 #include <z3++.h>
 
@@ -231,15 +232,26 @@ struct PremiseTree
         children = std::move(newChildren);
     }
 
-    std::vector<const PremiseTree *> getDescendants() const
+    std::list<const PremiseTree *> getDescendantsPreorder() const
     {
-        std::vector<const PremiseTree *> result;
-        result.push_back(this);
+        return getDescendants(false);
+    }
+
+    std::list<const PremiseTree *> getDescendantsPostorder() const
+    {
+        return getDescendants(true);   
+    }
+
+    std::list<const PremiseTree *> getDescendants(bool postorder) const
+    {
+        std::list<const PremiseTree *> result;
         for (const PremiseTreePtr & child : children)
         {
-            auto childNodes = child->getDescendants();
-            result.insert(result.end(), childNodes.begin(), childNodes.end());
+            std::list<const PremiseTree *> childNodes = child->getDescendants(postorder);
+            result.splice(result.end(), childNodes);
         }
+        if (postorder) result.push_back(this);
+        else result.push_front(this);
         return result;
     }
 
@@ -265,7 +277,7 @@ struct PremiseTree
     ) const
     {
         std::vector<CodeRangeAnalysisTask> tasks;
-        for (const PremiseTree * premiseNode : getDescendants())
+        for (const PremiseTree * premiseNode : getDescendantsPreorder())
         {
             if (premiseNode->isMacroExpansion())
             {
