@@ -601,7 +601,7 @@ public:
         {
             PremiseTree * premiseTree = premiseTreeOpt.value();
             assert(premiseTree != nullptr);
-            for (const Hayroll::PremiseTree * premiseTreeNode : premiseTree->getDescendantsPreorder())
+            for (const Hayroll::PremiseTree * premiseTreeNode : premiseTree->getDescendantsPreOrder())
             {
                 // For each premise tree node that is not a macro expansion node,
                 // insert "Debug" instrumentation tasks, with the premise as its name.

@@ -5,6 +5,7 @@
 #include <variant>
 #include <unordered_map>
 #include <list>
+#include <queue>
 
 #include <z3++.h>
 
@@ -232,27 +233,34 @@ struct PremiseTree
         children = std::move(newChildren);
     }
 
-    std::list<const PremiseTree *> getDescendantsPreorder() const
-    {
-        return getDescendants(false);
-    }
-
-    std::list<const PremiseTree *> getDescendantsPostorder() const
-    {
-        return getDescendants(true);   
-    }
-
-    std::list<const PremiseTree *> getDescendants(bool postorder) const
+    std::list<const PremiseTree *> getDescendantsPreOrder() const
     {
         std::list<const PremiseTree *> result;
+        result.push_back(this);
         for (const PremiseTreePtr & child : children)
         {
-            std::list<const PremiseTree *> childNodes = child->getDescendants(postorder);
+            std::list<const PremiseTree *> childNodes = child->getDescendantsPreOrder();
             result.splice(result.end(), childNodes);
         }
-        if (postorder) result.push_back(this);
-        else result.push_front(this);
         return result;
+    }
+
+    std::list<const PremiseTree *> getDescendantsLevelOrder() const
+    {
+        std::list<const PremiseTree *> order;
+        std::queue<const PremiseTree *> q;
+        q.push(this);
+        while (!q.empty())
+        {
+            const PremiseTree * node = q.front();
+            q.pop();
+            order.push_back(node);
+            for (const PremiseTreePtr & child : node->children)
+            {
+                q.push(child.get());
+            }
+        }
+        return order;
     }
 
     // Find the smallest premise tree node that contains the target program point.
@@ -277,7 +285,7 @@ struct PremiseTree
     ) const
     {
         std::vector<CodeRangeAnalysisTask> tasks;
-        for (const PremiseTree * premiseNode : getDescendantsPreorder())
+        for (const PremiseTree * premiseNode : getDescendantsPreOrder())
         {
             if (premiseNode->isMacroExpansion())
             {

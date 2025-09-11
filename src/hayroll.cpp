@@ -16,6 +16,7 @@
 #include "MakiWrapper.hpp"
 #include "RewriteIncludesWrapper.hpp"
 #include "SymbolicExecutor.hpp"
+#include "Splitter.hpp"
 #include "LineMatcher.hpp"
 #include "Seeder.hpp"
 #include "C2RustWrapper.hpp"
@@ -212,6 +213,31 @@ int main(const int argc, const char* argv[])
                     std::filesystem::path outputPath = outputCommand.file;
                     saveStringToFile(premiseTreeStr, outputPath);
                     SPDLOG_INFO("Premise tree for {} saved to: {}", command.file.string(), outputPath.string());
+                }
+
+                // Experimental Splitter
+                // premiseTree + compileCommands --Splitter-> DefineSets
+                {
+                    std::vector<DefineSet> defineSets = Splitter::run(premiseTree, command);
+                    CompileCommand outputCommand = command
+                        .withUpdatedFilePathPrefix(outputDir, projDir)
+                        .withUpdatedFileExtension(".defset.txt");
+                    std::filesystem::path outputPath = outputCommand.file;
+                    std::ostringstream oss;
+                    if (defineSets.empty())
+                    {
+                        oss << "// No DefineSets generated\n";
+                    }
+                    else
+                    {
+                        for (size_t i = 0; i < defineSets.size(); ++i)
+                        {
+                            oss << "// DefineSet " << i << "\n";
+                            oss << defineSets[i].toString() << "\n";
+                        }
+                    }
+                    saveStringToFile(oss.str(), outputPath);
+                    SPDLOG_INFO("{} DefineSet(s) for {} saved to single file: {}", defineSets.size(), command.file.string(), outputPath.string());
                 }
 
                 // LineMatcher

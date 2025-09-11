@@ -12,6 +12,7 @@
 
 #include "Util.hpp"
 #include "TempDir.hpp"
+#include "DefineSet.hpp"
 
 namespace Hayroll
 {
@@ -89,10 +90,7 @@ struct CompileCommand
     // Update the file extension of the command's file and arguments.
     // Multiple extensions are considered the extension of the file.
     // e.g. in "xxx.cu.c" the extension is ".cu.c".
-    CompileCommand withUpdatedFileExtension
-    (
-        const std::string & newExtension
-    ) const
+    CompileCommand withUpdatedFileExtension(const std::string & newExtension) const
     {
         std::string filename = this->file.filename().string();
         size_t dotPos = filename.find('.');
@@ -104,10 +102,7 @@ struct CompileCommand
 
     // Update the file using absolute path.
     // This does not just change the filename, but also ignores the original file path.
-    CompileCommand withUpdatedFile
-    (
-        std::filesystem::path newFile
-    ) const
+    CompileCommand withUpdatedFile(std::filesystem::path newFile) const
     {
         newFile = std::filesystem::weakly_canonical(newFile);
         CompileCommand updatedCommand = *this;
@@ -127,6 +122,33 @@ struct CompileCommand
             SPDLOG_TRACE("Last argument is not a valid path: {}", e.what());
         }
         return updatedCommand;
+    }
+
+    CompileCommand withDeletedDefines() const
+    {
+        CompileCommand updatedCommand = *this;
+        std::vector<std::string> newArgs;
+        for (const auto & arg : updatedCommand.arguments)
+        {
+            if (arg.starts_with("-D")) continue;
+            newArgs.push_back(arg);
+        }
+        updatedCommand.arguments = std::move(newArgs);
+        return updatedCommand;
+    }
+
+    CompileCommand withAddedDefineSet(const DefineSet & defineSet) const
+    {
+        CompileCommand updatedCommand = *this;
+        auto newArgs = defineSet.toOptions();
+        // Insert after the compiler executable (the first argument)
+        updatedCommand.arguments.insert(++updatedCommand.arguments.begin(), newArgs.begin(), newArgs.end());
+        return updatedCommand;
+    }
+
+    CompileCommand withUpdatedDefineSet(const DefineSet & defineSet) const
+    {
+        return withDeletedDefines().withAddedDefineSet(defineSet);
     }
 
     static std::vector<CompileCommand> fromCompileCommandsJson(const nlohmann::json & json)

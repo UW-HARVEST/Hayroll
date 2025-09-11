@@ -128,7 +128,7 @@ int main(int argc, char **argv)
         std::cout << "Include tree:\n";
         std::cout << includeTree->toString() << std::endl;
 
-        for (const PremiseTree * node : premiseTree->getDescendantsPreorder())
+        for (const PremiseTree * node : premiseTree->getDescendantsPreOrder())
         {
             if (node->premise.to_string().size() > 1024)
             {
@@ -176,7 +176,7 @@ int main(int argc, char **argv)
 
         // Print the premise and models of each node
         std::cout << "PremiseTree models:\n";
-        for (const PremiseTree * node : premiseTree->getDescendantsPreorder())
+        for (const PremiseTree * node : premiseTree->getDescendantsPreOrder())
         {
             std::cout << std::format("Node premise: {}\n", node->premise.to_string());
             std::cout << node->getDefineSet().toString() << std::endl;

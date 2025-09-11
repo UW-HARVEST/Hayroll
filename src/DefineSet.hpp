@@ -3,6 +3,10 @@
 
 #include <optional>
 #include <unordered_map>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <unordered_set>
 
 #include <z3++.h>
 
@@ -15,13 +19,11 @@ namespace Hayroll
 
 struct DefineSet
 {
-    z3::model model;
     std::unordered_map<std::string, std::optional<int>> defines;
 
     DefineSet() = delete;
 
     DefineSet(const z3::model & model)
-        : model(model)
     {
         for (unsigned i = 0; i < model.size(); i++)
         {
@@ -45,26 +47,89 @@ struct DefineSet
         }
     }
 
-    std::string toString() const
+    DefineSet
+    (
+        const std::unordered_map<std::string, std::optional<int>> & defines
+    ) : defines(defines)
     {
-        std::string buff;
+    }
+
+    std::vector<std::string> toOptions() const
+    {
+        std::vector<std::string> options;
         for (const auto & [name, val] : defines)
         {
             if (!val.has_value())
             {
-                buff += std::format("-D{} ", name);
+                options.push_back(std::format("-D{}", name));
             }
             else
             {
-                buff += std::format("-D{}={} ", name, val.value());
+                options.push_back(std::format("-D{}={}", name, val.value()));
             }
         }
-        return buff;
+        return options;
+    }
+
+    std::string toString() const
+    {
+        std::stringstream ss;
+        for (const std::string & opt : toOptions())
+        {
+            ss << opt << " ";
+        }
+        std::string str = ss.str();
+        if (!str.empty()) str.pop_back(); // Remove trailing space
+        return str;
     }
 
     bool satisfies(const z3::expr & expr) const
     {
-        return z3CheckTautology(model.eval(expr));
+        z3::context & ctx = expr.ctx();
+        std::unordered_set<std::string> seen;
+
+        std::function<void(const z3::expr &)> visit = [&seen, &visit](const z3::expr & e)
+        {
+            if (e.is_app())
+            {
+                if (e.num_args() == 0)
+                {
+                    std::string n = e.decl().name().str();
+                    if (n.starts_with("def") || n.starts_with("val"))
+                        seen.insert(n);
+                }
+                for (unsigned i = 0; i < e.num_args(); ++i) visit(e.arg(i));
+            }
+        };
+        visit(expr);
+
+        z3::expr assigns = ctx.bool_val(true);
+        for (const std::string & fullName : seen)
+        {
+            std::string prefix = fullName.substr(0, 3);
+            std::string macroName = fullName.substr(3);
+            auto it = defines.find(macroName);
+            if (prefix == "def")
+            {
+                bool defined = (it != defines.end());
+                assigns = assigns && (ctx.bool_const(fullName.c_str()) == ctx.bool_val(defined));
+            }
+            else if (prefix == "val")
+            {
+                int value = 0;
+                if (it != defines.end() && it->second.has_value()) value = it->second.value();
+                assigns = assigns && (ctx.int_const(fullName.c_str()) == ctx.int_val(value));
+            }
+        }
+
+        z3::expr implies = z3::implies(assigns, expr);
+        bool ok = z3CheckTautology(implies);
+        SPDLOG_DEBUG
+        (
+            "Implication check: set=({}) expr={} assigns={} result={}",
+            toString(), expr.to_string(), assigns.to_string(), ok ? "true" : "false"
+        );
+        return ok;
     }
 };
 
