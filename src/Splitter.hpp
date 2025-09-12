@@ -84,7 +84,7 @@ public:
             for (const PremiseTree * node : uncovered)
             {
                 SPDLOG_WARN(" - Node: {}", node->toString());
-                SPDLOG_WARN(" - Premise: {}", node->getCompletePremise().to_string());
+                SPDLOG_WARN("   Premise: {}", node->getCompletePremise().to_string());
             }
         }
 

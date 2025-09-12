@@ -26,9 +26,9 @@ struct CodeRangeAnalysisTask
     int beginCol;
     int endLine;
     int endCol;
-    std::string extraInfo;
+    std::string premise;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeRangeAnalysisTask, name, beginLine, beginCol, endLine, endCol, extraInfo)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeRangeAnalysisTask, name, beginLine, beginCol, endLine, endCol, premise)
 };
 
 class MakiWrapper

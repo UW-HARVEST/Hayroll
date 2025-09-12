@@ -52,7 +52,7 @@ int main(int argc, char **argv)
         .beginCol = 5,
         .endLine = 7193,
         .endCol = 19,
-        .extraInfo = "This is a test code range for Maki analysis."
+        .premise = "defNOTHING"
     };
     
     std::vector<CompileCommand> compileCommands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);

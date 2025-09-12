@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BUILD_DIR="build"
-BUILD_TYPE="Debug"  # Default to Debug; use -r/--release for Release
+BUILD_TYPE="Debug" # Default to Debug; use -r/--release for Release
 
 while [[ "$#" -gt 0 ]]; do
   case $1 in

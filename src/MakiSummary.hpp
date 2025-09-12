@@ -413,9 +413,10 @@ struct MakiRangeSummary
     std::string Location;
     std::string LocationEnd;
     std::string ASTKind;
-    std::string ExtraInfo;
+    bool IsPlaceholder;
+    std::string Premise;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(MakiRangeSummary, Location, LocationEnd, ASTKind, ExtraInfo)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(MakiRangeSummary, Location, LocationEnd, ASTKind, IsPlaceholder, Premise)
 };
 
 std::pair<std::vector<MakiInvocationSummary>, std::vector<MakiRangeSummary>> parseCpp2cSummary(std::string_view cpp2cStr)

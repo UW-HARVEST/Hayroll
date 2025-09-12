@@ -313,7 +313,7 @@ struct PremiseTree
                 .beginCol = static_cast<int>(tsNode.startPoint().column) + 1,
                 .endLine = lineNumbers.at(tsNode.endPoint().row + 1),
                 .endCol = static_cast<int>(tsNode.endPoint().column) + 1,
-                .extraInfo = premiseNode->premise.to_string()
+                .premise = premiseNode->premise.to_string()
             };
             tasks.push_back(task);
         }
