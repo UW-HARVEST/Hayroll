@@ -6,6 +6,9 @@
 #include <vector>
 #include <list>
 #include <memory>
+#include <utility>
+#include <sstream>
+#include <stdexcept>
 
 #include "json.hpp"
 
@@ -182,7 +185,6 @@ struct MakiInvocationSummary
     // Concept translated from Maki implementation
     bool isAligned() const
     {
-        assert(isTopLevelNonArgument());
         return isTopLevelNonArgument()
             && NumASTRoots == 1
             && HasAlignedArguments;
@@ -405,6 +407,66 @@ struct MakiInvocationSummary
             );
     }
 };
+
+struct MakiRangeSummary
+{
+    std::string Location;
+    std::string LocationEnd;
+    std::string ASTKind;
+    std::string ExtraInfo;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(MakiRangeSummary, Location, LocationEnd, ASTKind, ExtraInfo)
+};
+
+std::pair<std::vector<MakiInvocationSummary>, std::vector<MakiRangeSummary>> parseCpp2cSummary(std::string_view cpp2cStr)
+{
+    std::vector<MakiInvocationSummary> invocations;
+    std::vector<MakiRangeSummary> ranges;
+
+    std::istringstream iss{std::string{cpp2cStr}};
+    std::string line;
+    while (std::getline(iss, line))
+    {
+        // Extract the first word (token before any whitespace)
+        std::istringstream line_ss(line);
+        std::string firstWord;
+        line_ss >> firstWord;
+
+        if (firstWord != "Invocation" && firstWord != "Range")
+        {
+            continue; // ignore unrelated lines
+        }
+
+        // Find the JSON payload starting at the first '{'
+        size_t jsonPos = line.find('{');
+        if (jsonPos == std::string::npos)
+        {
+            // No JSON on this line; skip silently
+            continue;
+        }
+        std::string jsonString = line.substr(jsonPos);
+
+        try
+        {
+            nlohmann::json j = nlohmann::json::parse(jsonString);
+            if (firstWord == "Invocation")
+            {
+                invocations.push_back(j.get<MakiInvocationSummary>());
+            }
+            else if (firstWord == "Range")
+            {
+                ranges.push_back(j.get<MakiRangeSummary>());
+            }
+            else assert(false);
+        }
+        catch (nlohmann::json::parse_error &e)
+        {
+            throw std::runtime_error(std::string("Error: Failed to parse JSON: ") + e.what());
+        }
+    }
+
+    return {std::move(invocations), std::move(ranges)};
+}
 
 } // namespace Hayroll
 

@@ -1,17 +1,16 @@
 #!/bin/bash
 
 BUILD_DIR="build"
-# BUILD_TYPE="Release"
-BUILD_TYPE="Debug"
+BUILD_TYPE="Debug"  # Default to Debug; use -r/--release for Release
 
 while [[ "$#" -gt 0 ]]; do
   case $1 in
-    -d | --debug) BUILD_TYPE="Debug" ;;
+    -r | --release) BUILD_TYPE="Release" ;;
     -c | --clean) CLEAN=true ;;
     -h | --help)
       echo "Usage: ./build.bash [options]"
       echo "Options:"
-      echo "  -d, --debug      Build in Debug mode (default: Release)"
+      echo "  -r, --release    Build in Release mode"
       echo "  -c, --clean      Clean the build directory before building"
       echo "  -h, --help       Show this help message"
       exit 0

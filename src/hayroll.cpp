@@ -215,10 +215,11 @@ int main(const int argc, const char* argv[])
                     SPDLOG_INFO("Premise tree for {} saved to: {}", command.file.string(), outputPath.string());
                 }
 
-                // Experimental Splitter
+                // Experimental
+                // Splitter
                 // premiseTree + compileCommands --Splitter-> DefineSets
+                std::vector<DefineSet> defineSets = Splitter::run(premiseTree, command);
                 {
-                    std::vector<DefineSet> defineSets = Splitter::run(premiseTree, command);
                     CompileCommand outputCommand = command
                         .withUpdatedFilePathPrefix(outputDir, projDir)
                         .withUpdatedFileExtension(".defset.txt");
@@ -238,6 +239,43 @@ int main(const int argc, const char* argv[])
                     }
                     saveStringToFile(oss.str(), outputPath);
                     SPDLOG_INFO("{} DefineSet(s) for {} saved to single file: {}", defineSets.size(), command.file.string(), outputPath.string());
+
+                    for (size_t i = 0; i < defineSets.size(); ++i)
+                    {
+                        const DefineSet & defSet = defineSets[i];
+                        CompileCommand commandWithDefineSet = command
+                            .withUpdatedDefineSet(defSet);
+
+                        // Run rewrite-includes + LineMatcher + CodeRangeAnalysisTasks generation + Maki cpp2c on each DefineSet
+                        // This is because CU line numbers may differ with different DefineSets,
+                        // which affects LineMatcher and CodeRangeAnalysisTasks generation.
+
+                        std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(commandWithDefineSet);
+                        // Save to {i}.cu.c
+                        {
+                            CompileCommand outputCommand = commandWithDefineSet
+                                .withUpdatedFilePathPrefix(outputDir, projDir)
+                                .withUpdatedFileExtension(std::format(".{}.cu.c", i));
+                            std::filesystem::path outputPath = outputCommand.file;
+                            saveStringToFile(cuStr, outputPath);
+                            SPDLOG_INFO("Compilation unit file for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
+                        }
+
+                        const auto [lineMap, inverseLineMap] = LineMatcher::run(
+                            cuStr, executor.includeTree, command.getIncludePaths());
+
+                        std::vector<CodeRangeAnalysisTask> codeRangeAnalysisTasks = premiseTree->getCodeRangeAnalysisTasks(lineMap);
+
+                        std::string defSetCpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
+                        {
+                            CompileCommand outputCommand = command
+                                .withUpdatedFilePathPrefix(outputDir, projDir)
+                                .withUpdatedFileExtension(std::format(".{}.cpp2c", i));
+                            std::filesystem::path outputPath = outputCommand.file;
+                            saveStringToFile(defSetCpp2cStr, outputPath);
+                            SPDLOG_INFO("Maki cpp2c output for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
+                        }
+                    }
                 }
 
                 // LineMatcher
@@ -249,19 +287,19 @@ int main(const int argc, const char* argv[])
 
                 // CodeRangeAnalysisTasks
                 // premiseTree + lineMap --> CodeRangeAnalysisTasks
-                std::vector<CodeRangeAnalysisTask> tasks = premiseTree->getCodeRangeAnalysisTasks(lineMap);
+                std::vector<CodeRangeAnalysisTask> codeRangeAnalysisTasks = premiseTree->getCodeRangeAnalysisTasks(lineMap);
                 {
                     CompileCommand outputCommand = command
                         .withUpdatedFilePathPrefix(outputDir, projDir)
                         .withUpdatedFileExtension(".range_tasks.json");
                     std::filesystem::path outputPath = outputCommand.file;
-                    saveStringToFile(json(tasks).dump(4), outputPath);
+                    saveStringToFile(json(codeRangeAnalysisTasks).dump(4), outputPath);
                     SPDLOG_INFO("Code range analysis tasks for {} saved to: {}", command.file.string(), outputPath.string());
                 }
 
                 // Analyze macro invocations using Maki
                 // compileCommands + src --Maki-> cpp2cStr
-                std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command, projDir, tasks);
+                std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command, codeRangeAnalysisTasks);
                 {
                     CompileCommand outputCommand = command
                         .withUpdatedFilePathPrefix(outputDir, projDir)

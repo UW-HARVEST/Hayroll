@@ -16,7 +16,6 @@
 
 #include <iostream>
 
-#include <boost/stacktrace.hpp>
 #include <spdlog/spdlog.h>
 
 #include "Util.hpp"
@@ -223,7 +222,7 @@ private:
     std::unique_ptr<ts::TSTree, decltype(&ts::ts_tree_delete)> tree;
     std::unique_ptr<const std::string> sourcePtr; // To make sure std::string_views in its nodes are valid after moving
 
-    void assertNoError() const;
+    void throwOnError() const;
 };
 
 class TSParser
@@ -1158,15 +1157,7 @@ std::size_t Hayroll::TSNode::Hasher::operator()(const TSNode & node) const noexc
 
 void TSNode::assertNonNull() const
 {
-    #if DEBUG
-        // Throw and print stack trace if the node is null.
-        if (isNull())
-        {
-            std::cout << boost::stacktrace::stacktrace() << std::endl;
-            std::cout << std::flush;
-            throw std::runtime_error("TSNode is null");
-        }
-    #endif
+    assertOrStackTrace(!isNull());
 }
 
 
@@ -1177,7 +1168,7 @@ TSTree::TSTree(ts::TSTree * tree, std::string_view source)
     : tree(tree, ts::ts_tree_delete), sourcePtr(std::make_unique<std::string>(source)) // Copy and own
 {
     #if DEBUG
-        assertNoError();
+        throwOnError();
     #endif
 }
 
@@ -1185,7 +1176,7 @@ TSTree::TSTree(ts::TSTree *tree, std::string && source)
     : tree(tree, ts::ts_tree_delete), sourcePtr(std::make_unique<std::string>(std::move(source))) // Move and own
 {
     #if DEBUG
-        assertNoError();
+        throwOnError();
     #endif
 }
 
@@ -1265,13 +1256,11 @@ const std::string & TSTree::getSource() const
 }
 
 // Make sure there is no ERROR node in this tree by doing a query for it.
-// This is quite expensive, so it should only be used in debug builds.
-void TSTree::assertNoError() const
+void TSTree::throwOnError() const
 {
     if (rootNode().hasError())
     {
-        std::cerr << boost::stacktrace::stacktrace() << std::endl;
-        throw std::runtime_error("Tree contains ERROR node");
+        throw std::runtime_error("Parsed tree contains ERROR node");
     }
 }
 

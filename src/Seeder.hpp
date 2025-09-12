@@ -11,6 +11,7 @@
 #include <tuple>
 #include <filesystem>
 #include <format>
+#include <algorithm>
 
 #include <spdlog/spdlog.h>
 #include "json.hpp"
@@ -42,7 +43,7 @@ public:
     // Canonicalizes the filename.
     static std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view loc)
     {
-        assert(!loc.empty());
+        assertOrStackTrace(!loc.empty());
 
         std::string_view pathStr;
         int line;
@@ -515,47 +516,12 @@ public:
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        // Parse cpp2cStr into MakiInvocationSummary objects.
-        // For each line, check the first word before the first whitespace (can be space or tab).
-        // If it is Invocation, then treat the rest of the line as a JSON string and parse it.
-        // If it is not, then ignore the line.
-        std::vector<MakiInvocationSummary> invocations;
-        {
-            std::vector<std::string> cpp2cLines;
-            {
-                std::istringstream iss{std::string{cpp2cStr}};
-                std::string line;
-                while (std::getline(iss, line))
-                {
-                    cpp2cLines.push_back(line);
-                }
-            }
+        auto [invocations, ranges] = parseCpp2cSummary(cpp2cStr);
 
-            for (const std::string & line : cpp2cLines)
-            {
-                std::istringstream iss(line);
-                std::string firstWord;
-                iss >> firstWord;
-
-                if (firstWord == "Invocation")
-                {
-                    std::string jsonString = line.substr(line.find_first_of("{"));
-                    try
-                    {
-                        json j = json::parse(jsonString);
-                        MakiInvocationSummary invocation = j.get<MakiInvocationSummary>();
-                        if (keepInvocationInfo(invocation))
-                        {
-                            invocations.push_back(invocation);
-                        }
-                    }
-                    catch (json::parse_error& e)
-                    {
-                        throw std::runtime_error("Error: Failed to parse JSON: " + std::string(e.what()));
-                    }
-                }
-            }
-        }
+        // Remove invalid invocations (erase-remove idiom)
+        std::erase_if(invocations, [](const MakiInvocationSummary & inv) {
+            return !keepInvocationInfo(inv);
+        });
 
         TextEditor srcEditor{srcStr};
 

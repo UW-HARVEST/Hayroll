@@ -45,11 +45,11 @@ public:
     static std::string runCpp2cOnCu
     (
         const CompileCommand & compileCommand,
-        const std::filesystem::path & projDir,
         const std::vector<CodeRangeAnalysisTask> & codeRanges = {},
         int numThreads = 16
     )
     {
+        std::filesystem::path projDir = "/"; // Dummy, a sigle CU file does not need pretty paths.
         TempDir cuDir;
         std::filesystem::path cuDirPath = cuDir.getPath();
         // Update the command to use the CU file as the source

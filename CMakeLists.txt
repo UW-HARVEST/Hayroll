@@ -1,6 +1,46 @@
 cmake_minimum_required(VERSION 3.10)
 project(Hayroll LANGUAGES C CXX)
 
+# C++
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "13")
+        message(FATAL_ERROR "GCC version must be 13 or above. Current version: ${CMAKE_CXX_COMPILER_VERSION}")
+    endif()
+endif()
+# You may also use clang, but make sure you link to libstdc++ 3.4.32 or above
+
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -gdwarf-2")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+
+# For std::stacktrace on GCC 13+
+execute_process(
+  COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++_libbacktrace.a
+  OUTPUT_VARIABLE STDLIBCXX_LIBBACKTRACE_PATH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(EXISTS "${STDLIBCXX_LIBBACKTRACE_PATH}")
+  message(STATUS "libstdc++_libbacktrace: ${STDLIBCXX_LIBBACKTRACE_PATH}")
+else()
+  message(ERROR "libstdc++_libbacktrace not found; std::stacktrace may fail to link on GCC 13")
+endif()
+
+# Common config
+link_libraries(
+    spdlog::spdlog
+    dl
+    ${STDLIBCXX_LIBBACKTRACE_PATH}
+)
+add_compile_definitions(
+    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
+)
+
+# For backtraces
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
+
 # Clang executable
 
 find_package(LLVM REQUIRED CONFIG)
@@ -40,11 +80,6 @@ message(STATUS "C2RUST_EXE: ${C2RUST_EXE}")
 find_package(spdlog REQUIRED)
 message(STATUS "spdlog_FOUND: ${spdlog_FOUND}")
 
-# Boost stacktrace_addr2line
-find_package(Boost 1.65 REQUIRED CONFIG COMPONENTS stacktrace_addr2line)
-include_directories(${Boost_INCLUDE_DIRS})
-message(STATUS "Boost stacktrace_addr2line found: ${Boost_STACKTRACE_ADDR2LINE_FOUND}")
-
 # tree-sitter
 set(TREE_SITTER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tree-sitter")
 set(TREE_SITTER_C_PREPROC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tree-sitter-c_preproc")
@@ -66,21 +101,6 @@ message(STATUS "MAKI_DIR: ${MAKI_DIR}")
 
 # libmcs dir
 set(LIBMCS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../libmcs")
-
-# Common config
-link_libraries(
-    spdlog::spdlog
-    Boost::stacktrace_addr2line
-    dl
-)
-add_compile_definitions(
-    BOOST_STACKTRACE_USE_ADDR2LINE
-    BOOST_STACKTRACE_LINK
-    SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
-)
-
-# For backtraces
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
 
 add_library(hayroll_exe_config INTERFACE)
 target_compile_definitions(hayroll_exe_config INTERFACE
@@ -114,21 +134,6 @@ target_link_libraries(tree_sitter_config INTERFACE
     ${TREE_SITTER_DIR}/libtree-sitter.a
     ${TREE_SITTER_C_PREPROC_DIR}/src/parser.o
 )
-
-# C++
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "13")
-        message(FATAL_ERROR "GCC version must be 13 or above. Current version: ${CMAKE_CXX_COMPILER_VERSION}")
-    endif()
-endif()
-# You may also use clang, but make sure you link to libstdc++ 3.4.32 or above
-
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -gdwarf-2")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
 # # AddressSanitizer
 # add_compile_options(

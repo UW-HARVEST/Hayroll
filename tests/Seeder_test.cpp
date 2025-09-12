@@ -94,7 +94,7 @@ int main(const int argc, const char* argv[])
     // Copy dstPath to a temporary file
     std::filesystem::path tmpDstPath = tmpPath / "sinhf.cu.c";
 
-    std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command, LibmcsDir);
+    std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command);
 
     std::cout << "Maki analysis completed." << std::endl;
     std::cout << "cpp2cStr:\n" << cpp2cStr << std::endl;

@@ -29,8 +29,6 @@ int main(int argc, char **argv)
                 "-frounding-math",
                 "-g",
                 "-fno-builtin",
-                "-DLIBMCS_FPU_DAZ",
-                "-DLIBMCS_WANT_COMPLEX",
                 "-Ilibm/include",
                 "-Ilibm/common",
                 "-Ilibm/mathd/internal",
@@ -50,17 +48,17 @@ int main(int argc, char **argv)
     CodeRangeAnalysisTask codeRangeAnalysisTask = 
     {
         .name = "Test Range",
-        .beginLine = 18,
-        .beginCol = 1,
-        .endLine = 21,
-        .endCol = 1,
+        .beginLine = 7193,
+        .beginCol = 5,
+        .endLine = 7193,
+        .endCol = 19,
         .extraInfo = "This is a test code range for Maki analysis."
     };
     
     std::vector<CompileCommand> compileCommands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
     std::vector<CodeRangeAnalysisTask> codeRanges = {codeRangeAnalysisTask};
 
-    std::string cpp2cCuStr = MakiWrapper::runCpp2cOnCu(compileCommands[0], LibmcsDir, codeRanges);
+    std::string cpp2cCuStr = MakiWrapper::runCpp2cOnCu(compileCommands[0], codeRanges);
 
     std::cout << "Maki cpp2c on CU output:\n" << cpp2cCuStr << std::endl;
 

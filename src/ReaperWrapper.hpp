@@ -53,8 +53,8 @@ public:
         );
 
         auto [out, err] = reaperProcess.communicate();
-        SPDLOG_TRACE("Reaper output:\n{}", out.buf.data());
-        SPDLOG_TRACE("Reaper error:\n{}", err.buf.data());
+        SPDLOG_TRACE("Reaper stdout:\n{}", out.buf.data());
+        SPDLOG_TRACE("Reaper stderr:\n{}", err.buf.data());
 
         int retcode = reaperProcess.retcode();
         if (retcode != 0)

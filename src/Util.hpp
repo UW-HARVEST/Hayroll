@@ -16,6 +16,9 @@
 #include <fstream>
 #include <algorithm>
 #include <cassert>
+#include <format>
+#include <sstream>
+#include <stacktrace>
 
 #include <spdlog/spdlog.h>
 #include <z3++.h>
@@ -465,6 +468,20 @@ z3::expr simplifyOrOfAnd(const z3::expr & expr)
     
     return expr3;
 }
+
+void assertOrStackTraceImpl(bool condition, const char * spelling)
+{
+    if (!condition)
+    {
+        SPDLOG_ERROR("Assertion failed: {}", spelling);
+        std::stringstream ss;
+        ss << std::stacktrace::current();
+        SPDLOG_ERROR("Stack trace:\n{}", ss.str());
+        assert(false);
+    }
+}
+
+#define assertOrStackTrace(cond) assertOrStackTraceImpl((cond), #cond)
 
 } // namespace Hayroll
 

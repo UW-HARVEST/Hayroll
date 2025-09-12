@@ -12,6 +12,7 @@
 #include "PremiseTree.hpp"
 #include "CompileCommand.hpp"
 #include "C2RustWrapper.hpp"
+#include "MakiWrapper.hpp"
 #include "RewriteIncludesWrapper.hpp"
 #include "TempDir.hpp"
 
@@ -32,6 +33,7 @@ public:
         // Premise tree nodes that are not yet satisfied by any DefineSet.
         // Do reverse-level-order traversal so that more constrained nodes are processed first.
         std::list<const PremiseTree *> worklist = premiseTree->getDescendantsLevelOrder();
+        std::list<const PremiseTree *> uncovered;
 
         while (!worklist.empty())
         {
@@ -42,15 +44,19 @@ public:
             SPDLOG_TRACE("Complete premise: {}", premise.to_string());
 
             DefineSet defineSet = node->getDefineSet();
+            
+            // Check that the DefineSet can be transpiled by C2Rust
+            if (!validate(defineSet, compileCommand))
+            {
+                // If not, skip this DefineSet
+                SPDLOG_WARN("DefineSet {} cannot be validated by C2Rust or Maki, skipping.",
+                    defineSet.toString());
+                uncovered.push_back(node);
+                continue;
+            }
+
             SPDLOG_TRACE("Created new DefineSet: {}", defineSet.toString());
             result.push_back(defineSet);
-
-            // Check that the DefineSet can be transpiled by C2Rust
-            if (!checkTranspilable(defineSet, compileCommand))
-            {
-                SPDLOG_ERROR("DefineSet cannot be transpiled by C2Rust: {}", defineSet.toString());
-                throw std::runtime_error("DefineSet cannot be transpiled by C2Rust");
-            }
 
             // Remove all nodes that are satisfied by the new DefineSet
             for (auto it = worklist.begin(); it != worklist.end(); )
@@ -70,11 +76,24 @@ public:
                 }
             }
         }
+
+        SPDLOG_DEBUG("Generated {} DefineSet(s).", result.size());
+        if (!uncovered.empty())
+        {
+            SPDLOG_WARN("The following premise tree nodes could not be covered by any valid DefineSet:");
+            for (const PremiseTree * node : uncovered)
+            {
+                SPDLOG_WARN(" - Node: {}", node->toString());
+                SPDLOG_WARN(" - Premise: {}", node->getCompletePremise().to_string());
+            }
+        }
+
         return result;
     }
 
 private:
-    static bool checkTranspilable
+    // Check if the DefineSet can be used to successfully run through Maki and C2Rust.
+    static bool validate
     (
         const DefineSet & defineSet,
         const CompileCommand & compileCommand
@@ -88,7 +107,18 @@ private:
         }
         catch (const std::exception & e)
         {
-            SPDLOG_WARN("C2Rust transpilation failed: {}", e.what());
+            SPDLOG_WARN("C2Rust transpilation failed during DefineSet validation: {}", defineSet.toString());
+            return false;
+        }
+
+        try
+        {
+            // Ignore code range analysis tasks here
+            std::string makiSummaryStr = MakiWrapper::runCpp2cOnCu(updatedCommand);
+        }
+        catch (const std::exception & e)
+        {
+            SPDLOG_WARN("Maki cpp2c analysis failed during DefineSet validation: {}", defineSet.toString());
             return false;
         }
         return true;
