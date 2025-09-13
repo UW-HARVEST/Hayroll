@@ -287,6 +287,7 @@ struct PremiseTree
         std::vector<CodeRangeAnalysisTask> tasks;
         for (const PremiseTree * premiseNode : getDescendantsPreOrder())
         {
+            if (premiseNode == this) continue; // Skip the root node
             if (premiseNode->isMacroExpansion())
             {
                 // We do not generate code range analysis tasks for macro expansions.

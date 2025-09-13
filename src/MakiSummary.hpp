@@ -10,6 +10,8 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "IncludeTree.hpp"
+
 #include "json.hpp"
 
 namespace Hayroll
@@ -417,6 +419,70 @@ struct MakiRangeSummary
     std::string Premise;
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(MakiRangeSummary, Location, LocationEnd, ASTKind, IsPlaceholder, Premise)
+
+    // Take all range summaries generated from different DefineSets
+    // For each item in a range summary vector,
+    // if its ASTKind is "" but other vectors have a non-empty ASTKind at the same IncludeTreePtr,
+    // fill in the ASTKind from other vectors and mark IsPlaceholder = true
+    // if its ASTKind is non-empty, mark IsPlaceholder = false
+    // if all vectors have "" at the same IncludeTreePtr. delete this item
+    static std::vector<std::vector<MakiRangeSummary>> complementRangeSummaries
+    (
+        const std::vector<std::vector<MakiRangeSummary>> & rangeSummaryVecs,
+        const std::vector<std::vector<std::pair<IncludeTreePtr, int>>> & inverseLineMaps
+    )
+    {
+        assert(rangeSummaryVecs.size() == inverseLineMaps.size());
+
+        // Collect all non-empty ASTKinds for each source location and check for consistency
+        std::map<std::string, std::string> commonMap; // srcLocation -> ASTKind
+        for (const auto & [rangeSummaryVec, inverseLineMap] : std::views::zip(rangeSummaryVecs, inverseLineMaps))
+        {
+            for (const MakiRangeSummary & rangeSummary : rangeSummaryVec)
+            {
+                auto [path, line, col] = parseLocation(rangeSummary.Location);
+                auto [includeTree, srcLine] = inverseLineMap.at(line);
+                std::filesystem::path srcPath = includeTree->path;
+                std::string srcLoc = makeLocation(srcPath, srcLine, col);
+                if (!commonMap.contains(srcLoc) && !rangeSummary.ASTKind.empty())
+                {
+                    commonMap[srcLoc] = rangeSummary.ASTKind;
+                }
+                std::string commonASTKind = commonMap.contains(srcLoc) ? commonMap.at(srcLoc) : "";
+                if (!rangeSummary.ASTKind.empty() && rangeSummary.ASTKind != commonASTKind)
+                {
+                    SPDLOG_ERROR("Inconsistent ASTKind for location {}: {} vs {}", srcLoc, rangeSummary.ASTKind, commonASTKind);
+                    throw std::runtime_error("Inconsistent ASTKind for location " + srcLoc);
+                }
+            }
+        }
+
+        // Populate the complemented range summary vectors
+        std::vector<std::vector<MakiRangeSummary>> result;
+        for (const auto & [rangeSummaryVec, inverseLineMap] : std::views::zip(rangeSummaryVecs, inverseLineMaps))
+        {
+            std::vector<MakiRangeSummary> complementedVec;
+            for (const MakiRangeSummary & rangeSummary : rangeSummaryVec)
+            {
+                auto [path, line, col] = parseLocation(rangeSummary.Location);
+                auto [includeTree, srcLine] = inverseLineMap.at(line);
+                std::filesystem::path srcPath = includeTree->path;
+                std::string srcLoc = makeLocation(srcPath, srcLine, col);
+                std::string commonASTKind = commonMap.contains(srcLoc) ? commonMap.at(srcLoc) : "";
+                if (commonASTKind.empty())
+                {
+                    // All vectors have "" at this location; skip it
+                    continue;
+                }
+                MakiRangeSummary complementedSummary = rangeSummary;
+                complementedSummary.ASTKind = commonASTKind;
+                complementedSummary.IsPlaceholder = rangeSummary.ASTKind.empty();
+                complementedVec.push_back(complementedSummary);
+            }
+            result.push_back(complementedVec);
+        }
+        return result;
+    }
 };
 
 std::pair<std::vector<MakiInvocationSummary>, std::vector<MakiRangeSummary>> parseCpp2cSummary(std::string_view cpp2cStr)

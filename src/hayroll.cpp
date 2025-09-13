@@ -240,18 +240,25 @@ int main(const int argc, const char* argv[])
                     saveStringToFile(oss.str(), outputPath);
                     SPDLOG_INFO("{} DefineSet(s) for {} saved to single file: {}", defineSets.size(), command.file.string(), outputPath.string());
 
+
+                    // Run rewrite-includes + LineMatcher + CodeRangeAnalysisTasks generation + Maki cpp2c on each DefineSet
+                    // This is because CU line numbers may differ with different DefineSets,
+                    // which affects LineMatcher and CodeRangeAnalysisTasks generation.
+                    std::vector<std::string> cuStrs;
+                    std::vector<std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>>> lineMaps;
+                    std::vector<std::vector<std::pair<Hayroll::IncludeTreePtr, int>>> inverseLineMaps;
+                    std::vector<std::string> cpp2cStrs;
+                    std::vector<std::vector<Hayroll::MakiInvocationSummary>> cpp2cInvocations;
+                    std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRanges;
                     for (size_t i = 0; i < defineSets.size(); ++i)
                     {
                         const DefineSet & defSet = defineSets[i];
                         CompileCommand commandWithDefineSet = command
                             .withUpdatedDefineSet(defSet);
 
-                        // Run rewrite-includes + LineMatcher + CodeRangeAnalysisTasks generation + Maki cpp2c on each DefineSet
-                        // This is because CU line numbers may differ with different DefineSets,
-                        // which affects LineMatcher and CodeRangeAnalysisTasks generation.
-
                         std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(commandWithDefineSet);
-                        // Save to {i}.cu.c
+                        cuStrs.push_back(cuStr);
+                        // Save to filename.{i}.cu.c
                         {
                             CompileCommand outputCommand = commandWithDefineSet
                                 .withUpdatedFilePathPrefix(outputDir, projDir)
@@ -261,20 +268,41 @@ int main(const int argc, const char* argv[])
                             SPDLOG_INFO("Compilation unit file for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
                         }
 
-                        const auto [lineMap, inverseLineMap] = LineMatcher::run(
-                            cuStr, executor.includeTree, command.getIncludePaths());
+                        const auto [lineMap, inverseLineMap] = LineMatcher::run(cuStr, executor.includeTree, command.getIncludePaths());
+                        lineMaps.push_back(lineMap);
+                        inverseLineMaps.push_back(inverseLineMap);
 
                         std::vector<CodeRangeAnalysisTask> codeRangeAnalysisTasks = premiseTree->getCodeRangeAnalysisTasks(lineMap);
-
-                        std::string defSetCpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
+                        
+                        std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
+                        cpp2cStrs.push_back(cpp2cStr);
+                        // Save to filename.{i}.cpp2c
                         {
-                            CompileCommand outputCommand = command
-                                .withUpdatedFilePathPrefix(outputDir, projDir)
-                                .withUpdatedFileExtension(std::format(".{}.cpp2c", i));
+                            CompileCommand outputCommand = commandWithDefineSet
+                            .withUpdatedFilePathPrefix(outputDir, projDir)
+                            .withUpdatedFileExtension(std::format(".{}.cpp2c", i));
                             std::filesystem::path outputPath = outputCommand.file;
-                            saveStringToFile(defSetCpp2cStr, outputPath);
+                            saveStringToFile(cpp2cStr, outputPath);
                             SPDLOG_INFO("Maki cpp2c output for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
                         }
+
+                        auto [invocations, ranges] = parseCpp2cSummary(cpp2cStr);
+                        cpp2cInvocations.push_back(invocations);
+                        cpp2cRanges.push_back(ranges);
+                    }
+
+                    // Compliment the ranges using each others' information
+                    std::vector<std::vector<Hayroll::MakiRangeSummary>> complementedMakiRangeSummaries
+                        = Hayroll::MakiRangeSummary::complementRangeSummaries(cpp2cRanges, inverseLineMaps);
+                    // Save complemented ranges
+                    for (size_t i = 0; i < defineSets.size(); ++i)
+                    {
+                        CompileCommand outputCommand = command
+                            .withUpdatedFilePathPrefix(outputDir, projDir)
+                            .withUpdatedFileExtension(std::format(".{}.cpp2c.ranges.json", i));
+                        std::filesystem::path outputPath = outputCommand.file;
+                        saveStringToFile(json(complementedMakiRangeSummaries[i]).dump(4), outputPath);
+                        SPDLOG_INFO("Complemented Maki range summary for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
                     }
                 }
 
@@ -308,10 +336,11 @@ int main(const int argc, const char* argv[])
                     saveStringToFile(cpp2cStr, outputPath);
                     SPDLOG_INFO("Maki cpp2c output for {} saved to: {}", command.file.string(), outputPath.string());
                 }
+                auto [cpp2cInvocations, cpp2cRanges] = parseCpp2cSummary(cpp2cStr);
 
                 // Hayroll Seeder
                 // compileCommands + cuStrs + includeTree + premiseTree --Seeder-> seededStr
-                std::string cuSeededStr = Seeder::run(cpp2cStr, std::nullopt, cuStr, lineMap, inverseLineMap);
+                std::string cuSeededStr = Seeder::run(cpp2cInvocations, cpp2cRanges, cuStr, lineMap, inverseLineMap);
                 {
                     CompileCommand outputCommand = command
                         .withUpdatedFilePathPrefix(outputDir, projDir)

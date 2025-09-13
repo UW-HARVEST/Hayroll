@@ -39,48 +39,6 @@ public:
         return escaped;
     }
 
-    // Parse a location string in the format "path:line:col" into a tuple of (path, line, col).
-    // Canonicalizes the filename.
-    static std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view loc)
-    {
-        assertOrStackTrace(!loc.empty());
-
-        std::string_view pathStr;
-        int line;
-        int col;
-
-        size_t colonPos = loc.find(':');
-        if (colonPos == std::string_view::npos)
-        {
-            throw std::invalid_argument("Invalid location format (no colon)." + std::string(loc));
-        }
-
-        pathStr = loc.substr(0, colonPos);
-        size_t nextColonPos = loc.find(':', colonPos + 1);
-        if (nextColonPos == std::string_view::npos)
-        {
-            throw std::invalid_argument("Invalid location format (no second colon)." + std::string(loc));
-        }
-
-        line = std::stoi(std::string(loc.substr(colonPos + 1, nextColonPos - colonPos - 1)));
-        col = std::stoi(std::string(loc.substr(nextColonPos + 1)));
-
-        std::filesystem::path path(pathStr);
-        path = std::filesystem::weakly_canonical(path);
-
-        return {path, line, col};
-    }
-
-    static std::string makeLocation
-    (
-        const std::filesystem::path & path,
-        int line,
-        int col
-    )
-    {
-        return std::format("{}:{}:{}", path.string(), line, col);
-    }
-
     // Tag structure to be serialized and instrumented into C code
     // Contains necessary information for Hayroll Reaper on the Rust side to reconstruct macros
     struct Tag
@@ -509,15 +467,13 @@ public:
     // Returns the modified (CU) source code as a string.
     static std::string run
     (
-        std::string_view cpp2cStr,
-        std::optional<PremiseTree *> premiseTreeOpt,
+        std::vector<Hayroll::MakiInvocationSummary> invocations,
+        const std::vector<Hayroll::MakiRangeSummary> & ranges,
         std::string_view srcStr,
         const std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> & lineMap,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        auto [invocations, ranges] = parseCpp2cSummary(cpp2cStr);
-
         // Remove invalid invocations (erase-remove idiom)
         std::erase_if(invocations, [](const MakiInvocationSummary & inv) {
             return !keepInvocationInfo(inv);
@@ -562,82 +518,6 @@ public:
             tasks.splice(tasks.end(), invocationTasks);
         }
 
-
-        if (premiseTreeOpt.has_value())
-        {
-            PremiseTree * premiseTree = premiseTreeOpt.value();
-            assert(premiseTree != nullptr);
-            for (const Hayroll::PremiseTree * premiseTreeNode : premiseTree->getDescendantsPreOrder())
-            {
-                // For each premise tree node that is not a macro expansion node,
-                // insert "Debug" instrumentation tasks, with the premise as its name.
-                if (premiseTreeNode->isMacroExpansion())
-                {
-                    continue; // Skip macro expansions
-                }
-
-                int lnBegin = premiseTreeNode->programPoint.node.startPoint().row + 1;
-                int colBegin = premiseTreeNode->programPoint.node.startPoint().column + 1;
-                int lnEnd = premiseTreeNode->programPoint.node.endPoint().row + 1;
-                int colEnd = premiseTreeNode->programPoint.node.endPoint().column + 1;
-
-                SPDLOG_TRACE
-                (
-                    "Premise: {} at IncludeTree {}: {}:{}-{}:{}",
-                    premiseTreeNode->premise.to_string(),
-                    premiseTreeNode->programPoint.includeTree->stacktrace(),
-                    lnBegin, colBegin, lnEnd, colEnd
-                );
-
-                if (!lineMap.contains(premiseTreeNode->programPoint.includeTree))
-                {
-                    SPDLOG_TRACE
-                    (
-                        "IncludeTree {} not found in lineMap. Skipping premise {}.",
-                        premiseTreeNode->programPoint.includeTree->stacktrace(),
-                        premiseTreeNode->premise.to_string()
-                    );
-                    continue; // Skip if the IncludeTree is not in the lineMap
-                }
-
-                const std::vector<int> & lineMapSub = lineMap.at(premiseTreeNode->programPoint.includeTree);
-
-                int cuLnBegin = lineMapSub.at(lnBegin);
-                int cuLnEnd = lineMapSub.at(lnEnd);
-                
-                std::string locBegin = makeLocation
-                (
-                    premiseTreeNode->programPoint.includeTree->path, // This does not matter
-                    cuLnBegin,
-                    colBegin
-                );
-
-                std::string locEnd = makeLocation
-                (
-                    premiseTreeNode->programPoint.includeTree->path, // This does not matter
-                    cuLnEnd,
-                    colEnd
-                );
-
-                // std::list<InstrumentationTask> premiseTasks = genInstrumentationTasks
-                // (
-                //     locBegin,
-                //     locEnd,
-                //     false, // isArg
-                //     {}, // argNames
-                //     "Debug",
-                //     false, // isLvalue
-                //     premiseTreeNode->premise.to_string(),
-                //     "", // locRef
-                //     "", // spelling
-                //     false, // canBeFn
-                //     inverseLineMap
-                // );
-
-                // tasks.splice(tasks.end(), premiseTasks);
-            }
-        }
-        
         for (const InstrumentationTask & task : tasks)
         {
             SPDLOG_TRACE(task.toString());

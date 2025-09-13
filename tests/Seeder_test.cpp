@@ -95,11 +95,12 @@ int main(const int argc, const char* argv[])
     std::filesystem::path tmpDstPath = tmpPath / "sinhf.cu.c";
 
     std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(command);
+    auto [cpp2cInvocations, cpp2cRanges] = parseCpp2cSummary(cpp2cStr);
 
     std::cout << "Maki analysis completed." << std::endl;
     std::cout << "cpp2cStr:\n" << cpp2cStr << std::endl;
 
-    std::string output = Seeder::run(cpp2cStr, premiseTree, cuStr, lineMap, inverseLineMap);
+    std::string output = Seeder::run(cpp2cInvocations, cpp2cRanges, cuStr, lineMap, inverseLineMap);
 
     // Save the source file to the temporary directory
     std::ofstream tmpDstFile(tmpDstPath);

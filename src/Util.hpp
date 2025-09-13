@@ -483,6 +483,48 @@ void assertOrStackTraceImpl(bool condition, const char * spelling)
 
 #define assertOrStackTrace(cond) assertOrStackTraceImpl((cond), #cond)
 
+// Parse a location string in the format "path:line:col" into a tuple of (path, line, col).
+// Canonicalizes the filename.
+std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view loc)
+{
+    assertOrStackTrace(!loc.empty());
+
+    std::string_view pathStr;
+    int line;
+    int col;
+
+    size_t colonPos = loc.find(':');
+    if (colonPos == std::string_view::npos)
+    {
+        throw std::invalid_argument("Invalid location format (no colon)." + std::string(loc));
+    }
+
+    pathStr = loc.substr(0, colonPos);
+    size_t nextColonPos = loc.find(':', colonPos + 1);
+    if (nextColonPos == std::string_view::npos)
+    {
+        throw std::invalid_argument("Invalid location format (no second colon)." + std::string(loc));
+    }
+
+    line = std::stoi(std::string(loc.substr(colonPos + 1, nextColonPos - colonPos - 1)));
+    col = std::stoi(std::string(loc.substr(nextColonPos + 1)));
+
+    std::filesystem::path path(pathStr);
+    path = std::filesystem::weakly_canonical(path);
+
+    return {path, line, col};
+}
+
+std::string makeLocation
+(
+    const std::filesystem::path & path,
+    int line,
+    int col
+)
+{
+    return std::format("{}:{}:{}", path.string(), line, col);
+}
+
 } // namespace Hayroll
 
 #endif // HAYROLL_UTIL_HPP
