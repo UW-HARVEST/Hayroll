@@ -9,6 +9,8 @@
 #include <utility>
 #include <sstream>
 #include <stdexcept>
+#include <ranges>
+#include <map>
 
 #include "IncludeTree.hpp"
 
@@ -435,7 +437,29 @@ struct MakiRangeSummary
         assert(rangeSummaryVecs.size() == inverseLineMaps.size());
 
         // Collect all non-empty ASTKinds for each source location and check for consistency
-        std::map<std::string, std::string> commonMap; // srcLocation -> ASTKind
+        std::map<std::string, std::string> commonMap; // srcLocation -> unified ASTKind (plural if any present)
+
+        auto baseOf = [](std::string_view k) -> std::string_view
+        {
+            if (k == "Decl" || k == "Decls") return "Decl";
+            if (k == "Stmt" || k == "Stmts") return "Stmt";
+            return k; // For other kinds, base is itself
+        };
+        auto areCompatible = [&](std::string_view a, std::string_view b) -> bool
+        {
+            return a.empty() || b.empty() || baseOf(a) == baseOf(b);
+        };
+        auto unifyKind = [&](std::string_view a, std::string_view b) -> std::string_view
+        {
+            assert(areCompatible(a, b));
+            if (a.empty()) return b;
+            if (b.empty()) return a;
+            if (a == b) return a;
+            std::string_view baseA = baseOf(a);
+            if (baseA == a) return b; // Prefer plural
+            if (baseA == b) return a; // Prefer plural
+            return a;
+        };
         for (const auto & [rangeSummaryVec, inverseLineMap] : std::views::zip(rangeSummaryVecs, inverseLineMaps))
         {
             for (const MakiRangeSummary & rangeSummary : rangeSummaryVec)
@@ -444,16 +468,15 @@ struct MakiRangeSummary
                 auto [includeTree, srcLine] = inverseLineMap.at(line);
                 std::filesystem::path srcPath = includeTree->path;
                 std::string srcLoc = makeLocation(srcPath, srcLine, col);
-                if (!commonMap.contains(srcLoc) && !rangeSummary.ASTKind.empty())
-                {
-                    commonMap[srcLoc] = rangeSummary.ASTKind;
-                }
+                std::string current = rangeSummary.ASTKind;
                 std::string commonASTKind = commonMap.contains(srcLoc) ? commonMap.at(srcLoc) : "";
-                if (!rangeSummary.ASTKind.empty() && rangeSummary.ASTKind != commonASTKind)
+                if (!areCompatible(commonASTKind, current))
                 {
-                    SPDLOG_ERROR("Inconsistent ASTKind for location {}: {} vs {}", srcLoc, rangeSummary.ASTKind, commonASTKind);
+                    SPDLOG_ERROR("Inconsistent ASTKind for location {}: {} vs {}", srcLoc, current, commonASTKind);
                     throw std::runtime_error("Inconsistent ASTKind for location " + srcLoc);
                 }
+                // Update to unified (prefer plural when any present)
+                commonMap[srcLoc] = unifyKind(commonASTKind, current);
             }
         }
 
@@ -468,7 +491,7 @@ struct MakiRangeSummary
                 auto [includeTree, srcLine] = inverseLineMap.at(line);
                 std::filesystem::path srcPath = includeTree->path;
                 std::string srcLoc = makeLocation(srcPath, srcLine, col);
-                std::string commonASTKind = commonMap.contains(srcLoc) ? commonMap.at(srcLoc) : "";
+                std::string commonASTKind = commonMap.at(srcLoc);
                 if (commonASTKind.empty())
                 {
                     // All vectors have "" at this location; skip it
