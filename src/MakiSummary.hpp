@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <ranges>
 #include <map>
+#include <algorithm>
 
 #include "IncludeTree.hpp"
 
@@ -437,22 +438,19 @@ struct MakiRangeSummary
     {
         assert(rangeSummaryVecs.size() == inverseLineMaps.size());
 
-        // Collect all non-empty ASTKinds for each source location and check for consistency
-        std::map<std::string, std::string> commonMap; // srcLocation -> unified ASTKind (plural if any present)
-
         auto baseOf = [](std::string_view k) -> std::string_view
         {
             if (k == "Decl" || k == "Decls") return "Decl";
             if (k == "Stmt" || k == "Stmts") return "Stmt";
             return k; // For other kinds, base is itself
         };
-        auto areCompatible = [&](std::string_view a, std::string_view b) -> bool
+        auto areASTKindCompatible = [&](std::string_view a, std::string_view b) -> bool
         {
             return a.empty() || b.empty() || baseOf(a) == baseOf(b);
         };
-        auto unifyKind = [&](std::string_view a, std::string_view b) -> std::string_view
+        auto unifyASTKind = [&](std::string_view a, std::string_view b) -> std::string_view
         {
-            assert(areCompatible(a, b));
+            assert(areASTKindCompatible(a, b));
             if (a.empty()) return b;
             if (b.empty()) return a;
             if (a == b) return a;
@@ -461,27 +459,56 @@ struct MakiRangeSummary
             if (baseA == b) return a; // Prefer plural
             return a;
         };
+
+        // Collect all non-empty ASTKinds and ParentLocations for each source location and check for consistency
+        std::map<std::string, std::string> commonASTKinds; // srcLocation -> unified ASTKind (plural if any present)
+        std::map<std::string, std::string> commonParentSrcLocs; // srcLocation -> unified ParentLocation (non-empty if any present)
         for (const auto & [rangeSummaryVec, inverseLineMap] : std::views::zip(rangeSummaryVecs, inverseLineMaps))
         {
             for (const MakiRangeSummary & rangeSummary : rangeSummaryVec)
             {
+                // ASTKind
                 auto [path, line, col] = parseLocation(rangeSummary.Location);
                 auto [includeTree, srcLine] = inverseLineMap.at(line);
                 std::filesystem::path srcPath = includeTree->path;
                 std::string srcLoc = makeLocation(srcPath, srcLine, col);
-                std::string current = rangeSummary.ASTKind;
-                std::string commonASTKind = commonMap.contains(srcLoc) ? commonMap.at(srcLoc) : "";
-                if (!areCompatible(commonASTKind, current))
+
+                std::string currentASTKind = rangeSummary.ASTKind;
+                std::string commonASTKind = commonASTKinds.contains(srcLoc) ? commonASTKinds.at(srcLoc) : "";
+                if (!areASTKindCompatible(commonASTKind, currentASTKind))
                 {
-                    SPDLOG_ERROR("Inconsistent ASTKind for location {}: {} vs {}", srcLoc, current, commonASTKind);
+                    SPDLOG_ERROR("Inconsistent ASTKind for location {}: {} vs {}", srcLoc, currentASTKind, commonASTKind);
                     throw std::runtime_error("Inconsistent ASTKind for location " + srcLoc);
                 }
                 // Update to unified (prefer plural when any present)
-                commonMap[srcLoc] = unifyKind(commonASTKind, current);
+                commonASTKinds[srcLoc] = unifyASTKind(commonASTKind, currentASTKind);
+
+                // ParentLocation
+                std::string currentParentLoc = rangeSummary.ParentLocation;
+                std::string currentParentSrcLoc = "";
+                if (!currentParentLoc.empty())
+                {
+                    auto [pPath, pLine, pCol] = parseLocation(currentParentLoc);
+                    auto [pIncludeTree, pSrcLine] = inverseLineMap.at(pLine);
+                    std::filesystem::path pSrcPath = pIncludeTree->path;
+                    currentParentSrcLoc = makeLocation(pSrcPath, pSrcLine, pCol);
+                }
+                std::string commonParentLoc = commonParentSrcLocs.contains(srcLoc) ? commonParentSrcLocs.at(srcLoc) : "";
+                if (!currentParentSrcLoc.empty() && !commonParentLoc.empty() && currentParentSrcLoc != commonParentLoc)
+                {
+                    SPDLOG_ERROR("Inconsistent ParentLocation for location {}: {} vs {}", srcLoc, currentParentLoc, commonParentLoc);
+                    throw std::runtime_error("Inconsistent ParentLocation for location " + srcLoc);
+                }
+                // Update to unified (prefer non-empty when any present)
+                if (commonParentLoc.empty())
+                {
+                    commonParentSrcLocs[srcLoc] = currentParentSrcLoc;
+                    SPDLOG_TRACE("Set common ParentLocation for {} to {}", srcLoc, currentParentSrcLoc);
+                }
             }
         }
 
-        // Populate the complemented range summary vectors
+        // Populate the complemented range summary vectors with extra Expr handling
         std::vector<std::vector<MakiRangeSummary>> result;
         for (const auto & [rangeSummaryVec, inverseLineMap] : std::views::zip(rangeSummaryVecs, inverseLineMaps))
         {
@@ -492,18 +519,24 @@ struct MakiRangeSummary
                 auto [includeTree, srcLine] = inverseLineMap.at(line);
                 std::filesystem::path srcPath = includeTree->path;
                 std::string srcLoc = makeLocation(srcPath, srcLine, col);
-                std::string commonASTKind = commonMap.at(srcLoc);
+                std::string commonASTKind = commonASTKinds.at(srcLoc);
+                SPDLOG_TRACE("For {}, common ASTKind is {}", srcLoc, commonASTKind);
+                std::string commonParentSrcLoc = commonParentSrcLocs.at(srcLoc);
+                SPDLOG_TRACE("For {}, common ParentLocation is {}", srcLoc, commonParentSrcLoc);
                 if (commonASTKind.empty())
                 {
                     // All vectors have "" at this location; skip it
                     continue;
                 }
+                assert(commonASTKind != "Expr" || !commonParentSrcLoc.empty()); // If ASTKind is Expr, ParentLocation must be non-empty
+
                 MakiRangeSummary complementedSummary = rangeSummary;
                 complementedSummary.ASTKind = commonASTKind;
                 complementedSummary.IsPlaceholder = rangeSummary.ASTKind.empty();
-                complementedVec.push_back(complementedSummary);
+                complementedSummary.ParentLocation = commonParentSrcLoc;
+                complementedVec.push_back(std::move(complementedSummary));
             }
-            result.push_back(complementedVec);
+            result.push_back(std::move(complementedVec));
         }
         return result;
     }
