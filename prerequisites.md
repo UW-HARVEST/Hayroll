@@ -39,7 +39,7 @@ Please follow the common CMake installation workflow, or read `README-CMake.md` 
 
 ## Tree-sitter
 
-Tested version: 0.25.3
+Tested version: 0.25.9
 
 [tree-sitter](https://github.com/tree-sitter/tree-sitter) is a lightweight parser generator.
 
