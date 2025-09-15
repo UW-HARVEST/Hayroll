@@ -417,10 +417,11 @@ struct MakiRangeSummary
     std::string Location;
     std::string LocationEnd;
     std::string ASTKind;
+    std::string ParentLocation;
     bool IsPlaceholder;
     std::string Premise;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(MakiRangeSummary, Location, LocationEnd, ASTKind, IsPlaceholder, Premise)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(MakiRangeSummary, Location, LocationEnd, ASTKind, ParentLocation, IsPlaceholder, Premise)
 
     // Take all range summaries generated from different DefineSets
     // For each item in a range summary vector,
