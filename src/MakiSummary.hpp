@@ -38,7 +38,18 @@ struct MakiArgSummary
     std::string Spelling;
     std::string InvocationLocation;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(MakiArgSummary, Name, ASTKind, Type, IsLValue, ExpandedWhereAddressableValueRequired, ExpandedWhereModifiableValueRequired, ActualArgLocBegin, ActualArgLocEnd)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE
+    (
+        MakiArgSummary,
+        Name,
+        ASTKind,
+        Type,
+        IsLValue,
+        ExpandedWhereAddressableValueRequired,
+        ExpandedWhereModifiableValueRequired,
+        ActualArgLocBegin,
+        ActualArgLocEnd
+    )
 };
 
 // Maki's analysis result of a macro invocation

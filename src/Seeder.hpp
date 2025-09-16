@@ -30,46 +30,6 @@ namespace Hayroll
 class Seeder
 {
 public:
-    // Use nlohmann::json to escape a string as a C string literal (without surrounding quotes)
-    static std::string escapeString(std::string_view str)
-    {
-        std::string dumped = nlohmann::json(str).dump();
-        // Remove the surrounding quotes
-        assert(dumped.size() >= 2 && dumped.front() == '"' && dumped.back() == '"');
-        std::string escaped = dumped.substr(1, dumped.size() - 2);
-        return escaped;
-    }
-
-    // Tag structure to be serialized and instrumented into C code
-    // Contains necessary information for Hayroll Reaper on the Rust side to reconstruct macros
-    struct Tag
-    {
-        bool hayroll = true;
-        bool begin;
-        bool isArg;
-        std::vector<std::string> argNames;
-        std::string astKind;
-        bool isLvalue;
-        std::string name;
-        std::string locBegin; // For invocation: invocation begin; for arg: arg begin
-        std::string locEnd;   // For invocation: invocation end; for arg: arg end
-        std::string cuLnColBegin; // Loc in the CU file, without filename (only "l:c")
-        std::string cuLnColEnd;
-        std::string locRefBegin; // For invocation: definition begin; for arg: invocation begin
-
-        bool canBeFn;
-
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Tag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
-                                       cuLnColBegin, cuLnColEnd, locRefBegin, canBeFn);
-
-        // Escape the JSON string to make it a valid C string that embeds into C code
-        std::string stringLiteral() const
-        {
-            json j = *this;
-            return "\"" + escapeString(j.dump()) + "\"";
-        }
-    };
-
     // InstrumentationTask will be transformed into TextEditor edits
     struct InstrumentationTask
     {
@@ -89,8 +49,38 @@ public:
         }
     };
 
+    // InvocationTag structure to be serialized and instrumented into C code
+    // Contains necessary information for Hayroll Reaper on the Rust side to reconstruct macros
+    struct InvocationTag
+    {
+        bool hayroll = true;
+        bool begin;
+        bool isArg;
+        std::vector<std::string> argNames;
+        std::string astKind;
+        bool isLvalue;
+        std::string name;
+        std::string locBegin; // For invocation: invocation begin; for arg: arg begin
+        std::string locEnd;   // For invocation: invocation end; for arg: arg end
+        std::string cuLnColBegin; // Loc in the CU file, without filename (only "l:c")
+        std::string cuLnColEnd;
+        std::string locRefBegin; // For invocation: definition begin; for arg: invocation begin
+
+        bool canBeFn;
+
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(InvocationTag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
+                                       cuLnColBegin, cuLnColEnd, locRefBegin, canBeFn);
+
+        // Escape the JSON string to make it a valid C string that embeds into C code
+        std::string stringLiteral() const
+        {
+            json j = *this;
+            return "\"" + escapeString(j.dump()) + "\"";
+        }
+    };
+
     // Build InstrumentationTasks based on AST kind, lvalue-ness, insertion positions, and tag string literals
-    // This function encapsulates the pure string-edit generation logic and does not depend on other Tag fields.
+    // This function encapsulates the pure string-edit generation logic and does not depend on other InvocationTag fields.
     static std::list<InstrumentationTask> genInstrumentationTasks
     (
         std::string_view astKind,
@@ -275,7 +265,7 @@ public:
         std::string cuLnColBegin = std::format("{}:{}", line, col);
         std::string cuLnColEnd = std::format("{}:{}", lineEnd, colEnd);
 
-        Tag tagBegin
+        InvocationTag tagBegin
         {
             .begin = true,
             .isArg = isArg,
@@ -292,7 +282,7 @@ public:
             .canBeFn = canBeFn
         };
 
-        Tag tagEnd = tagBegin;
+        InvocationTag tagEnd = tagBegin;
         tagEnd.begin = false;
 
         return genInstrumentationTasks
@@ -470,8 +460,8 @@ public:
     }
 
     // Tags the srcStr (C source code at compilation unit level) with the instrumentation tasks collected from
-    // 1. the cpp2cStr (.cpp2c invocation summary file produced by Maki)
-    // 2. the premiseTree (optional) (conditional macro information produced by Hayroll)
+    // 1. invocations: the MakiInvocationSummary vector
+    // 2. ranges: the MakiRangeSummary vector
     // Also requires the lineMap ((includeTree, line) <-> line in compilation unit file) and inverseLineMap.
     // Returns the modified (CU) source code as a string.
     static std::string run
@@ -484,12 +474,14 @@ public:
     )
     {
         // Remove invalid invocations (erase-remove idiom)
-        std::erase_if(invocations, [](const MakiInvocationSummary & inv) {
+        std::erase_if(invocations, [](const MakiInvocationSummary & inv)
+        {
             return !keepInvocationInfo(inv);
         });
 
         TextEditor srcEditor{srcStr};
 
+        // Extract spelling for invocations and arguments
         for (MakiInvocationSummary & invocation : invocations)
         {
             auto [path, line, col] = parseLocation(invocation.InvocationLocation);

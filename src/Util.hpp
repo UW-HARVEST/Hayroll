@@ -22,6 +22,7 @@
 
 #include <spdlog/spdlog.h>
 #include <z3++.h>
+#include "json.hpp"
 
 namespace Hayroll
 {
@@ -523,6 +524,16 @@ std::string makeLocation
 )
 {
     return std::format("{}:{}:{}", path.string(), line, col);
+}
+
+// Use nlohmann::json to escape a string as a C string literal (without surrounding quotes)
+std::string escapeString(std::string_view str)
+{
+    std::string dumped = nlohmann::json(str).dump();
+    // Remove the surrounding quotes
+    assert(dumped.size() >= 2 && dumped.front() == '"' && dumped.back() == '"');
+    std::string escaped = dumped.substr(1, dumped.size() - 2);
+    return escaped;
 }
 
 } // namespace Hayroll
