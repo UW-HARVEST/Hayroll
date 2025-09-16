@@ -87,8 +87,180 @@ public:
         }
     };
 
-    // Generate instrumentation tasks based on the provided parameters
+    // Build InstrumentationTasks based on AST kind, lvalue-ness, insertion positions, and tag string literals
+    // This function encapsulates the pure string-edit generation logic and does not depend on other Tag fields.
     static std::list<InstrumentationTask> genInstrumentationTasks
+    (
+        std::string_view astKind,
+        bool isLvalue,
+        int beginLine,
+        int beginCol,
+        int endLine,
+        int endCol,
+        std::string_view tagBeginLiteral,
+        std::string_view tagEndLiteral,
+        std::string_view name,
+        std::string_view spelling
+    )
+    {
+        std::list<InstrumentationTask> tasks;
+
+        if (astKind == "Expr")
+        {
+            if (isLvalue)
+            {
+                // Template:
+                // (*((*tagBegin)?(&(ORIGINAL_INVOCATION)):((__typeof__(spelling)*)(0))))
+                InstrumentationTask taskLeft
+                {
+                    .line = beginLine,
+                    .col = beginCol,
+                    .str =
+                    (
+                        std::stringstream()
+                        << "(*((*"
+                        << tagBeginLiteral
+                        << ")?(&("
+                    ).str()
+                };
+                InstrumentationTask taskRight
+                {
+                    .line = endLine,
+                    .col = endCol,
+                    .str =
+                    (
+                        std::stringstream()
+                        << ")):((__typeof__("
+                        << spelling
+                        << ")*)(0))))"
+                    ).str()
+                };
+                tasks.push_back(taskLeft);
+                tasks.push_back(taskRight);
+            }
+            else // rvalue
+            {
+                // Template:
+                // ((*tagBegin)?(ORIGINAL_INVOCATION):(*(__typeof__(spelling)*)(0)))
+                InstrumentationTask taskLeft
+                {
+                    .line = beginLine,
+                    .col = beginCol,
+                    .str =
+                    (
+                        std::stringstream()
+                        << "((*"
+                        << tagBeginLiteral
+                        << ")?("
+                    ).str()
+                };
+                InstrumentationTask taskRight
+                {
+                    .line = endLine,
+                    .col = endCol,
+                    .str =
+                    (
+                        std::stringstream()
+                        << "):(*(__typeof__("
+                        << spelling
+                        << ")*)(0)))"
+                    ).str()
+                };
+                tasks.push_back(taskLeft);
+                tasks.push_back(taskRight);
+            }
+        }
+        else if (astKind == "Stmt" || astKind == "Stmts")
+        {
+            // Template:
+            // {*tagBegin;ORIGINAL_INVOCATION;*tagEnd;}
+            InstrumentationTask taskLeft
+            {
+                .line = beginLine,
+                .col = beginCol,
+                .str =
+                (
+                    std::stringstream()
+                    << "{*"
+                    << tagBeginLiteral
+                    << ";"
+                ).str()
+            };
+            InstrumentationTask taskRight
+            {
+                .line = endLine,
+                .col = endCol,
+                .str =
+                (
+                    std::stringstream()
+                    << ";*"
+                    << tagEndLiteral
+                    << ";}"
+                ).str()
+            };
+            tasks.push_back(taskLeft);
+            tasks.push_back(taskRight);
+        }
+        else if (astKind == "Decl" || astKind == "Decls")
+        {
+            // Template:
+            // ORIGINAL_INVOCATION const char * HAYROLL_TAG_FOR_<ORIGINAL_INVOCATION> = tagBegin;\n
+            InstrumentationTask taskLeft
+            {
+                .line = beginLine,
+                .col = endCol, // Avoid affecting ORIGINAL_INVOCATION's column
+                .str =
+                (
+                    std::stringstream()
+                    << " const char * HAYROLL_TAG_FOR_"
+                    << name
+                    << " = "
+                    << tagBeginLiteral
+                    << ";"
+                ).str()
+            };
+            tasks.push_back(taskLeft);
+            // Only one tag per declaration(s).
+        }
+        else if (astKind == "Debug")
+        {
+            // Template:
+            // // tagBegin (\n)
+            // ORIGINAL_INVOCATION
+            // // tagEnd (\n)
+            InstrumentationTask taskLeft
+            {
+                .line = beginLine,
+                .col = beginCol,
+                .str =
+                (
+                    std::stringstream()
+                    << "// "
+                    << tagBeginLiteral
+                    << "\n"
+                ).str()
+            };
+            InstrumentationTask taskRight
+            {
+                .line = endLine,
+                .col = endCol,
+                .str =
+                (
+                    std::stringstream()
+                    << "// "
+                    << tagEndLiteral
+                    << "\n"
+                ).str()
+            };
+            tasks.push_back(taskLeft);
+            tasks.push_back(taskRight);
+        }
+
+        return tasks;
+    }
+
+    // Generate instrumentation tasks based on the provided parameters
+    static std::list<InstrumentationTask> genInvocationInstrumentationTasks
     (
         std::string_view locBegin,
         std::string_view locEnd,
@@ -146,161 +318,19 @@ public:
         Tag tagEnd = tagBegin;
         tagEnd.begin = false;
 
-        std::list<InstrumentationTask> tasks;
-        if (astKind == "Expr")
-        {
-            if (isLvalue)
-            {
-                // Template:
-                // (*((*tagBegin)?(&(ORIGINAL_INVOCATION)):((__typeof__(spelling)*)(0))))
-                InstrumentationTask taskLeft
-                {
-                    .line = line,
-                    .col = col,
-                    .str = 
-                    (
-                        std::stringstream()
-                        << "(*((*"
-                        << tagBegin.stringLiteral()
-                        << ")?(&("
-                    ).str()
-                };
-                InstrumentationTask taskRight
-                {
-                    .line = lineEnd,
-                    .col = colEnd,
-                    .str = 
-                    (
-                        std::stringstream()
-                        << ")):((__typeof__("
-                        << spelling
-                        << ")*)(0))))"
-                    ).str()
-                };
-                tasks.push_back(taskLeft);
-                tasks.push_back(taskRight);
-            }
-            else // rvalue
-            {
-                // Template:
-                // ((*tagBegin)?(ORIGINAL_INVOCATION):(*(__typeof__(spelling)*)(0)))
-                InstrumentationTask taskLeft
-                {
-                    .line = line,
-                    .col = col,
-                    .str = 
-                    (
-                        std::stringstream()
-                        << "((*"
-                        << tagBegin.stringLiteral()
-                        << ")?("
-                    ).str()
-                };
-                InstrumentationTask taskRight
-                {
-                    .line = lineEnd,
-                    .col = colEnd,
-                    .str = 
-                    (
-                        std::stringstream()
-                        << "):(*(__typeof__("
-                        << spelling
-                        << ")*)(0)))"
-                    ).str()
-                };
-                tasks.push_back(taskLeft);
-                tasks.push_back(taskRight);
-            }
-        }
-        else if (astKind == "Stmt" || astKind == "Stmts")
-        {
-            // Template:
-            // {*tagBegin;ORIGINAL_INVOCATION;*tagEnd;}
-            InstrumentationTask taskLeft
-            {
-                .line = line,
-                .col = col,
-                .str = 
-                (
-                    std::stringstream()
-                    << "{*"
-                    << tagBegin.stringLiteral()
-                    << ";"
-                ).str()
-            };
-            InstrumentationTask taskRight
-            {
-                .line = lineEnd,
-                .col = colEnd,
-                .str = 
-                (
-                    std::stringstream()
-                    << ";*"
-                    << tagEnd.stringLiteral()
-                    << ";}"
-                ).str()
-            };
-            tasks.push_back(taskLeft);
-            tasks.push_back(taskRight);
-        }
-        else if (astKind == "Decl" || astKind == "Decls")
-        {
-            // Template:
-            // ORIGINAL_INVOCATION const char * HAYROLL_TAG_FOR_<ORIGINAL_INVOCATION> = tagBegin;\n
-            InstrumentationTask taskLeft
-            {
-                .line = line,
-                .col = colEnd, // Avoid affecting ORIGINAL_INVOCATION's col
-                .str = 
-                (
-                    std::stringstream()
-                    << " const char * HAYROLL_TAG_FOR_"
-                    << name
-                    << " = "
-                    << tagBegin.stringLiteral()
-                    << ";"
-                ).str()
-            };
-            tasks.push_back(taskLeft);
-            // Only one tag per declaration(s).
-            // Reaper will make use of #[c2rust::src_loc = "ln:col"] attribute to locate the declaration.
-        }
-        else if (astKind == "Debug")
-        {
-            // Template:
-            // // tagBegin (\n)
-            // ORIGINAL_INVOCATION
-            // // tagEnd (\n)
-            InstrumentationTask taskLeft
-            {
-                .line = line,
-                .col = col,
-                .str = 
-                (
-                    std::stringstream()
-                    << "// "
-                    << tagBegin.stringLiteral()
-                    << "\n"
-                ).str()
-            };
-            InstrumentationTask taskRight
-            {
-                .line = lineEnd,
-                .col = colEnd,
-                .str = 
-                (
-                    std::stringstream()
-                    << "// "
-                    << tagEnd.stringLiteral()
-                    << "\n"
-                ).str()
-            };
-            tasks.push_back(taskLeft);
-            tasks.push_back(taskRight);
-        }
-        else {} // Do nothing for other AST kinds
-
-        return tasks;
+        return genInstrumentationTasks
+        (
+            astKind,
+            isLvalue,
+            line,
+            col,
+            lineEnd,
+            colEnd,
+            tagBegin.stringLiteral(),
+            tagEnd.stringLiteral(),
+            name,
+            spelling
+        );
     }
 
     // Generate tags for the arguments
@@ -310,7 +340,7 @@ public:
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        return genInstrumentationTasks
+        return genInvocationInstrumentationTasks
         (
             arg.ActualArgLocBegin,
             arg.ActualArgLocEnd,
@@ -372,8 +402,8 @@ public:
         return inv.ExpandedWhereAddressableValueRequired || inv.ExpandedWhereModifiableValueRequired;
     }
 
-    // Collect the instrumentation tasks for the invocation and its arguments
-    static std::list<InstrumentationTask> collectInvocationInstrumentationTasks
+    // Collect the instrumentation tasks for the invocation body and its arguments
+    static std::list<InstrumentationTask> collectBodyInstrumentationTasks
     (
         const MakiInvocationSummary & inv,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
@@ -417,7 +447,8 @@ public:
             argNames.push_back(arg.Name);
         }
 
-        std::list<InstrumentationTask> invocationTasks = genInstrumentationTasks(
+        std::list<InstrumentationTask> invocationTasks = genInvocationInstrumentationTasks
+        (
             inv.InvocationLocation,
             inv.InvocationLocationEnd,
             false, // isArg
@@ -514,7 +545,7 @@ public:
         std::list<InstrumentationTask> tasks;
         for (const MakiInvocationSummary & invocation : invocations)
         {
-            std::list<InstrumentationTask> invocationTasks = collectInvocationInstrumentationTasks(invocation, inverseLineMap);
+            std::list<InstrumentationTask> invocationTasks = collectBodyInstrumentationTasks(invocation, inverseLineMap);
             tasks.splice(tasks.end(), invocationTasks);
         }
 
