@@ -186,18 +186,6 @@ int main(const int argc, const char* argv[])
                     SPDLOG_INFO("Source file {} copied to: {}", srcPath.string(), outputPath.string());
                 }
 
-                // Aggregate sources into compilation units
-                // compileCommands + src --clang-frewrite-includes-> cuStrs
-                std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
-                {
-                    CompileCommand outputCommand = command
-                        .withUpdatedFilePathPrefix(outputDir, projDir)
-                        .withUpdatedFileExtension(".cu.c");
-                    std::filesystem::path outputPath = outputCommand.file;
-                    saveStringToFile(cuStr, outputPath);
-                    SPDLOG_INFO("Compilation unit file for {} saved to: {}", command.file.string(), outputPath.string());
-                }
-
                 // Hayroll Pioneer symbolic execution
                 // compileCommands + cpp2cStr --SymbolicExecutor-> includeTree + premiseTree
                 SymbolicExecutor executor(srcPath, projDir, command.getIncludePaths());
@@ -304,6 +292,18 @@ int main(const int argc, const char* argv[])
                         saveStringToFile(json(complementedMakiRangeSummaries[i]).dump(4), outputPath);
                         SPDLOG_INFO("Complemented Maki range summary for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
                     }
+                }
+
+                // Aggregate sources into compilation units
+                // compileCommands + src --clang-frewrite-includes-> cuStrs
+                std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
+                {
+                    CompileCommand outputCommand = command
+                        .withUpdatedFilePathPrefix(outputDir, projDir)
+                        .withUpdatedFileExtension(".cu.c");
+                    std::filesystem::path outputPath = outputCommand.file;
+                    saveStringToFile(cuStr, outputPath);
+                    SPDLOG_INFO("Compilation unit file for {} saved to: {}", command.file.string(), outputPath.string());
                 }
 
                 // LineMatcher
