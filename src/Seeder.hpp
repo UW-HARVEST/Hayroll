@@ -75,15 +75,16 @@ public:
         int line;
         int col;
         std::string str;
+        int priority; // Lower value means before
 
         void addToEditor(TextEditor & editor) const
         {
-            editor.insert(line, col, str);
+            editor.insert(line, col, str, priority);
         }
 
         std::string toString() const
         {
-            return std::format("{}:{}: {}", line, col, str);
+            return std::format("{}:{}:({}) {} ", line, col, priority, str);
         }
     };
 
@@ -100,9 +101,12 @@ public:
         std::string_view tagBeginLiteral,
         std::string_view tagEndLiteral,
         std::string_view name,
-        std::string_view spelling
+        std::string_view spelling,
+        int priorityLeft
     )
     {
+        int priorityRight = -priorityLeft;
+
         std::list<InstrumentationTask> tasks;
 
         if (astKind == "Expr")
@@ -121,7 +125,8 @@ public:
                         << "(*((*"
                         << tagBeginLiteral
                         << ")?(&("
-                    ).str()
+                    ).str(),
+                    .priority = priorityLeft
                 };
                 InstrumentationTask taskRight
                 {
@@ -133,7 +138,8 @@ public:
                         << ")):((__typeof__("
                         << spelling
                         << ")*)(0))))"
-                    ).str()
+                    ).str(),
+                    .priority = priorityRight
                 };
                 tasks.push_back(taskLeft);
                 tasks.push_back(taskRight);
@@ -152,7 +158,8 @@ public:
                         << "((*"
                         << tagBeginLiteral
                         << ")?("
-                    ).str()
+                    ).str(),
+                    .priority = priorityLeft
                 };
                 InstrumentationTask taskRight
                 {
@@ -164,7 +171,8 @@ public:
                         << "):(*(__typeof__("
                         << spelling
                         << ")*)(0)))"
-                    ).str()
+                    ).str(),
+                    .priority = priorityRight
                 };
                 tasks.push_back(taskLeft);
                 tasks.push_back(taskRight);
@@ -184,7 +192,8 @@ public:
                     << "{*"
                     << tagBeginLiteral
                     << ";"
-                ).str()
+                ).str(),
+                .priority = priorityLeft
             };
             InstrumentationTask taskRight
             {
@@ -196,7 +205,8 @@ public:
                     << ";*"
                     << tagEndLiteral
                     << ";}"
-                ).str()
+                ).str(),
+                .priority = priorityRight
             };
             tasks.push_back(taskLeft);
             tasks.push_back(taskRight);
@@ -217,44 +227,13 @@ public:
                     << " = "
                     << tagBeginLiteral
                     << ";"
-                ).str()
+                ).str(),
+                .priority = 0 // Neutral
             };
             tasks.push_back(taskLeft);
             // Only one tag per declaration(s).
         }
-        else if (astKind == "Debug")
-        {
-            // Template:
-            // // tagBegin (\n)
-            // ORIGINAL_INVOCATION
-            // // tagEnd (\n)
-            InstrumentationTask taskLeft
-            {
-                .line = beginLine,
-                .col = beginCol,
-                .str =
-                (
-                    std::stringstream()
-                    << "// "
-                    << tagBeginLiteral
-                    << "\n"
-                ).str()
-            };
-            InstrumentationTask taskRight
-            {
-                .line = endLine,
-                .col = endCol,
-                .str =
-                (
-                    std::stringstream()
-                    << "// "
-                    << tagEndLiteral
-                    << "\n"
-                ).str()
-            };
-            tasks.push_back(taskLeft);
-            tasks.push_back(taskRight);
-        }
+        else assert(false);
 
         return tasks;
     }
@@ -329,7 +308,8 @@ public:
             tagBegin.stringLiteral(),
             tagEnd.stringLiteral(),
             name,
-            spelling
+            spelling,
+            1 // priorityLeft: prefer inside
         );
     }
 

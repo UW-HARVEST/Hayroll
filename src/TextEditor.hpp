@@ -27,9 +27,10 @@ public:
         std::size_t ln;
         std::size_t col;
         std::string content;
+        int priority; // Lower value means before
 
-        Edit(EditType t, std::size_t l, std::size_t c, std::string_view cont)
-            : type(t), ln(l), col(c), content(cont)
+        Edit(EditType type, std::size_t ln, std::size_t col, std::string_view content, int priority = 0)
+            : type(type), ln(ln), col(col), content(content), priority(priority)
         {
         }
 
@@ -37,7 +38,8 @@ public:
         {
             if (ln != other.ln) return ln < other.ln;
             if (col != other.col) return col < other.col;
-            return type < other.type;
+            if (type != other.type) return type < other.type;
+            return priority < other.priority;
         }
     };
 
@@ -64,22 +66,22 @@ public:
         }
     }
 
-    void insert(std::size_t ln, std::size_t col, std::string_view content)
+    void insert(std::size_t ln, std::size_t col, std::string_view content, int priority = 0)
     {
-        edits.emplace_back(EditType::Insert, ln, col, content);
+        edits.emplace_back(EditType::Insert, ln, col, content, priority);
     }
 
-    void modify(std::size_t ln, std::size_t col, std::string_view content)
+    void modify(std::size_t ln, std::size_t col, std::string_view content, int priority = 0)
     {
-        edits.emplace_back(EditType::Modify, ln, col, content);
+        edits.emplace_back(EditType::Modify, ln, col, content, priority);
     }
 
     // Equivalent to changing the text to space characters
-    void erase(std::size_t ln, std::size_t col, std::size_t length)
+    void erase(std::size_t ln, std::size_t col, std::size_t length, int priority = 0)
     {
         if (length == 0) return;
         std::string spaces(length, ' ');
-        edits.emplace_back(EditType::Modify, ln, col, spaces);
+        edits.emplace_back(EditType::Modify, ln, col, spaces, priority);
     }
 
     std::string get(std::size_t ln, std::size_t col, std::size_t length) const
@@ -116,7 +118,7 @@ public:
         std::sort(edits.begin(), edits.end());
 
         // Apply last edit first to avoid conflicts
-        for (const auto & edit : std::views::reverse(edits))
+        for (const Edit & edit : std::views::reverse(edits))
         {
             switch (edit.type)
             {
