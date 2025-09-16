@@ -16,6 +16,7 @@
 #include <spdlog/spdlog.h>
 #include "json.hpp"
 
+#include "Util.hpp"
 #include "SymbolicExecutor.hpp"
 #include "LineMatcher.hpp"
 #include "TextEditor.hpp"
@@ -268,12 +269,9 @@ public:
         // Non-project include filtering should have been done
         assert(includeTree && !includeTree->isSystemInclude && locRefIncludeTree && !locRefIncludeTree->isSystemInclude);
 
-        std::filesystem::path srcPath = includeTree->path;
-        std::filesystem::path locRefSrcPath = locRefIncludeTree->path;
-
-        std::string srcLocBegin = makeLocation(srcPath, srcLine, col);
-        std::string srcLocEnd = makeLocation(srcPath, srcLineEnd, colEnd);
-        std::string srcLocRefBegin = makeLocation(locRefSrcPath, locRefSrcLine, locRefCol);
+        std::string srcLocBegin = LineMatcher::cuLocToSrcLoc(locBegin, inverseLineMap);
+        std::string srcLocEnd = LineMatcher::cuLocToSrcLoc(locEnd, inverseLineMap);
+        std::string srcLocRefBegin = LineMatcher::cuLocToSrcLoc(locRefBegin, inverseLineMap);
         std::string cuLnColBegin = std::format("{}:{}", line, col);
         std::string cuLnColEnd = std::format("{}:{}", lineEnd, colEnd);
 

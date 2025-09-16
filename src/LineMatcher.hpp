@@ -177,6 +177,29 @@ public:
 
         return {lineMap, inverseLineMap};
     }
+
+    static std::string cuLocToSrcLoc
+    (
+        std::string_view cuLoc, // e.g. "/path/to/file.cu.c:123:45"
+        const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
+    )
+    {
+        auto [path, line, col] = parseLocation(cuLoc);
+        assert(line > 0);
+        assert(col > 0);
+        if (line >= inverseLineMap.size())
+        {
+            throw std::out_of_range(std::format
+            (
+                "Line out of range: target {}, limit {}",
+                line, inverseLineMap.size()
+            ));
+        }
+        auto [includeTree, srcLine] = inverseLineMap.at(line);
+        assert(includeTree); // Should not be in a concretely executed file
+        std::filesystem::path srcPath = includeTree->path;
+        return makeLocation(srcPath, srcLine, col);
+    }
 };
 
 } // namespace Hayroll

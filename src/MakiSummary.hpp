@@ -14,6 +14,7 @@
 #include <algorithm>
 
 #include "IncludeTree.hpp"
+#include "LineMatcher.hpp"
 
 #include "json.hpp"
 
@@ -468,10 +469,7 @@ struct MakiRangeSummary
             for (const MakiRangeSummary & rangeSummary : rangeSummaryVec)
             {
                 // ASTKind
-                auto [path, line, col] = parseLocation(rangeSummary.Location);
-                auto [includeTree, srcLine] = inverseLineMap.at(line);
-                std::filesystem::path srcPath = includeTree->path;
-                std::string srcLoc = makeLocation(srcPath, srcLine, col);
+                std::string srcLoc = LineMatcher::cuLocToSrcLoc(rangeSummary.Location, inverseLineMap);
 
                 std::string currentASTKind = rangeSummary.ASTKind;
                 std::string commonASTKind = commonASTKinds.contains(srcLoc) ? commonASTKinds.at(srcLoc) : "";
@@ -488,10 +486,7 @@ struct MakiRangeSummary
                 std::string currentParentSrcLoc = "";
                 if (!currentParentLoc.empty())
                 {
-                    auto [pPath, pLine, pCol] = parseLocation(currentParentLoc);
-                    auto [pIncludeTree, pSrcLine] = inverseLineMap.at(pLine);
-                    std::filesystem::path pSrcPath = pIncludeTree->path;
-                    currentParentSrcLoc = makeLocation(pSrcPath, pSrcLine, pCol);
+                    currentParentSrcLoc = LineMatcher::cuLocToSrcLoc(currentParentLoc, inverseLineMap);
                 }
                 std::string commonParentLoc = commonParentSrcLocs.contains(srcLoc) ? commonParentSrcLocs.at(srcLoc) : "";
                 if (!currentParentSrcLoc.empty() && !commonParentLoc.empty() && currentParentSrcLoc != commonParentLoc)
@@ -515,10 +510,7 @@ struct MakiRangeSummary
             std::vector<MakiRangeSummary> complementedVec;
             for (const MakiRangeSummary & rangeSummary : rangeSummaryVec)
             {
-                auto [path, line, col] = parseLocation(rangeSummary.Location);
-                auto [includeTree, srcLine] = inverseLineMap.at(line);
-                std::filesystem::path srcPath = includeTree->path;
-                std::string srcLoc = makeLocation(srcPath, srcLine, col);
+                std::string srcLoc = LineMatcher::cuLocToSrcLoc(rangeSummary.Location, inverseLineMap);
                 std::string commonASTKind = commonASTKinds.at(srcLoc);
                 SPDLOG_TRACE("For {}, common ASTKind is {}", srcLoc, commonASTKind);
                 std::string commonParentSrcLoc = commonParentSrcLocs.at(srcLoc);
