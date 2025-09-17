@@ -166,7 +166,7 @@ fi
 
 apt_packages="\
   build-essential git cmake ninja-build pkg-config python3 \
-  libspdlog-dev \
+  libspdlog-dev libboost-stacktrace-dev \
   ${CLANG_PKG} ${LIBCLANG_PKG} ${LLVM_PKG} ${LLVM_DEV_PKG} \
   curl autoconf automake libtool bear"
 

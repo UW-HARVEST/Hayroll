@@ -16,25 +16,15 @@ endif()
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -gdwarf-2")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
-# For std::stacktrace on GCC 13+
-execute_process(
-  COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++_libbacktrace.a
-  OUTPUT_VARIABLE STDLIBCXX_LIBBACKTRACE_PATH
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-if(EXISTS "${STDLIBCXX_LIBBACKTRACE_PATH}")
-  message(STATUS "libstdc++_libbacktrace: ${STDLIBCXX_LIBBACKTRACE_PATH}")
-else()
-  message(ERROR "libstdc++_libbacktrace not found; std::stacktrace may fail to link on GCC 13")
-endif()
-
 # Common config
 link_libraries(
     spdlog::spdlog
+    Boost::stacktrace_backtrace
     dl
-    ${STDLIBCXX_LIBBACKTRACE_PATH}
 )
 add_compile_definitions(
+    BOOST_STACKTRACE_USE_BACKTRACE
+    BOOST_STACKTRACE_LINK
     SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE
 )
 
@@ -79,6 +69,11 @@ message(STATUS "C2RUST_EXE: ${C2RUST_EXE}")
 # spdlog
 find_package(spdlog REQUIRED)
 message(STATUS "spdlog_FOUND: ${spdlog_FOUND}")
+
+# Boost stacktrace
+find_package(Boost 1.65 REQUIRED CONFIG COMPONENTS stacktrace_backtrace)
+include_directories(${Boost_INCLUDE_DIRS})
+message(STATUS "Boost stacktrace_backtrace found: ${Boost_STACKTRACE_BACKTRACE_FOUND}")
 
 # tree-sitter
 set(TREE_SITTER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tree-sitter")

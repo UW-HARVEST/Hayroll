@@ -18,8 +18,8 @@
 #include <cassert>
 #include <format>
 #include <sstream>
-#include <stacktrace>
 
+#include <boost/stacktrace.hpp>
 #include <spdlog/spdlog.h>
 #include <z3++.h>
 #include "json.hpp"
@@ -37,6 +37,20 @@ template<class... Ts>
 struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
+
+void assertOrStackTraceImpl(bool condition, const char * spelling)
+{
+    if (!condition)
+    {
+        SPDLOG_ERROR("Assertion failed: {}", spelling);
+        std::stringstream ss;
+        ss << boost::stacktrace::stacktrace();
+        SPDLOG_ERROR("Stack trace:\n{}", ss.str());
+        assert(false);
+    }
+}
+
+#define assertOrStackTrace(cond) assertOrStackTraceImpl((cond), #cond)
 
 std::string loadFileToString(const std::filesystem::path & path)
 {
@@ -469,20 +483,6 @@ z3::expr simplifyOrOfAnd(const z3::expr & expr)
     
     return expr3;
 }
-
-void assertOrStackTraceImpl(bool condition, const char * spelling)
-{
-    if (!condition)
-    {
-        SPDLOG_ERROR("Assertion failed: {}", spelling);
-        std::stringstream ss;
-        ss << std::stacktrace::current();
-        SPDLOG_ERROR("Stack trace:\n{}", ss.str());
-        assert(false);
-    }
-}
-
-#define assertOrStackTrace(cond) assertOrStackTraceImpl((cond), #cond)
 
 // Parse a location string in the format "path:line:col" into a tuple of (path, line, col).
 // Canonicalizes the filename.
