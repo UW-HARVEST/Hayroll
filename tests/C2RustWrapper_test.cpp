@@ -9,6 +9,7 @@
 #include "CompileCommand.hpp"
 #include "RewriteIncludesWrapper.hpp"
 #include "C2RustWrapper.hpp"
+#include "LinemarkerEraser.hpp"
 
 int main(int argc, char **argv)
 {
@@ -53,8 +54,8 @@ int main(int argc, char **argv)
     CompileCommand &command = commands[0];
 
     std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
-    // We are not seeding this CU string, just send it to C2Rust
-    std::string result = C2RustWrapper::runC2Rust(cuStr, command);
+    std::string cuStrNoLm = LinemarkerEraser::run(cuStr);
+    std::string result = C2RustWrapper::runC2Rust(cuStrNoLm, command);
 
     std::cout << "C2Rust output:\n" << result << std::endl;
 

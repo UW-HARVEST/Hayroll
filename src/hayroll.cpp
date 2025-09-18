@@ -295,8 +295,9 @@ int main(const int argc, const char* argv[])
                 }
 
                 // Aggregate sources into compilation units
-                // compileCommands + src --clang-frewrite-includes-> cuStrs
+                // compileCommands + src --clang-frewrite-includes-> cuStr
                 std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
+                std::string cuStrNoLm = LinemarkerEraser::run(cuStr);
                 {
                     CompileCommand outputCommand = command
                         .withUpdatedFilePathPrefix(outputDir, projDir)
@@ -305,6 +306,7 @@ int main(const int argc, const char* argv[])
                     saveStringToFile(cuStr, outputPath);
                     SPDLOG_INFO("Compilation unit file for {} saved to: {}", command.file.string(), outputPath.string());
                 }
+                
 
                 // LineMatcher
                 // cuStr + includeTree + includePath --LineMatcher-> lineMap + inverseLineMap
@@ -339,8 +341,8 @@ int main(const int argc, const char* argv[])
                 auto [cpp2cInvocations, cpp2cRanges] = parseCpp2cSummary(cpp2cStr);
 
                 // Hayroll Seeder
-                // compileCommands + cuStrs + includeTree + premiseTree --Seeder-> seededStr
-                std::string cuSeededStr = Seeder::run(cpp2cInvocations, cpp2cRanges, cuStr, lineMap, inverseLineMap);
+                // compileCommands + cuStrNoLm + includeTree + premiseTree --Seeder-> seededStr
+                std::string cuSeededStr = Seeder::run(cpp2cInvocations, cpp2cRanges, cuStrNoLm, lineMap, inverseLineMap);
                 {
                     CompileCommand outputCommand = command
                         .withUpdatedFilePathPrefix(outputDir, projDir)

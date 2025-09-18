@@ -526,6 +526,12 @@ std::string makeLocation
     return std::format("{}:{}:{}", path.string(), line, col);
 }
 
+std::string locToLnCol(const std::string_view loc)
+{
+    auto [path, line, col] = parseLocation(loc);
+    return std::format("{}:{}", line, col);
+}
+
 // Use nlohmann::json to escape a string as a C string literal (without surrounding quotes)
 std::string escapeString(std::string_view str)
 {

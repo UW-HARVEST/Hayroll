@@ -211,7 +211,7 @@ public:
             tasks.push_back(taskLeft);
             // Only one tag per declaration(s).
         }
-        // else ignore unknown AST kinds
+        else assertWithTrace(false && "Unsupported AST kind");
 
         return tasks;
     }
@@ -252,7 +252,7 @@ public:
     };
 
     // Generate instrumentation tasks based on the provided parameters
-    static std::list<InstrumentationTask> genInvocationInstrumentationTasks
+    static std::list<InstrumentationTask> genBodyInstrumentationTasks
     (
         std::string_view locBegin,
         std::string_view locEnd,
@@ -267,14 +267,14 @@ public:
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        auto [path, line, col] = parseLocation(locBegin);
+        auto [pathBegin, lineBegin, colBegin] = parseLocation(locBegin);
         auto [pathEnd, lineEnd, colEnd] = parseLocation(locEnd);
         auto [locRefPath, locRefLine, locRefCol] = parseLocation(locRefBegin);
-        assert(path == pathEnd);
-        assert(locRefPath == path); // Should all be the only CU file
+        assert(pathBegin == pathEnd);
+        assert(locRefPath == pathBegin); // Should all be the only CU file
 
         // Map the compilation unit line numbers back to the source file line numbers
-        auto [includeTree, srcLine] = inverseLineMap.at(line);
+        auto [includeTree, srcLine] = inverseLineMap.at(lineBegin);
         auto [includeTreeEnd, srcLineEnd] = inverseLineMap.at(lineEnd);
         auto [locRefIncludeTree, locRefSrcLine] = inverseLineMap.at(locRefLine);
         assert(includeTree == includeTreeEnd);
@@ -284,8 +284,8 @@ public:
         std::string srcLocBegin = LineMatcher::cuLocToSrcLoc(locBegin, inverseLineMap);
         std::string srcLocEnd = LineMatcher::cuLocToSrcLoc(locEnd, inverseLineMap);
         std::string srcLocRefBegin = LineMatcher::cuLocToSrcLoc(locRefBegin, inverseLineMap);
-        std::string cuLnColBegin = std::format("{}:{}", line, col);
-        std::string cuLnColEnd = std::format("{}:{}", lineEnd, colEnd);
+        std::string cuLnColBegin = locToLnCol(locBegin);
+        std::string cuLnColEnd = locToLnCol(locEnd);
 
         InvocationTag tagBegin
         {
@@ -311,25 +311,25 @@ public:
         (
             astKind,
             astKind == "Expr" ? std::optional(isLvalue) : std::nullopt,
-            line,
-            col,
+            lineBegin,
+            colBegin,
             lineEnd,
             colEnd,
             tagBegin.stringLiteral(),
             (astKind == "Stmt" || astKind == "Stmts") ? std::optional(tagEnd.stringLiteral()) : std::nullopt,
             spelling,
-            1 // priorityLeft: prefer inside
+            -1 // priorityLeft: prefer outside
         );
     }
 
     // Generate tags for the arguments
-    static std::list<InstrumentationTask> collectArgInstrumentationTasks
+    static std::list<InstrumentationTask> genArgInstrumentationTasks
     (
         const MakiArgSummary & arg,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        return genInvocationInstrumentationTasks
+        return genBodyInstrumentationTasks
         (
             arg.ActualArgLocBegin,
             arg.ActualArgLocEnd,
@@ -392,7 +392,7 @@ public:
     }
 
     // Collect the instrumentation tasks for the invocation body and its arguments
-    static std::list<InstrumentationTask> collectBodyInstrumentationTasks
+    static std::list<InstrumentationTask> genInvocationInstrumentationTasks
     (
         const MakiInvocationSummary & inv,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
@@ -401,7 +401,7 @@ public:
         std::list<InstrumentationTask> tasks;
         for (const MakiArgSummary & arg : inv.Args)
         {
-            std::list<InstrumentationTask> argTasks = collectArgInstrumentationTasks(arg, inverseLineMap);
+            std::list<InstrumentationTask> argTasks = genArgInstrumentationTasks(arg, inverseLineMap);
             tasks.splice(tasks.end(), argTasks);
         }
 
@@ -411,7 +411,7 @@ public:
             argNames.push_back(arg.Name);
         }
 
-        std::list<InstrumentationTask> invocationTasks = genInvocationInstrumentationTasks
+        std::list<InstrumentationTask> invocationTasks = genBodyInstrumentationTasks
         (
             inv.InvocationLocation,
             inv.InvocationLocationEnd,
@@ -430,11 +430,53 @@ public:
         return tasks;
     }
 
-    // static std::list<InstrumentationTask> collectConditionalInstrumentationTasks
-    // (
-    //     const MakiRangeSummary & range,
-    //     const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
-    // )
+    static std::list<InstrumentationTask> genConditionalInstrumentationTasks
+    (
+        const MakiRangeSummary & range,
+        const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
+    )
+    {
+        auto [pathBegin, lineBegin, colBegin] = parseLocation(range.Location);
+        auto [pathEnd, lineEnd, colEnd] = parseLocation(range.LocationEnd);
+        assert(pathBegin == pathEnd);
+        std::string srcLocBegin = LineMatcher::cuLocToSrcLoc(range.Location, inverseLineMap);
+        std::string srcLocEnd = LineMatcher::cuLocToSrcLoc(range.LocationEnd, inverseLineMap);
+        std::string cuLnColBegin = locToLnCol(range.Location);
+        std::string cuLnColEnd = locToLnCol(range.LocationEnd);
+        std::string locRefBegin =
+            range.ASTKind == "Expr" ?
+            LineMatcher::cuLocToSrcLoc(range.ParentLocation, inverseLineMap) :
+            ""; // Only Expr needs locRefBegin
+
+        ConditionalTag tagBegin
+        {
+            .begin = true,
+            .astKind = range.ASTKind,
+            .isLvalue = range.IsLValue,
+            .locBegin = srcLocBegin,
+            .locEnd = srcLocEnd,
+            .cuLnColBegin = cuLnColBegin,
+            .cuLnColEnd = cuLnColEnd,
+            .locRefBegin = locRefBegin,
+            .premise = range.Premise
+        };
+        ConditionalTag tagEnd = tagBegin;
+        tagEnd.begin = false;
+
+        return genInstrumentationTasks
+        (
+            range.ASTKind,
+            range.ASTKind == "Expr" ? std::optional(range.IsLValue) : std::nullopt,
+            lineBegin,
+            colBegin,
+            lineEnd,
+            colEnd,
+            tagBegin.stringLiteral(),
+            (range.ASTKind == "Stmt" || range.ASTKind == "Stmts") ? std::optional(tagEnd.stringLiteral()) : std::nullopt,
+            range.Spelling,
+            1 // priorityLeft: prefer inside
+        );
+    }
 
     // Check if the invocation info is valid and thus should be kept
     // Invalid cases: empty fields, invalid path, non-Expr/Stmt ASTKind
@@ -499,8 +541,53 @@ public:
             ConditionalTag,
             hayroll, begin, astKind, isLvalue, locBegin, locEnd,
             cuLnColBegin, cuLnColEnd, locRefBegin, premise
-        )
+        );
+
+        // Escape the JSON string to make it a valid C string that embeds into C code
+        std::string stringLiteral() const
+        {
+            json j = *this;
+            return "\"" + escapeString(j.dump()) + "\"";
+        }
     };
+
+    static bool dropRangeSummary
+    (
+        const MakiRangeSummary & range,
+        const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
+    )
+    {
+        if
+        (
+            range.Location.empty()
+            || range.LocationEnd.empty()
+            || range.ASTKind.empty()
+            || range.Premise.empty()
+        )
+        {
+            return true;
+        }
+        auto [path, line, col] = parseLocation(range.Location);
+        constexpr static std::string_view validASTKinds[] = {"Expr", "Stmt", "Stmts", "Decl", "Decls"};
+        if (std::find(std::begin(validASTKinds), std::end(validASTKinds), range.ASTKind) == std::end(validASTKinds))
+        {
+            return true;
+        }
+        // System-include filtering using inverseLineMap
+        {
+            auto [includeTree, srcLine] = inverseLineMap.at(line);
+            if (!includeTree || includeTree->isSystemInclude)
+            {
+                SPDLOG_TRACE
+                (
+                    "Skipping instrumentation for conditional premise {} at {}: {} (no include tree)",
+                    range.Premise, path.string(), srcLine
+                );
+                return true;
+            }
+        }
+        return false;
+    }
 
     // Tags the srcStr (C source code at compilation unit level) with the instrumentation tasks collected from
     // 1. invocations: the MakiInvocationSummary vector
@@ -516,10 +603,14 @@ public:
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        // Remove invalid invocations (erase-remove idiom)
+        // Remove invalid invocations and ranges
         std::erase_if(invocations, [&inverseLineMap](const MakiInvocationSummary & inv)
         {
             return dropInvocationSummary(inv, inverseLineMap);
+        });
+        std::erase_if(ranges, [&inverseLineMap](const MakiRangeSummary & range)
+        {
+            return dropRangeSummary(range, inverseLineMap);
         });
 
         TextEditor srcEditor{srcStr};
@@ -527,29 +618,29 @@ public:
         // Extract spelling for invocations and arguments
         for (MakiInvocationSummary & invocation : invocations)
         {
-            auto [path, line, col] = parseLocation(invocation.InvocationLocation);
+            auto [pathBegin, lineBegin, colBegin] = parseLocation(invocation.InvocationLocation);
             auto [pathEnd, lineEnd, colEnd] = parseLocation(invocation.InvocationLocationEnd);
             SPDLOG_TRACE
             (
                 "Extracting spelling for invocation {} at {}: {}:{}-{}:{}",
                 invocation.Name,
-                path.string(),
-                line, col, lineEnd, colEnd
+                pathBegin.string(),
+                lineBegin, colBegin, lineEnd, colEnd
             );
-            invocation.Spelling = srcEditor.get(line, col, colEnd - col);
+            invocation.Spelling = srcEditor.get(lineBegin, colBegin, colEnd - colBegin);
 
             for (MakiArgSummary & arg : invocation.Args)
             {
-                auto [argPath, argLine, argCol] = parseLocation(arg.ActualArgLocBegin);
+                auto [argPathBegin, argLineBegin, argColBegin] = parseLocation(arg.ActualArgLocBegin);
                 auto [argPathEnd, argLineEnd, argColEnd] = parseLocation(arg.ActualArgLocEnd);
                 SPDLOG_TRACE
                 (
                     "Extracting spelling for argument {} at {}: {}:{}-{}:{}",
                     arg.Name,
-                    argPath.string(),
-                    argLine, argCol, argLineEnd, argColEnd
+                    argPathBegin.string(),
+                    argLineBegin, argColBegin, argLineEnd, argColEnd
                 );
-                arg.Spelling = srcEditor.get(argLine, argCol, argColEnd - argCol);
+                arg.Spelling = srcEditor.get(argLineBegin, argColBegin, argColEnd - argColBegin);
                 arg.InvocationLocation = invocation.InvocationLocation;
             }
         }
@@ -557,24 +648,29 @@ public:
         // Extract spelling for ranges
         for (MakiRangeSummary & range : ranges)
         {
-            auto [path, line, col] = parseLocation(range.Location);
+            auto [pathBegin, lineBegin, colBegin] = parseLocation(range.Location);
             auto [pathEnd, lineEnd, colEnd] = parseLocation(range.LocationEnd);
             SPDLOG_TRACE
             (
                 "Extracting spelling for range {} at {}: {}:{}-{}:{}",
                 range.Premise,
-                path.string(),
-                line, col, lineEnd, colEnd
+                pathBegin.string(),
+                lineBegin, colBegin, lineEnd, colEnd
             );
-            range.Spelling = srcEditor.get(line, col, colEnd - col);
+            range.Spelling = srcEditor.get(lineBegin, colBegin, colEnd - colBegin);
         }
 
-        // Collect instrumentation tasks.
+        // Collect instrumentation tasks
         std::list<InstrumentationTask> tasks;
         for (const MakiInvocationSummary & invocation : invocations)
         {
-            std::list<InstrumentationTask> invocationTasks = collectBodyInstrumentationTasks(invocation, inverseLineMap);
+            std::list<InstrumentationTask> invocationTasks = genInvocationInstrumentationTasks(invocation, inverseLineMap);
             tasks.splice(tasks.end(), invocationTasks);
+        }
+        for (const MakiRangeSummary & range : ranges)
+        {
+            std::list<InstrumentationTask> rangeTasks = genConditionalInstrumentationTasks(range, inverseLineMap);
+            tasks.splice(tasks.end(), rangeTasks);
         }
 
         for (const InstrumentationTask & task : tasks)
