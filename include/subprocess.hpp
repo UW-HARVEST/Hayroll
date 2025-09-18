@@ -1,6 +1,6 @@
 /*!
 
-Documentation for C++ subprocessing libraray.
+Documentation for C++ subprocessing library.
 
 @copyright The code is licensed under the [MIT
   License](http://opensource.org/licenses/MIT):
@@ -34,39 +34,181 @@ Documentation for C++ subprocessing libraray.
 #ifndef SUBPROCESS_HPP
 #define SUBPROCESS_HPP
 
-#include <map>
 #include <algorithm>
-#include <iostream>
-#include <string>
-#include <cstdlib>
 #include <cassert>
-#include <cstring>
-#include <cstdio>
 #include <csignal>
-#include <future>
-#include <vector>
-#include <sstream>
-#include <memory>
-#include <initializer_list>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <exception>
+#include <future>
+#include <initializer_list>
+#include <iostream>
 #include <locale>
+#include <map>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
 
-#ifdef _MSC_VER
+#if (defined _MSC_VER) || (defined __MINGW32__)
+  #define __USING_WINDOWS__
+#endif
+
+#ifdef __USING_WINDOWS__
   #include <codecvt>
 #endif
 
 extern "C" {
-#ifdef _MSC_VER
-  #include <Windows.h>
+
+  /*
+   * == Windows API Declarations ==
+   *
+   * Manually declare only the Windows API functions we need instead of
+   * including the full <windows.h> to:
+   *
+   *  1. Keep compile times fast.
+   *  2. Prevent name collisions with common names like min/max.
+   *  3. Make the library self-contained and clean.
+   */
+
+  #ifdef __USING_WINDOWS__
+  
+  #define CONST const
+  #define WINAPI __stdcall
+  
+  #define TRUE 1
+  #define FALSE 0
+  
+  #define INFINITE 0xFFFFFFFF
+  
+  #define STATUS_WAIT_0 ((unsigned long)0x00000000L)
+  #define WAIT_OBJECT_0 ((STATUS_WAIT_0) + 0)
+  
+  #define HANDLE_FLAG_INHERIT 0x00000001
+  
+  #define STARTF_USESTDHANDLES 0x00000100
+  
+  #define CREATE_NO_WINDOW           0x08000000
+  #define CREATE_UNICODE_ENVIRONMENT 0x00000400
+  
+  #define FORMAT_MESSAGE_ALLOCATE_BUFFER 0x00000100
+  #define FORMAT_MESSAGE_FROM_SYSTEM     0x00001000
+  #define FORMAT_MESSAGE_IGNORE_INSERTS  0x00000200
+  #define FORMAT_MESSAGE_MAX_WIDTH_MASK  0x000000FF
+  
+  #define LANG_NEUTRAL  0x00
+  #define SUBLANG_DEFAULT 0x01
+  
+  #ifdef _M_CEE_PURE
+    typedef System::ArgIterator va_list;
+  #else
+    typedef char* va_list;
+  #endif
+  
+  typedef void VOID;
+  typedef char CHAR;
+  typedef wchar_t WCHAR;
+  
+  typedef int BOOL;
+  typedef unsigned int UINT;
+  typedef unsigned short USHORT;
+  typedef unsigned short WORD;
+  typedef unsigned long DWORD;
+  
+  typedef size_t SIZE_T;
+  
+  typedef void* PVOID;
+  typedef void* LPVOID;
+  typedef const void* LPCVOID;
+  
+  typedef void* HANDLE;
+  typedef HANDLE HLOCAL;
+  typedef HANDLE* PHANDLE;
+  
+  typedef DWORD* LPDWORD;
+  
+  typedef CHAR* LPSTR;
+  typedef WCHAR* LPWCH;
+  typedef WCHAR* LPWSTR;
+  typedef CONST WCHAR* LPCWSTR;
+  
+  typedef struct _SECURITY_ATTRIBUTES {
+      DWORD nLength;
+      LPVOID lpSecurityDescriptor;
+      BOOL bInheritHandle;
+  } SECURITY_ATTRIBUTES, *LPSECURITY_ATTRIBUTES;
+  
+  typedef struct _PROCESS_INFORMATION {
+      HANDLE hProcess;
+      HANDLE hThread;
+      DWORD dwProcessId;
+      DWORD dwThreadId;
+  } PROCESS_INFORMATION, *LPPROCESS_INFORMATION;
+  
+  typedef struct _STARTUPINFOW {
+      DWORD cb;
+      LPWSTR lpReserved;
+      LPWSTR lpDesktop;
+      LPWSTR lpTitle;
+      DWORD dwX;
+      DWORD dwY;
+      DWORD dwXSize;
+      DWORD dwYSize;
+      DWORD dwXCountChars;
+      DWORD dwYCountChars;
+      DWORD dwFillAttribute;
+      DWORD dwFlags;
+      WORD wShowWindow;
+      WORD cbReserved2;
+      unsigned char* lpReserved2;
+      HANDLE hStdInput;
+      HANDLE hStdOutput;
+      HANDLE hStdError;
+  } STARTUPINFOW, * LPSTARTUPINFOW;
+  
+  BOOL   WINAPI CloseHandle(HANDLE);
+  BOOL   WINAPI CreatePipe(PHANDLE, PHANDLE, LPSECURITY_ATTRIBUTES, DWORD);
+  BOOL   WINAPI CreateProcessW(LPCWSTR, LPWSTR, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTRIBUTES, BOOL, DWORD, LPVOID, LPCWSTR, LPSTARTUPINFOW, LPPROCESS_INFORMATION);
+  BOOL   WINAPI FreeEnvironmentStringsW(LPWCH);
+  BOOL   WINAPI GetExitCodeProcess(HANDLE, LPDWORD);
+  BOOL   WINAPI SetHandleInformation(HANDLE, DWORD, DWORD);
+  BOOL   WINAPI TerminateProcess(HANDLE, UINT);
+  DWORD  WINAPI FormatMessageA(DWORD, LPCVOID, DWORD, DWORD, LPSTR, DWORD, va_list*);
+  DWORD  WINAPI GetLastError(VOID);
+  DWORD  WINAPI WaitForSingleObject(HANDLE, DWORD);
+  HLOCAL WINAPI LocalFree(HLOCAL);
+  LPWSTR WINAPI GetEnvironmentStringsW(VOID);
+  
+  #define ZeroMemory(Destination,Length) memset((Destination),0,(Length))
+  #define MAKELANGID(p, s) ((((WORD)(s)) << 10) | (WORD)(p))
+
   #include <io.h>
+  #include <cwchar>
 #else
   #include <sys/wait.h>
   #include <unistd.h>
 #endif
+  #include <csignal>
   #include <fcntl.h>
   #include <sys/types.h>
-  #include <signal.h>
 }
+
+// The Microsoft C++ compiler issues deprecation warnings
+// for the standard POSIX function names.
+// Its preferred implementations have a leading underscore.
+// See: https://learn.microsoft.com/en-us/cpp/c-runtime-library/compatibility.
+#if (defined _MSC_VER)
+  #define subprocess_close _close
+  #define subprocess_fileno _fileno
+  #define subprocess_open _open
+  #define subprocess_write _write
+#else
+  #define subprocess_close close
+  #define subprocess_fileno fileno
+  #define subprocess_open open
+  #define subprocess_write write
+#endif
 
 /*!
  * Getting started with reading this source code.
@@ -97,7 +239,7 @@ namespace subprocess {
 // from pipe
 static const size_t SP_MAX_ERR_BUF_SIZ = 1024;
 
-// Default buffer capcity for OutBuffer and ErrBuffer.
+// Default buffer capacity for OutBuffer and ErrBuffer.
 // If the data exceeds this capacity, the buffer size is grown
 // by 1.5 times its previous capacity
 static const size_t DEFAULT_BUF_CAP_BYTES = 8192;
@@ -118,8 +260,9 @@ static const size_t DEFAULT_BUF_CAP_BYTES = 8192;
 class CalledProcessError: public std::runtime_error
 {
 public:
-  CalledProcessError(const std::string& error_msg):
-    std::runtime_error(error_msg)
+  int retcode;
+  CalledProcessError(const std::string& error_msg, int retcode):
+    std::runtime_error(error_msg), retcode(retcode)
   {}
 };
 
@@ -138,20 +281,29 @@ class OSError: public std::runtime_error
 {
 public:
   OSError(const std::string& err_msg, int err_code):
-    std::runtime_error( err_msg + " : " + std::strerror(err_code) )
+    std::runtime_error( err_msg + ": " + std::strerror(err_code) )
   {}
 };
 
 //--------------------------------------------------------------------
 
+//Environment Variable types
+#ifndef __USING_WINDOWS__
+	using platform_str_t = std::string;
+	using platform_char_t = char;
+#else
+	using platform_str_t = std::wstring;
+	using platform_char_t = wchar_t;
+#endif
+using env_str_t = platform_str_t;
+using env_char_t = platform_char_t;
+using env_map_t = std::map<platform_str_t, platform_str_t>;
+using env_vector_t = std::vector<platform_char_t>;
+
+//--------------------------------------------------------------------
 namespace util
 {
-  template <typename R>
-  inline bool is_ready(std::shared_future<R> const &f)
-  {
-    return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
-  }
-
+#ifdef __USING_WINDOWS__
   inline void quote_argument(const std::wstring &argument, std::wstring &command_line,
                       bool force)
   {
@@ -162,7 +314,7 @@ namespace util
     //
 
     if (force == false && argument.empty() == false &&
-        argument.find_first_of(L" \t\n\v\"") == argument.npos) {
+        argument.find_first_of(L" \t\n\v") == argument.npos) {
       command_line.append(argument);
     }
     else {
@@ -212,17 +364,15 @@ namespace util
     }
   }
 
-#ifdef _MSC_VER
-  std::string get_last_error()
+  inline std::string get_last_error(DWORD errorMessageID)
   {
-    DWORD errorMessageID = ::GetLastError();
     if (errorMessageID == 0)
       return std::string();
 
     LPSTR messageBuffer = nullptr;
     size_t size = FormatMessageA(
         FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-            FORMAT_MESSAGE_IGNORE_INSERTS,
+            FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_MAX_WIDTH_MASK,
         NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
         (LPSTR)&messageBuffer, 0, NULL);
 
@@ -233,13 +383,17 @@ namespace util
     return message;
   }
 
-  FILE *file_from_handle(HANDLE h, const char *mode)
+  inline FILE *file_from_handle(HANDLE h, const char *mode)
   {
     int md;
-    if (mode == "w") {
+    if (!mode) {
+      throw OSError("invalid_mode", 0);
+    }
+
+    if (mode[0] == 'w') {
       md = _O_WRONLY;
     }
-    else if (mode == "r") {
+    else if (mode[0] == 'r') {
       md = _O_RDONLY;
     }
     else {
@@ -254,14 +408,14 @@ namespace util
 
     FILE *fp = _fdopen(os_fhandle, mode);
     if (fp == 0) {
-      _close(os_fhandle);
+      subprocess_close(os_fhandle);
       throw OSError("_fdopen", 0);
     }
 
     return fp;
   }
 
-  void configure_pipe(HANDLE* read_handle, HANDLE* write_handle, HANDLE* child_handle)
+  inline void configure_pipe(HANDLE* read_handle, HANDLE* write_handle, HANDLE* child_handle)
   {
     SECURITY_ATTRIBUTES saAttr;
 
@@ -278,6 +432,100 @@ namespace util
     if (!SetHandleInformation(*child_handle, HANDLE_FLAG_INHERIT, 0))
       throw OSError("SetHandleInformation", 0);
   }
+
+  // env_map_t MapFromWindowsEnvironment()
+  // * Imports current Environment in a C-string table
+  // * Parses the strings by splitting on the first "=" per line
+  // * Creates a map of the variables
+  // * Returns the map
+  inline env_map_t MapFromWindowsEnvironment(){
+      wchar_t *variable_strings_ptr;
+      wchar_t *environment_strings_ptr;
+      std::wstring delimiter(L"=");
+      int del_len = delimiter.length();
+      env_map_t mapped_environment;
+
+      // Get a pointer to the environment block.
+      environment_strings_ptr = GetEnvironmentStringsW();
+      // If the returned pointer is NULL, exit.
+      if (environment_strings_ptr == NULL)
+      {
+          throw OSError("GetEnvironmentStringsW", 0);
+      }
+
+      // Variable strings are separated by NULL byte, and the block is
+      // terminated by a NULL byte.
+
+      variable_strings_ptr = (wchar_t *) environment_strings_ptr;
+
+      //Since the environment map ends with a null, we can loop until we find it.
+      while (*variable_strings_ptr)
+      {
+          // Create a string from Variable String
+          platform_str_t current_line(variable_strings_ptr);
+          // Find the first "equals" sign.
+          auto pos = current_line.find(delimiter);
+          // Assuming it's not missing ...
+          if(pos!=std::wstring::npos){
+              // ... parse the key and value.
+              platform_str_t key = current_line.substr(0, pos);
+              platform_str_t value = current_line.substr(pos + del_len);
+              // Map the entry.
+              mapped_environment[key] = value;
+          }
+          // Jump to next line in the environment map.
+          variable_strings_ptr += std::wcslen(variable_strings_ptr) + 1;
+      }
+      // We're done with the old environment map buffer.
+      FreeEnvironmentStringsW(environment_strings_ptr);
+
+      // Return the map.
+      return mapped_environment;
+  }
+
+  // env_vector_t WindowsEnvironmentVectorFromMap(const env_map_t &source_map)
+  // * Creates a vector buffer for the new environment string table
+  // * Copies in the mapped variables
+  // * Returns the vector
+  inline env_vector_t WindowsEnvironmentVectorFromMap(const env_map_t &source_map)
+  {
+	// Make a new environment map buffer.
+	env_vector_t environment_map_buffer;
+	// Give it some space.
+	environment_map_buffer.reserve(4096);
+
+	// And fill'er up.
+	for(auto kv: source_map){
+	  // Create the line
+	  platform_str_t current_line(kv.first); current_line += L"="; current_line += kv.second;
+	  // Add the line to the buffer.
+	  std::copy(current_line.begin(), current_line.end(), std::back_inserter(environment_map_buffer));
+	  // Append a null
+	  environment_map_buffer.push_back(0);
+	}
+	// Append one last null because of how Windows does it's environment maps.
+	environment_map_buffer.push_back(0);
+
+	return environment_map_buffer;
+  }
+
+  // env_vector_t CreateUpdatedWindowsEnvironmentVector(const env_map_t &changes_map)
+  // * Merges host environment with new mapped variables
+  // * Creates and returns string vector based on map
+  inline env_vector_t CreateUpdatedWindowsEnvironmentVector(const env_map_t &changes_map){
+	// Import the environment map
+	env_map_t environment_map = MapFromWindowsEnvironment();
+    // Merge in the changes with overwrite
+	for(auto& it: changes_map)
+	{
+		environment_map[it.first] = it.second;
+	}
+    // Create a Windows-usable Environment Map Buffer
+    env_vector_t environment_map_strings_vector = WindowsEnvironmentVectorFromMap(environment_map);
+
+	return environment_map_strings_vector;
+  }
+
 #endif
 
   /*!
@@ -314,8 +562,8 @@ namespace util
    * Function: join
    * Parameters:
    * [in] vec : Vector of strings which needs to be joined to form
-   *            a single string with words seperated by a seperator char.
-   *  [in] sep : String used to seperate 2 words in the joined string.
+   *            a single string with words separated by a separator char.
+   *  [in] sep : String used to separate 2 words in the joined string.
    *             Default constructed to ' ' (space).
    *  [out] string: Joined string.
    */
@@ -330,7 +578,7 @@ namespace util
   }
 
 
-#ifndef _MSC_VER
+#ifndef __USING_WINDOWS__
   /*!
    * Function: set_clo_on_exec
    * Sets/Resets the FD_CLOEXEC flag on the provided file descriptor
@@ -344,10 +592,14 @@ namespace util
   void set_clo_on_exec(int fd, bool set = true)
   {
     int flags = fcntl(fd, F_GETFD, 0);
+    if (flags == -1) {
+        throw OSError("fcntl F_GETFD failed", errno);
+    }
     if (set) flags |= FD_CLOEXEC;
     else flags &= ~FD_CLOEXEC;
-    //TODO: should check for errors
-    fcntl(fd, F_SETFD, flags);
+    if (fcntl(fd, F_SETFD, flags) == -1) {
+        throw OSError("fcntl F_SETFD failed", errno);
+    }
   }
 
 
@@ -393,7 +645,7 @@ namespace util
   {
     size_t nwritten = 0;
     while (nwritten < length) {
-      int written = write(fd, buf + nwritten, length - nwritten);
+      int written = subprocess_write(fd, buf + nwritten, length - nwritten);
       if (written == -1) return -1;
       nwritten += written;
     }
@@ -418,10 +670,10 @@ namespace util
   static inline
   int read_atmost_n(FILE* fp, char* buf, size_t read_upto)
   {
-#ifdef _MSC_VER
+#ifdef __USING_WINDOWS__
     return (int)fread(buf, 1, read_upto, fp);
 #else
-    int fd = fileno(fp);
+    int fd = subprocess_fileno(fp);
     int rbytes = 0;
     int eintr_cnter = 0;
 
@@ -491,7 +743,7 @@ namespace util
     return total_bytes_read;
   }
 
-#ifndef _MSC_VER
+#ifndef __USING_WINDOWS__
   /*!
    * Function: wait_for_child_exit
    * Waits for the process with pid `pid` to exit
@@ -511,7 +763,7 @@ namespace util
     int status = 0;
     int ret = -1;
     while (1) {
-      ret = waitpid(pid, &status, WNOHANG);
+      ret = waitpid(pid, &status, 0);
       if (ret == -1) break;
       if (ret == 0) continue;
       return std::make_pair(ret, status);
@@ -536,7 +788,7 @@ namespace util
  * Default value is 0.
  */
 struct bufsize {
-  bufsize(int siz): bufsiz(siz) {}
+  explicit bufsize(int sz): bufsiz(sz) {}
   int  bufsiz = 0;
 };
 
@@ -546,7 +798,7 @@ struct bufsize {
  * Default value is false.
  */
 struct defer_spawn {
-  defer_spawn(bool d): defer(d) {}
+  explicit defer_spawn(bool d): defer(d) {}
   bool defer  = false;
 };
 
@@ -560,7 +812,7 @@ struct defer_spawn {
  * Default value is false.
  */
 struct close_fds {
-  close_fds(bool c): close_all(c) {}
+  explicit close_fds(bool c): close_all(c) {}
   bool close_all = false;
 };
 
@@ -571,12 +823,12 @@ struct close_fds {
  * Default value is false.
  */
 struct session_leader {
-  session_leader(bool sl): leader_(sl) {}
+  explicit session_leader(bool sl): leader_(sl) {}
   bool leader_ = false;
 };
 
 struct shell {
-  shell(bool s): shell_(s) {}
+  explicit shell(bool s): shell_(s) {}
   bool shell_ = false;
 };
 
@@ -587,12 +839,12 @@ struct string_arg
 {
   string_arg(const char* arg): arg_value(arg) {}
   string_arg(std::string&& arg): arg_value(std::move(arg)) {}
-  string_arg(std::string arg): arg_value(std::move(arg)) {}
+  string_arg(const std::string& arg): arg_value(arg) {}
   std::string arg_value;
 };
 
 /*!
- * Option to specify the executable name seperately
+ * Option to specify the executable name separately
  * from the args sequence.
  * In this case the cmd args must only contain the
  * options required for this executable.
@@ -609,12 +861,13 @@ struct executable: string_arg
  * Option to set the current working directory
  * of the spawned process.
  *
- * Eg: cwd{"/som/path/x"}
+ * Eg: cwd{"/some/path/x"}
  */
-struct cwd: string_arg
+struct cwd
 {
-  template <typename T>
-  cwd(T&& arg): string_arg(std::forward<T>(arg)) {}
+  explicit cwd(const platform_str_t &cwd): cwd_(cwd) {}
+  explicit cwd(platform_str_t &&cwd): cwd_(std::move(cwd)) {}
+  platform_str_t cwd_;
 };
 
 /*!
@@ -625,11 +878,11 @@ struct cwd: string_arg
  */
 struct environment
 {
-  environment(std::map<std::string, std::string>&& env):
+  environment(env_map_t&& env):
     env_(std::move(env)) {}
-  environment(const std::map<std::string, std::string>& env):
+  explicit environment(const env_map_t& env):
     env_(env) {}
-  std::map<std::string, std::string> env_;
+  env_map_t env_;
 };
 
 
@@ -658,19 +911,19 @@ enum IOTYPE {
 struct input
 {
   // For an already existing file descriptor.
-  input(int fd): rd_ch_(fd) {}
+  explicit input(int fd): rd_ch_(fd) {}
 
   // FILE pointer.
-  input (FILE* fp):input(fileno(fp)) { assert(fp); }
+  explicit input (FILE* fp):input(subprocess_fileno(fp)) { assert(fp); }
 
-  input(const char* filename) {
-    int fd = open(filename, O_RDONLY);
+  explicit input(const char* filename) {
+    int fd = subprocess_open(filename, O_RDONLY);
     if (fd == -1) throw OSError("File not found: ", errno);
     rd_ch_ = fd;
   }
-  input(IOTYPE typ) {
+  explicit input(IOTYPE typ) {
     assert (typ == PIPE && "STDOUT/STDERR not allowed");
-#ifndef _MSC_VER    
+#ifndef __USING_WINDOWS__
     std::tie(rd_ch_, wr_ch_) = util::pipe_cloexec();
 #endif
   }
@@ -692,18 +945,18 @@ struct input
  */
 struct output
 {
-  output(int fd): wr_ch_(fd) {}
+  explicit output(int fd): wr_ch_(fd) {}
 
-  output (FILE* fp):output(fileno(fp)) { assert(fp); }
+  explicit output (FILE* fp):output(subprocess_fileno(fp)) { assert(fp); }
 
-  output(const char* filename) {
-    int fd = open(filename, O_APPEND | O_CREAT | O_RDWR, 0640);
+  explicit output(const char* filename) {
+    int fd = subprocess_open(filename, O_APPEND | O_CREAT | O_RDWR, 0640);
     if (fd == -1) throw OSError("File not found: ", errno);
     wr_ch_ = fd;
   }
-  output(IOTYPE typ) {
+  explicit output(IOTYPE typ) {
     assert (typ == PIPE && "STDOUT/STDERR not allowed");
-#ifndef _MSC_VER
+#ifndef __USING_WINDOWS__
     std::tie(rd_ch_, wr_ch_) = util::pipe_cloexec();
 #endif
   }
@@ -723,19 +976,19 @@ struct output
  */
 struct error
 {
-  error(int fd): wr_ch_(fd) {}
+  explicit error(int fd): wr_ch_(fd) {}
 
-  error(FILE* fp):error(fileno(fp)) { assert(fp); }
+  explicit error(FILE* fp):error(subprocess_fileno(fp)) { assert(fp); }
 
-  error(const char* filename) {
-    int fd = open(filename, O_APPEND | O_CREAT | O_RDWR, 0640);
+  explicit error(const char* filename) {
+    int fd = subprocess_open(filename, O_APPEND | O_CREAT | O_RDWR, 0640);
     if (fd == -1) throw OSError("File not found: ", errno);
     wr_ch_ = fd;
   }
-  error(IOTYPE typ) {
-    assert ((typ == PIPE || typ == STDOUT) && "STDERR not aloowed");
+  explicit error(IOTYPE typ) {
+    assert ((typ == PIPE || typ == STDOUT) && "STDERR not allowed");
     if (typ == PIPE) {
-#ifndef _MSC_VER
+#ifndef __USING_WINDOWS__
       std::tie(rd_ch_, wr_ch_) = util::pipe_cloexec();
 #endif
     } else {
@@ -755,7 +1008,7 @@ struct error
 // ATTN: Can be used only to execute functions with no
 // arguments and returning void.
 // Could have used more efficient methods, ofcourse, but
-// that wont yield me the consistent syntax which I am
+// that won't yield me the consistent syntax which I am
 // aiming for. If you know, then please do let me know.
 
 class preexec_func
@@ -764,7 +1017,7 @@ public:
   preexec_func() {}
 
   template <typename Func>
-  preexec_func(Func f): holder_(new FuncHolder<Func>(std::move(f)))
+  explicit preexec_func(Func f): holder_(new FuncHolder<Func>(std::move(f)))
   {}
 
   void operator()() {
@@ -805,7 +1058,7 @@ class Buffer
 {
 public:
   Buffer() {}
-  Buffer(size_t cap) { buf.resize(cap); }
+  explicit Buffer(size_t cap) { buf.resize(cap); }
   void add_cap(size_t cap) { buf.resize(cap); }
 
 #if 0
@@ -938,7 +1191,10 @@ class Communication
 public:
   Communication(Streams* stream): stream_(stream)
   {}
-  void operator=(const Communication&) = delete;
+  Communication(const Communication&) = delete;
+  Communication& operator=(const Communication&) = delete;
+  Communication(Communication&&) = default;
+  Communication& operator=(Communication&&) = default;
 public:
   int send(const char* msg, size_t length);
   int send(const std::vector<char>& msg);
@@ -975,7 +1231,10 @@ class Streams
 {
 public:
   Streams():comm_(this) {}
-  void operator=(const Streams&) = delete;
+  Streams(const Streams&) = delete;
+  Streams& operator=(const Streams&) = delete;
+  Streams(Streams&&) = default;
+  Streams& operator=(Streams&&) = default;
 
 public:
   void setup_comm_channels();
@@ -983,28 +1242,28 @@ public:
   void cleanup_fds()
   {
     if (write_to_child_ != -1 && read_from_parent_ != -1) {
-      close(write_to_child_);
+      subprocess_close(write_to_child_);
     }
     if (write_to_parent_ != -1 && read_from_child_ != -1) {
-      close(read_from_child_);
+      subprocess_close(read_from_child_);
     }
     if (err_write_ != -1 && err_read_ != -1) {
-      close(err_read_);
+      subprocess_close(err_read_);
     }
   }
 
   void close_parent_fds()
   {
-    if (write_to_child_ != -1)  close(write_to_child_);
-    if (read_from_child_ != -1) close(read_from_child_);
-    if (err_read_ != -1)        close(err_read_);
+    if (write_to_child_ != -1)  subprocess_close(write_to_child_);
+    if (read_from_child_ != -1) subprocess_close(read_from_child_);
+    if (err_read_ != -1)        subprocess_close(err_read_);
   }
 
   void close_child_fds()
   {
-    if (write_to_parent_ != -1)  close(write_to_parent_);
-    if (read_from_parent_ != -1) close(read_from_parent_);
-    if (err_write_ != -1)        close(err_write_);
+    if (write_to_parent_ != -1)  subprocess_close(write_to_parent_);
+    if (read_from_parent_ != -1) subprocess_close(read_from_parent_);
+    if (err_write_ != -1)        subprocess_close(err_write_);
   }
 
   FILE* input()  { return input_.get(); }
@@ -1038,7 +1297,7 @@ public:// Yes they are public
   std::shared_ptr<FILE> output_ = nullptr;
   std::shared_ptr<FILE> error_  = nullptr;
 
-#ifdef _MSC_VER
+#ifdef __USING_WINDOWS__
   HANDLE g_hChildStd_IN_Rd = nullptr;
   HANDLE g_hChildStd_IN_Wr = nullptr;
   HANDLE g_hChildStd_OUT_Rd = nullptr;
@@ -1092,10 +1351,10 @@ private:
  * 9. communicate(...)   - Get the output/error from the child and close the channels
  *                         from the parent side.
  *10. input()            - Get the input channel/File pointer. Can be used for
- *                         cutomizing the way of sending input to child.
+ *                         customizing the way of sending input to child.
  *11. output()           - Get the output channel/File pointer. Usually used
                            in case of redirection. See piping examples.
- *12. error()            - Get the error channel/File poiner. Usually used
+ *12. error()            - Get the error channel/File pointer. Usually used
                            in case of redirection.
  *13. start_process()    - Start the child process. Only to be used when
  *                         `defer_spawn` option was provided in Popen constructor.
@@ -1145,7 +1404,7 @@ public:
 /*
   ~Popen()
   {
-#ifdef _MSC_VER
+#ifdef __USING_WINDOWS__
     CloseHandle(this->process_handle_);
 #endif
   }
@@ -1172,6 +1431,9 @@ public:
   int send(const char* msg, size_t length)
   { return stream_.send(msg, length); }
 
+  int send(const std::string& msg)
+  { return send(msg.c_str(), msg.size()); }
+
   int send(const std::vector<char>& msg)
   { return stream_.send(msg); }
 
@@ -1180,6 +1442,11 @@ public:
     auto res = stream_.communicate(msg, length);
     retcode_ = wait();
     return res;
+  }
+
+  std::pair<OutBuffer, ErrBuffer> communicate(const std::string& msg)
+  {
+    return communicate(msg.c_str(), msg.size());
   }
 
   std::pair<OutBuffer, ErrBuffer> communicate(const std::vector<char>& msg)
@@ -1213,8 +1480,9 @@ private:
 private:
   detail::Streams stream_;
 
-#ifdef _MSC_VER
+#ifdef __USING_WINDOWS__
   HANDLE process_handle_;
+  std::future<void> cleanup_future_;
 #endif
 
   bool defer_process_start_ = false;
@@ -1224,13 +1492,13 @@ private:
   bool session_leader_ = false;
 
   std::string exe_name_;
-  std::string cwd_;
-  std::map<std::string, std::string> env_;
+  platform_str_t cwd_;
+  env_map_t env_;
   preexec_func preexec_fn_;
 
   // Command in string format
   std::string args_;
-  // Comamnd provided as sequence
+  // Command provided as sequence
   std::vector<std::string> vargs_;
   std::vector<char*> cargv_;
 
@@ -1277,10 +1545,22 @@ inline void Popen::start_process() noexcept(false)
 
 inline int Popen::wait() noexcept(false)
 {
-#ifdef _MSC_VER
+#ifdef __USING_WINDOWS__
   int ret = WaitForSingleObject(process_handle_, INFINITE);
 
-  return 0;
+  // WaitForSingleObject with INFINITE should only return when process has signaled
+  if (ret != WAIT_OBJECT_0) {
+    throw OSError("Unexpected return code from WaitForSingleObject", 0);
+  }
+
+  DWORD dretcode_;
+
+  if (FALSE == GetExitCodeProcess(process_handle_, &dretcode_))
+      throw OSError("Failed during call to GetExitCodeProcess", 0);
+
+  CloseHandle(process_handle_);
+
+  return (int)dretcode_;
 #else
   int ret, status;
   std::tie(ret, status) = util::wait_for_child_exit(pid());
@@ -1298,19 +1578,10 @@ inline int Popen::wait() noexcept(false)
 
 inline int Popen::poll() noexcept(false)
 {
-  int status;
-  if (!child_created_) return -1; // TODO: ??
-
-#ifdef _MSC_VER
+#ifdef __USING_WINDOWS__
   int ret = WaitForSingleObject(process_handle_, 0);
   if (ret != WAIT_OBJECT_0) return -1;
-#else
-  // Returns zero if child is still running
-  int ret = waitpid(child_pid_, &status, WNOHANG);
-  if (ret == 0) return -1;
-#endif
 
-#ifdef _MSC_VER
   DWORD dretcode_;
   if (FALSE == GetExitCodeProcess(process_handle_, &dretcode_))
       throw OSError("GetExitCodeProcess", 0);
@@ -1320,6 +1591,14 @@ inline int Popen::poll() noexcept(false)
 
   return retcode_;
 #else
+  if (!child_created_) return -1; // TODO: ??
+
+  int status;
+
+  // Returns zero if child is still running
+  int ret = waitpid(child_pid_, &status, WNOHANG);
+  if (ret == 0) return -1;
+
   if (ret == child_pid_) {
     if (WIFSIGNALED(status)) {
       retcode_ = WTERMSIG(status);
@@ -1349,7 +1628,7 @@ inline int Popen::poll() noexcept(false)
 
 inline void Popen::kill(int sig_num)
 {
-#ifdef _MSC_VER
+#ifdef __USING_WINDOWS__
   if (!TerminateProcess(this->process_handle_, (UINT)sig_num)) {
     throw OSError("TerminateProcess", 0);
   }
@@ -1362,9 +1641,16 @@ inline void Popen::kill(int sig_num)
 
 inline void Popen::execute_process() noexcept(false)
 {
-#ifdef _MSC_VER
+#ifdef __USING_WINDOWS__
   if (this->shell_) {
     throw OSError("shell not currently supported on windows", 0);
+  }
+
+  void* environment_string_table_ptr = nullptr;
+  env_vector_t environment_string_vector;
+  if(this->env_.size()){
+	  environment_string_vector = util::CreateUpdatedWindowsEnvironmentVector(env_);
+	  environment_string_table_ptr = (void*)environment_string_vector.data();
   }
 
   if (exe_name_.length()) {
@@ -1376,11 +1662,16 @@ inline void Popen::execute_process() noexcept(false)
   std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
   std::wstring argument;
   std::wstring command_line;
+  bool first_arg = true;
 
   for (auto arg : this->vargs_) {
+    if (!first_arg) {
+      command_line += L" ";
+    } else {
+      first_arg = false;
+    }
     argument = converter.from_bytes(arg);
-    util::quote_argument(argument, command_line, true);
-    command_line += L" ";
+    util::quote_argument(argument, command_line, false);
   }
 
   // CreateProcessW can modify szCmdLine so we allocate needed memory
@@ -1389,6 +1680,7 @@ inline void Popen::execute_process() noexcept(false)
   PROCESS_INFORMATION piProcInfo;
   STARTUPINFOW siStartInfo;
   BOOL bSuccess = FALSE;
+  DWORD creation_flags = CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW;
 
   // Set up members of the PROCESS_INFORMATION structure.
   ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
@@ -1399,11 +1691,13 @@ inline void Popen::execute_process() noexcept(false)
   ZeroMemory(&siStartInfo, sizeof(STARTUPINFOW));
   siStartInfo.cb = sizeof(STARTUPINFOW);
 
-  siStartInfo.hStdError = this->stream_.g_hChildStd_OUT_Wr;
+  siStartInfo.hStdError = this->stream_.g_hChildStd_ERR_Wr;
   siStartInfo.hStdOutput = this->stream_.g_hChildStd_OUT_Wr;
   siStartInfo.hStdInput = this->stream_.g_hChildStd_IN_Rd;
 
   siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+
+  const wchar_t *cwd_arg = this->cwd_.empty() ? NULL : cwd_.c_str();
 
   // Create the child process.
   bSuccess = CreateProcessW(NULL,
@@ -1411,15 +1705,17 @@ inline void Popen::execute_process() noexcept(false)
                             NULL,         // process security attributes
                             NULL,         // primary thread security attributes
                             TRUE,         // handles are inherited
-                            0,            // creation flags
-                            NULL,         // use parent's environment
-                            NULL,         // use parent's current directory
+                            creation_flags,	// creation flags
+                            environment_string_table_ptr,  // use provided environment
+                            cwd_arg,      // use provided current directory
                             &siStartInfo, // STARTUPINFOW pointer
                             &piProcInfo); // receives PROCESS_INFORMATION
 
   // If an error occurs, exit the application.
-  if (!bSuccess)
-    throw OSError("CreateProcess failed", 0);
+  if (!bSuccess) {
+    DWORD errorMessageID = ::GetLastError();
+    throw CalledProcessError("CreateProcess failed: " + util::get_last_error(errorMessageID), errorMessageID);
+  }
 
   CloseHandle(piProcInfo.hThread);
 
@@ -1429,7 +1725,7 @@ inline void Popen::execute_process() noexcept(false)
 
   this->process_handle_ = piProcInfo.hProcess;
 
-  std::async(std::launch::async, [this] {
+  this->cleanup_future_ = std::async(std::launch::async, [this] {
     WaitForSingleObject(this->process_handle_, INFINITE);
 
     CloseHandle(this->stream_.g_hChildStd_ERR_Wr);
@@ -1466,8 +1762,8 @@ inline void Popen::execute_process() noexcept(false)
   child_pid_ = fork();
 
   if (child_pid_ < 0) {
-    close(err_rd_pipe);
-    close(err_wr_pipe);
+    subprocess_close(err_rd_pipe);
+    subprocess_close(err_wr_pipe);
     throw OSError("fork failed", errno);
   }
 
@@ -1479,14 +1775,14 @@ inline void Popen::execute_process() noexcept(false)
     stream_.close_parent_fds();
 
     //Close the read end of the error pipe
-    close(err_rd_pipe);
+    subprocess_close(err_rd_pipe);
 
     detail::Child chld(this, err_wr_pipe);
     chld.execute_child();
   }
   else
   {
-    close (err_wr_pipe);// close child side of pipe, else get stuck in read below
+    subprocess_close(err_wr_pipe);// close child side of pipe, else get stuck in read below
 
     stream_.close_child_fds();
 
@@ -1495,7 +1791,7 @@ inline void Popen::execute_process() noexcept(false)
 
       FILE* err_fp = fdopen(err_rd_pipe, "r");
       if (!err_fp) {
-          close(err_rd_pipe);
+          subprocess_close(err_rd_pipe);
           throw OSError("fdopen failed", errno);
       }
       int read_bytes = util::read_atmost_n(err_fp, err_buf, SP_MAX_ERR_BUF_SIZ);
@@ -1505,10 +1801,10 @@ inline void Popen::execute_process() noexcept(false)
         // Call waitpid to reap the child process
         // waitpid suspends the calling process until the
         // child terminates.
-        wait();
+        int retcode = wait();
 
         // Throw whatever information we have about child failure
-        throw CalledProcessError(err_buf);
+        throw CalledProcessError(err_buf, retcode);
       }
     } catch (std::exception& exp) {
       stream_.cleanup_fds();
@@ -1526,7 +1822,7 @@ namespace detail {
   }
 
   inline void ArgumentDeducer::set_option(cwd&& cwdir) {
-    popen_->cwd_ = std::move(cwdir.arg_value);
+    popen_->cwd_ = std::move(cwdir.cwd_);
   }
 
   inline void ArgumentDeducer::set_option(bufsize&& bsiz) {
@@ -1582,7 +1878,7 @@ namespace detail {
 
 
   inline void Child::execute_child() {
-#ifndef _MSC_VER
+#ifndef __USING_WINDOWS__
     int sys_ret = -1;
     auto& stream = parent_->stream_;
 
@@ -1618,13 +1914,13 @@ namespace detail {
 
       // Close the duped descriptors
       if (stream.read_from_parent_ != -1 && stream.read_from_parent_ > 2)
-        close(stream.read_from_parent_);
+        subprocess_close(stream.read_from_parent_);
 
       if (stream.write_to_parent_ != -1 && stream.write_to_parent_ > 2)
-        close(stream.write_to_parent_);
+        subprocess_close(stream.write_to_parent_);
 
       if (stream.err_write_ != -1 && stream.err_write_ > 2)
-        close(stream.err_write_);
+        subprocess_close(stream.err_write_);
 
       // Close all the inherited fd's except the error write pipe
       if (parent_->close_fds_) {
@@ -1633,7 +1929,7 @@ namespace detail {
 
         for (int i = 3; i < max_fd; i++) {
           if (i == err_wr_pipe_) continue;
-          close(i);
+          subprocess_close(i);
         }
       }
 
@@ -1670,30 +1966,29 @@ namespace detail {
       std::string err_msg(exp.what());
       //ATTN: Can we do something on error here ?
       util::write_n(err_wr_pipe_, err_msg.c_str(), err_msg.length());
-      throw;
     }
 
     // Calling application would not get this
     // exit failure
-    exit (EXIT_FAILURE);
+    _exit (EXIT_FAILURE);
 #endif
   }
 
 
   inline void Streams::setup_comm_channels()
   {
-#ifdef _MSC_VER
+#ifdef __USING_WINDOWS__
     util::configure_pipe(&this->g_hChildStd_IN_Rd, &this->g_hChildStd_IN_Wr, &this->g_hChildStd_IN_Wr);
     this->input(util::file_from_handle(this->g_hChildStd_IN_Wr, "w"));
-    this->write_to_child_ = _fileno(this->input());
+    this->write_to_child_ = subprocess_fileno(this->input());
 
     util::configure_pipe(&this->g_hChildStd_OUT_Rd, &this->g_hChildStd_OUT_Wr, &this->g_hChildStd_OUT_Rd);
     this->output(util::file_from_handle(this->g_hChildStd_OUT_Rd, "r"));
-    this->read_from_child_ = _fileno(this->output());
+    this->read_from_child_ = subprocess_fileno(this->output());
 
     util::configure_pipe(&this->g_hChildStd_ERR_Rd, &this->g_hChildStd_ERR_Wr, &this->g_hChildStd_ERR_Rd);
     this->error(util::file_from_handle(this->g_hChildStd_ERR_Rd, "r"));
-    this->err_read_ = _fileno(this->error());
+    this->err_read_ = subprocess_fileno(this->error());
 #else
 
     if (write_to_child_ != -1)  input(fdopen(write_to_child_, "wb"));
@@ -1860,9 +2155,9 @@ namespace detail
     static_assert(!detail::has_type<output, detail::param_pack<Args...>>::value, "output not allowed in args");
     auto p = Popen(std::forward<F>(farg), std::forward<Args>(args)..., output{PIPE});
     auto res = p.communicate();
-    auto retcode = p.poll();
+    auto retcode = p.retcode();
     if (retcode > 0) {
-      throw CalledProcessError("Command failed : Non zero retcode");
+      throw CalledProcessError("Command failed : Non zero retcode", retcode);
     }
     return std::move(res.first);
   }
@@ -1895,7 +2190,7 @@ namespace detail
 }
 
 /*-----------------------------------------------------------
- *        CONVIENIENCE FUNCTIONS
+ *        CONVENIENCE FUNCTIONS
  *-----------------------------------------------------------
  */
 
@@ -1915,6 +2210,12 @@ template<typename... Args>
 int call(const std::string& arg, Args&&... args)
 {
   return (detail::call_impl(arg, std::forward<Args>(args)...));
+}
+
+template <typename... Args>
+int call(std::vector<std::string> plist, Args &&... args)
+{
+  return (detail::call_impl(plist, std::forward<Args>(args)...));
 }
 
 
