@@ -192,7 +192,7 @@ public:
                 beginLine, beginCol, endLine, endCol,
                 hashHex
             );
-            
+
             InstrumentationTask taskLeft
             {
                 .line = beginLine,
@@ -475,6 +475,19 @@ public:
         }
         return true;
     }
+
+    struct ConditionalTag
+    {
+        bool hayroll = true;
+        bool begin;
+        std::string astKind;
+        bool isLvalue;
+        std::string locBegin;
+        std::string locEnd;
+        std::string cuLnColBegin;
+        std::string cuLnColEnd;
+        std::string premise;
+    };
 
     // Tags the srcStr (C source code at compilation unit level) with the instrumentation tasks collected from
     // 1. invocations: the MakiInvocationSummary vector
