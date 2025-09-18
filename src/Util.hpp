@@ -38,7 +38,7 @@ struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 
-void assertOrStackTraceImpl(bool condition, const char * spelling)
+void assertWithTraceImpl(bool condition, const char * spelling)
 {
     if (!condition)
     {
@@ -50,7 +50,7 @@ void assertOrStackTraceImpl(bool condition, const char * spelling)
     }
 }
 
-#define assertOrStackTrace(cond) assertOrStackTraceImpl((cond), #cond)
+#define assertWithTrace(cond) assertWithTraceImpl((cond), #cond)
 
 std::string loadFileToString(const std::filesystem::path & path)
 {
@@ -488,7 +488,7 @@ z3::expr simplifyOrOfAnd(const z3::expr & expr)
 // Canonicalizes the filename.
 std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view loc)
 {
-    assertOrStackTrace(!loc.empty());
+    assertWithTrace(!loc.empty());
 
     std::string_view pathStr;
     int line;

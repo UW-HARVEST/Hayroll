@@ -1157,7 +1157,7 @@ std::size_t Hayroll::TSNode::Hasher::operator()(const TSNode & node) const noexc
 
 void TSNode::assertNonNull() const
 {
-    assertOrStackTrace(!isNull());
+    assertWithTrace(!isNull());
 }
 
 

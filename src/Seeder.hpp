@@ -49,60 +49,35 @@ public:
         }
     };
 
-    // InvocationTag structure to be serialized and instrumented into C code
-    // Contains necessary information for Hayroll Reaper on the Rust side to reconstruct macros
-    struct InvocationTag
-    {
-        bool hayroll = true;
-        bool begin;
-        bool isArg;
-        std::vector<std::string> argNames;
-        std::string astKind;
-        bool isLvalue;
-        std::string name;
-        std::string locBegin; // For invocation: invocation begin; for arg: arg begin
-        std::string locEnd;   // For invocation: invocation end; for arg: arg end
-        std::string cuLnColBegin; // Loc in the CU file, without filename (only "l:c")
-        std::string cuLnColEnd;
-        std::string locRefBegin; // For invocation: definition begin; for arg: invocation begin
-
-        bool canBeFn;
-
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(InvocationTag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
-                                       cuLnColBegin, cuLnColEnd, locRefBegin, canBeFn);
-
-        // Escape the JSON string to make it a valid C string that embeds into C code
-        std::string stringLiteral() const
-        {
-            json j = *this;
-            return "\"" + escapeString(j.dump()) + "\"";
-        }
-    };
-
     // Build InstrumentationTasks based on AST kind, lvalue-ness, insertion positions, and tag string literals
     // This function encapsulates the pure string-edit generation logic and does not depend on other InvocationTag fields.
     static std::list<InstrumentationTask> genInstrumentationTasks
     (
         std::string_view astKind,
-        bool isLvalue,
+        std::optional<bool> isLvalue,
         int beginLine,
         int beginCol,
         int endLine,
         int endCol,
         std::string_view tagBeginLiteral,
-        std::string_view tagEndLiteral,
+        std::optional<std::string_view> tagEndLiteral,
         std::string_view name,
         std::string_view spelling,
         int priorityLeft
     )
     {
+        // Data validation
+        assertWithTrace(!astKind.empty());
+        assertWithTrace((astKind == "Expr") == isLvalue.has_value());
+        assertWithTrace((astKind == "Stmt" || astKind == "Stmts") == tagEndLiteral.has_value());
+
         int priorityRight = -priorityLeft;
 
         std::list<InstrumentationTask> tasks;
 
         if (astKind == "Expr")
         {
-            if (isLvalue)
+            if (isLvalue.value())
             {
                 // Template:
                 // (*((*tagBegin)?(&(ORIGINAL_INVOCATION)):((__typeof__(spelling)*)(0))))
@@ -194,7 +169,7 @@ public:
                 (
                     std::stringstream()
                     << ";*"
-                    << tagEndLiteral
+                    << tagEndLiteral.value()
                     << ";}"
                 ).str(),
                 .priority = priorityRight
@@ -224,10 +199,41 @@ public:
             tasks.push_back(taskLeft);
             // Only one tag per declaration(s).
         }
-        else assert(false);
+        // else ignore unknown AST kinds
 
         return tasks;
     }
+
+
+    // InvocationTag structure to be serialized and instrumented into C code
+    // Contains necessary information for Hayroll Reaper on the Rust side to reconstruct macros
+    struct InvocationTag
+    {
+        bool hayroll = true;
+        bool begin;
+        bool isArg;
+        std::vector<std::string> argNames;
+        std::string astKind;
+        bool isLvalue;
+        std::string name;
+        std::string locBegin; // For invocation: invocation begin; for arg: arg begin
+        std::string locEnd;   // For invocation: invocation end; for arg: arg end
+        std::string cuLnColBegin; // Loc in the CU file, without filename (only "l:c")
+        std::string cuLnColEnd;
+        std::string locRefBegin; // For invocation: definition begin; for arg: invocation begin
+
+        bool canBeFn;
+
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(InvocationTag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
+                                       cuLnColBegin, cuLnColEnd, locRefBegin, canBeFn);
+
+        // Escape the JSON string to make it a valid C string that embeds into C code
+        std::string stringLiteral() const
+        {
+            json j = *this;
+            return "\"" + escapeString(j.dump()) + "\"";
+        }
+    };
 
     // Generate instrumentation tasks based on the provided parameters
     static std::list<InstrumentationTask> genInvocationInstrumentationTasks
@@ -288,13 +294,13 @@ public:
         return genInstrumentationTasks
         (
             astKind,
-            isLvalue,
+            astKind == "Expr" ? std::optional(isLvalue) : std::nullopt,
             line,
             col,
             lineEnd,
             colEnd,
             tagBegin.stringLiteral(),
-            tagEnd.stringLiteral(),
+            (astKind == "Stmt" || astKind == "Stmts") ? std::optional(tagEnd.stringLiteral()) : std::nullopt,
             name,
             spelling,
             1 // priorityLeft: prefer inside
