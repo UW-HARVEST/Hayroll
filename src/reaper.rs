@@ -1013,7 +1013,7 @@ fn main() -> Result<()> {
                     let tag: serde_json::Result<value::Value> = serde_json::from_str(&content);
                     trace!(byte_string = %content, tag = ?tag, "Byte String parsed");
                     if let Ok(tag) = tag {
-                        if tag["hayroll"] == true {
+                        if tag["hayroll"] == "invocation" {
                             return Some(HayrollTag {
                                 literal: ast::Literal::cast(element.parent()?)?,
                                 tag,

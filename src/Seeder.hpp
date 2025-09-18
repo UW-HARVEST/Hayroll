@@ -221,7 +221,7 @@ public:
     // Contains necessary information for Hayroll Reaper on the Rust side to reconstruct macros
     struct InvocationTag
     {
-        bool hayroll = true;
+        const std::string_view hayroll = "invocation";
         bool begin;
         bool isArg;
         std::vector<std::string> argNames;
@@ -236,8 +236,12 @@ public:
 
         bool canBeFn;
 
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(InvocationTag, hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
-                                       cuLnColBegin, cuLnColEnd, locRefBegin, canBeFn);
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_ONLY_SERIALIZE
+        (
+            InvocationTag,
+            hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
+            cuLnColBegin, cuLnColEnd, locRefBegin, canBeFn
+        );
 
         // Escape the JSON string to make it a valid C string that embeds into C code
         std::string stringLiteral() const
@@ -478,7 +482,7 @@ public:
 
     struct ConditionalTag
     {
-        bool hayroll = true;
+        const std::string_view hayroll = "conditional";
         bool begin;
         std::string astKind;
         bool isLvalue;
@@ -486,7 +490,14 @@ public:
         std::string locEnd;
         std::string cuLnColBegin;
         std::string cuLnColEnd;
+        std::string locRefBegin; // Parent AST node location, for unifying same-slot expressions. This is not sound for mult-ary operators.
         std::string premise;
+
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_ONLY_SERIALIZE
+        (
+            ConditionalTag,
+            hayroll, begin, astKind, isLvalue, locBegin, locEnd, cuLnColBegin, cuLnColEnd, locRefBegin, premise
+        )
     };
 
     // Tags the srcStr (C source code at compilation unit level) with the instrumentation tasks collected from
