@@ -398,31 +398,6 @@ public:
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        // Skip instrumentation for system includes
-        {
-            auto [path, line, col] = parseLocation(inv.InvocationLocation);
-            auto [locRefPath, locRefLine, locRefCol] = parseLocation(inv.DefinitionLocation);
-            assert(locRefPath == path); // Should all be the only CU file
-    
-            // Map the compilation unit line numbers back to the source file line numbers
-            auto [includeTree, srcLine] = inverseLineMap.at(line);
-            auto [locRefIncludeTree, locRefSrcLine] = inverseLineMap.at(locRefLine);
-            
-            if (!includeTree || includeTree->isSystemInclude || !locRefIncludeTree || locRefIncludeTree->isSystemInclude)
-            {
-                // Either the expansion or the definition of this macro is
-                // in a file that was concretely executed by Hayroll Pioneer.
-                // We don't instrument this code section.
-                // This may result in standard library macros not being instrumented.
-                SPDLOG_TRACE
-                (
-                    "Skipping instrumentation for {}: {}:{} (no include tree)",
-                    inv.Name, path.string(), srcLine
-                );
-                return {};
-            }
-        }
-
         std::list<InstrumentationTask> tasks;
         for (const MakiArgSummary & arg : inv.Args)
         {
@@ -455,9 +430,19 @@ public:
         return tasks;
     }
 
+    // static std::list<InstrumentationTask> collectConditionalInstrumentationTasks
+    // (
+    //     const MakiRangeSummary & range,
+    //     const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
+    // )
+
     // Check if the invocation info is valid and thus should be kept
     // Invalid cases: empty fields, invalid path, non-Expr/Stmt ASTKind
-    static bool keepInvocationInfo(const MakiInvocationSummary & invocation)
+    static bool dropInvocationSummary
+    (
+        const MakiInvocationSummary & invocation,
+        const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
+    )
     {
         if
         (
@@ -469,15 +454,31 @@ public:
             || invocation.InvocationLocationEnd.empty()
         )
         {
-            return false;
+            return true;
         }
         auto [path, line, col] = parseLocation(invocation.InvocationLocation);
         constexpr static std::string_view validASTKinds[] = {"Expr", "Stmt", "Stmts", "Decl", "Decls"};
         if (std::find(std::begin(validASTKinds), std::end(validASTKinds), invocation.ASTKind) == std::end(validASTKinds))
         {
-            return false;
+            return true;
         }
-        return true;
+        // System-include filtering using inverseLineMap
+        {
+            auto [locRefPath, locRefLine, locRefCol] = parseLocation(invocation.DefinitionLocation);
+            assert(locRefPath == path);
+            auto [includeTree, srcLine] = inverseLineMap.at(line);
+            auto [locRefIncludeTree, locRefSrcLine] = inverseLineMap.at(locRefLine);
+            if (!includeTree || includeTree->isSystemInclude || !locRefIncludeTree || locRefIncludeTree->isSystemInclude)
+            {
+                SPDLOG_TRACE
+                (
+                    "Skipping instrumentation for {}: {}:{} (no include tree)",
+                    invocation.Name, path.string(), srcLine
+                );
+                return true;
+            }
+        }
+        return false;
     }
 
     struct ConditionalTag
@@ -496,7 +497,8 @@ public:
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_ONLY_SERIALIZE
         (
             ConditionalTag,
-            hayroll, begin, astKind, isLvalue, locBegin, locEnd, cuLnColBegin, cuLnColEnd, locRefBegin, premise
+            hayroll, begin, astKind, isLvalue, locBegin, locEnd,
+            cuLnColBegin, cuLnColEnd, locRefBegin, premise
         )
     };
 
@@ -508,16 +510,16 @@ public:
     static std::string run
     (
         std::vector<Hayroll::MakiInvocationSummary> invocations,
-        const std::vector<Hayroll::MakiRangeSummary> & ranges,
+        std::vector<Hayroll::MakiRangeSummary> ranges,
         std::string_view srcStr,
         const std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> & lineMap,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
         // Remove invalid invocations (erase-remove idiom)
-        std::erase_if(invocations, [](const MakiInvocationSummary & inv)
+        std::erase_if(invocations, [&inverseLineMap](const MakiInvocationSummary & inv)
         {
-            return !keepInvocationInfo(inv);
+            return dropInvocationSummary(inv, inverseLineMap);
         });
 
         TextEditor srcEditor{srcStr};
@@ -550,6 +552,21 @@ public:
                 arg.Spelling = srcEditor.get(argLine, argCol, argColEnd - argCol);
                 arg.InvocationLocation = invocation.InvocationLocation;
             }
+        }
+
+        // Extract spelling for ranges
+        for (MakiRangeSummary & range : ranges)
+        {
+            auto [path, line, col] = parseLocation(range.Location);
+            auto [pathEnd, lineEnd, colEnd] = parseLocation(range.LocationEnd);
+            SPDLOG_TRACE
+            (
+                "Extracting spelling for range {} at {}: {}:{}-{}:{}",
+                range.Premise,
+                path.string(),
+                line, col, lineEnd, colEnd
+            );
+            range.Spelling = srcEditor.get(line, col, colEnd - col);
         }
 
         // Collect instrumentation tasks.

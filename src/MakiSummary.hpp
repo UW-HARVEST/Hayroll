@@ -35,10 +35,10 @@ struct MakiArgSummary
     std::string ActualArgLocEnd;
 
     // Later collected
-    std::string Spelling;
-    std::string InvocationLocation;
+    std::string Spelling = "";
+    std::string InvocationLocation = "";
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT
     (
         MakiArgSummary,
         Name,
@@ -48,7 +48,9 @@ struct MakiArgSummary
         ExpandedWhereAddressableValueRequired,
         ExpandedWhereModifiableValueRequired,
         ActualArgLocBegin,
-        ActualArgLocEnd
+        ActualArgLocEnd,
+        Spelling,
+        InvocationLocation
     )
 };
 
@@ -110,9 +112,9 @@ struct MakiInvocationSummary
     std::vector<MakiArgSummary> Args;
 
     // Later collected
-    std::string Spelling;
+    std::string Spelling = "";
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT
     (
         MakiInvocationSummary,
         Name,
@@ -163,7 +165,8 @@ struct MakiInvocationSummary
         ReturnType,
         IsLValue,
         InvocationLocationEnd,
-        Args
+        Args,
+        Spelling
     )
 
     // Get the filename from the definition location
@@ -435,7 +438,14 @@ struct MakiRangeSummary
     bool IsPlaceholder;
     std::string Premise;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(MakiRangeSummary, Location, LocationEnd, ASTKind, IsLValue, ParentLocation, IsPlaceholder, Premise)
+    // Later collected
+    std::string Spelling = "";
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT
+    (
+        MakiRangeSummary,
+        Location, LocationEnd, ASTKind, IsLValue, ParentLocation, IsPlaceholder, Premise, Spelling
+    )
 
     // Take all range summaries generated from different DefineSets
     // For each item in a range summary vector,
