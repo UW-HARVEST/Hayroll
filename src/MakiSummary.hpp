@@ -430,7 +430,7 @@ struct MakiRangeSummary
     std::string Location;
     std::string LocationEnd;
     std::string ASTKind;
-    std::string IsLValue;
+    bool IsLValue;
     std::string ParentLocation;
     bool IsPlaceholder;
     std::string Premise;
