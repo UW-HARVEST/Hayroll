@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <format>
 #include <algorithm>
+#include <cstdint>
 
 #include <spdlog/spdlog.h>
 #include "json.hpp"
@@ -61,7 +62,6 @@ public:
         int endCol,
         std::string_view tagBeginLiteral,
         std::optional<std::string_view> tagEndLiteral,
-        std::string_view name,
         std::string_view spelling,
         int priorityLeft
     )
@@ -180,7 +180,19 @@ public:
         else if (astKind == "Decl" || astKind == "Decls")
         {
             // Template:
-            // ORIGINAL_INVOCATION const char * HAYROLL_TAG_FOR_<ORIGINAL_INVOCATION> = tagBegin;\n
+            // ORIGINAL_INVOCATION const char * HAYROLL_TAG_FOR_<uid> = tagBegin;\n
+            
+            // generate uid from locations and a short hash of tagBeginLiteral
+            // Use lower 32 bits of std::hash and hex-encode to keep it compact
+            uint32_t hash32 = static_cast<uint32_t>(std::hash<std::string_view>{}(tagBeginLiteral));
+            std::string hashHex = std::format("{:08x}", hash32);
+            std::string uid = std::format
+            (
+                "{}_{}_{}_{}_{}",
+                beginLine, beginCol, endLine, endCol,
+                hashHex
+            );
+            
             InstrumentationTask taskLeft
             {
                 .line = beginLine,
@@ -189,7 +201,7 @@ public:
                 (
                     std::stringstream()
                     << " const char * HAYROLL_TAG_FOR_"
-                    << name
+                    << uid
                     << " = "
                     << tagBeginLiteral
                     << ";"
@@ -301,7 +313,6 @@ public:
             colEnd,
             tagBegin.stringLiteral(),
             (astKind == "Stmt" || astKind == "Stmts") ? std::optional(tagEnd.stringLiteral()) : std::nullopt,
-            name,
             spelling,
             1 // priorityLeft: prefer inside
         );
