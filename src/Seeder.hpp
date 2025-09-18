@@ -50,8 +50,21 @@ public:
         }
     };
 
+    // CRTP mixin that provides stringLiteral() for any type that can be serialized by nlohmann::json
+    // Requirement: Derived must have an ADL-visible to_json(json&, const Derived&) (provided by NLOHMANN_* macros)
+    template <typename Derived>
+    struct JsonStringLiteralMixin
+    {
+        // Escape the JSON string to make it a valid C string that embeds into C code
+        std::string stringLiteral() const
+        {
+            const Derived & self = static_cast<const Derived &>(*this);
+            json j = self; // triggers ADL to_json for Derived
+            return "\"" + escapeString(j.dump()) + "\"";
+        }
+    };
+
     // Build InstrumentationTasks based on AST kind, lvalue-ness, insertion positions, and tag string literals
-    // This function encapsulates the pure string-edit generation logic and does not depend on other InvocationTag fields.
     static std::list<InstrumentationTask> genInstrumentationTasks
     (
         std::string_view astKind,
@@ -219,7 +232,7 @@ public:
 
     // InvocationTag structure to be serialized and instrumented into C code
     // Contains necessary information for Hayroll Reaper on the Rust side to reconstruct macros
-    struct InvocationTag
+    struct InvocationTag : JsonStringLiteralMixin<InvocationTag>
     {
         const std::string_view hayroll = "invocation";
         bool begin;
@@ -242,13 +255,6 @@ public:
             hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
             cuLnColBegin, cuLnColEnd, locRefBegin, canBeFn
         );
-
-        // Escape the JSON string to make it a valid C string that embeds into C code
-        std::string stringLiteral() const
-        {
-            json j = *this;
-            return "\"" + escapeString(j.dump()) + "\"";
-        }
     };
 
     // Generate instrumentation tasks based on the provided parameters
@@ -523,7 +529,7 @@ public:
         return false;
     }
 
-    struct ConditionalTag
+    struct ConditionalTag : JsonStringLiteralMixin<ConditionalTag>
     {
         const std::string_view hayroll = "conditional";
         bool begin;
@@ -542,13 +548,6 @@ public:
             hayroll, begin, astKind, isLvalue, locBegin, locEnd,
             cuLnColBegin, cuLnColEnd, locRefBegin, premise
         );
-
-        // Escape the JSON string to make it a valid C string that embeds into C code
-        std::string stringLiteral() const
-        {
-            json j = *this;
-            return "\"" + escapeString(j.dump()) + "\"";
-        }
     };
 
     static bool dropRangeSummary
