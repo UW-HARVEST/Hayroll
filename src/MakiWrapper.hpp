@@ -17,18 +17,24 @@
 namespace Hayroll
 {
 
+struct CodeRangeAnalysisTaskExtraInfo
+{
+    std::string premise; // e.g. "defNOTHING"
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeRangeAnalysisTaskExtraInfo, premise)
+};
+
 // Extra code ranges to require Maki to analyze.
 // Used for conditional compilation.
 struct CodeRangeAnalysisTask
 {
-    std::string name;
     int beginLine;
     int beginCol;
     int endLine;
     int endCol;
-    std::string premise;
+    CodeRangeAnalysisTaskExtraInfo extraInfo; // e.g. {"premise": "..."}
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeRangeAnalysisTask, name, beginLine, beginCol, endLine, endCol, premise)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeRangeAnalysisTask, beginLine, beginCol, endLine, endCol, extraInfo)
 };
 
 class MakiWrapper

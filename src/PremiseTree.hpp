@@ -309,12 +309,14 @@ struct PremiseTree
             const std::vector<int> & lineNumbers = lineMap.at(includeTree);
             CodeRangeAnalysisTask task =
             {
-                .name = "PremiseTree-generated",
                 .beginLine = lineNumbers.at(tsNode.startPoint().row + 1),
                 .beginCol = static_cast<int>(tsNode.startPoint().column) + 1,
                 .endLine = lineNumbers.at(tsNode.endPoint().row + 1),
                 .endCol = static_cast<int>(tsNode.endPoint().column) + 1,
-                .premise = premiseNode->premise.to_string()
+                .extraInfo = 
+                {
+                    .premise = premiseNode->premise.to_string()
+                }
             };
             tasks.push_back(task);
         }

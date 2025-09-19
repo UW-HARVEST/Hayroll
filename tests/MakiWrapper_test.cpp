@@ -47,12 +47,14 @@ int main(int argc, char **argv)
 
     CodeRangeAnalysisTask codeRangeAnalysisTask = 
     {
-        .name = "Test Range",
         .beginLine = 7193,
         .beginCol = 5,
         .endLine = 7193,
         .endCol = 19,
-        .premise = "defNOTHING"
+        .extraInfo = 
+        {
+            .premise = "defNOTHING"
+        }
     };
     
     std::vector<CompileCommand> compileCommands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);

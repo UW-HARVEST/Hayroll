@@ -465,7 +465,7 @@ public:
             .cuLnColEnd = cuLnColEnd,
             .locRefBegin = locRefBegin,
             .isPlaceholder = range.IsPlaceholder,
-            .premise = range.Premise
+            .premise = range.ExtraInfo.premise
         };
         ConditionalTag tagEnd = tagBegin;
         tagEnd.begin = false;
@@ -563,7 +563,7 @@ public:
             range.Location.empty()
             || range.LocationEnd.empty()
             || range.ASTKind.empty()
-            || range.Premise.empty()
+            || range.ExtraInfo.premise.empty()
         )
         {
             return true;
@@ -582,7 +582,7 @@ public:
                 SPDLOG_TRACE
                 (
                     "Skipping instrumentation for conditional premise {} at {}: {} (no include tree)",
-                    range.Premise, path.string(), srcLine
+                    range.ExtraInfo.premise, path.string(), srcLine
                 );
                 return true;
             }
@@ -654,7 +654,7 @@ public:
             SPDLOG_TRACE
             (
                 "Extracting spelling for range {} at {}: {}:{}-{}:{}",
-                range.Premise,
+                range.ExtraInfo.premise,
                 pathBegin.string(),
                 lineBegin, colBegin, lineEnd, colEnd
             );

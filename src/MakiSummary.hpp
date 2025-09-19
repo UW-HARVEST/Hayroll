@@ -15,6 +15,7 @@
 
 #include "IncludeTree.hpp"
 #include "LineMatcher.hpp"
+#include "MakiWrapper.hpp"
 
 #include "json.hpp"
 
@@ -435,16 +436,17 @@ struct MakiRangeSummary
     std::string ASTKind;
     bool IsLValue;
     std::string ParentLocation;
-    bool IsPlaceholder;
-    std::string Premise;
-
+    CodeRangeAnalysisTaskExtraInfo ExtraInfo;
+    
     // Later collected
+    bool IsPlaceholder = false;
     std::string Spelling = "";
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT
     (
         MakiRangeSummary,
-        Location, LocationEnd, ASTKind, IsLValue, ParentLocation, IsPlaceholder, Premise, Spelling
+        Location, LocationEnd, ASTKind, IsLValue, ParentLocation, ExtraInfo,
+        IsPlaceholder, Spelling
     )
 
     // Take all range summaries generated from different DefineSets
