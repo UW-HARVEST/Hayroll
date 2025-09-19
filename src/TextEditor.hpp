@@ -17,8 +17,8 @@ class TextEditor
 public:
     enum EditType
     {
-        Insert,
-        Modify
+        Modify = 0,
+        Insert = 1
     };
 
     struct Edit
@@ -27,7 +27,7 @@ public:
         std::size_t ln;
         std::size_t col;
         std::string content;
-        int priority; // Lower value means before
+        int priority; // Lower value means lefter
 
         Edit(EditType type, std::size_t ln, std::size_t col, std::string_view content, int priority = 0)
             : type(type), ln(ln), col(col), content(content), priority(priority)
@@ -36,10 +36,11 @@ public:
 
         bool operator<(const Edit & other) const
         {
-            if (ln != other.ln) return ln < other.ln;
-            if (col != other.col) return col < other.col;
+            // Modify before Insert
             if (type != other.type) return type < other.type;
-            return priority < other.priority;
+            if (ln != other.ln) return ln > other.ln; // Later lines first
+            if (col != other.col) return col > other.col; // Later columns first
+            return priority > other.priority; // Lower value means lefter (executed later)
         }
     };
 
@@ -117,8 +118,7 @@ public:
         // Sort edits by line and column
         std::sort(edits.begin(), edits.end());
 
-        // Apply last edit first to avoid conflicts
-        for (const Edit & edit : std::views::reverse(edits))
+        for (const Edit & edit : edits)
         {
             switch (edit.type)
             {
