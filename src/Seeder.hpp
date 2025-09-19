@@ -464,6 +464,7 @@ public:
             .cuLnColBegin = cuLnColBegin,
             .cuLnColEnd = cuLnColEnd,
             .locRefBegin = locRefBegin,
+            .isPlaceholder = range.IsPlaceholder,
             .premise = range.Premise
         };
         ConditionalTag tagEnd = tagBegin;
@@ -540,13 +541,14 @@ public:
         std::string cuLnColBegin;
         std::string cuLnColEnd;
         std::string locRefBegin; // Parent AST node location, for unifying same-slot expressions. This is not sound for mult-ary operators.
+        bool isPlaceholder;
         std::string premise;
 
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_ONLY_SERIALIZE
         (
             ConditionalTag,
             hayroll, begin, astKind, isLvalue, locBegin, locEnd,
-            cuLnColBegin, cuLnColEnd, locRefBegin, premise
+            cuLnColBegin, cuLnColEnd, locRefBegin, isPlaceholder, premise
         );
     };
 
