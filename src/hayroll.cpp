@@ -251,7 +251,6 @@ int main(const int argc, const char* argv[])
                     // This is because CU line numbers may differ with different DefineSets,
                     // which affects LineMatcher and CodeRangeAnalysisTasks generation.
                     std::vector<std::string> cuStrs;
-                    std::vector<std::string> cuNoLmStrs;
                     std::vector<std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>>> lineMaps;
                     std::vector<std::vector<std::pair<Hayroll::IncludeTreePtr, int>>> inverseLineMaps;
                     std::vector<std::string> cpp2cStrs;
@@ -263,9 +262,7 @@ int main(const int argc, const char* argv[])
                         CompileCommand commandWithDefineSet = commandsWithDefSets[i];
 
                         std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(commandWithDefineSet);
-                        std::string cuNoLmStr = LinemarkerEraser::run(cuStr);
                         cuStrs.push_back(cuStr);
-                        cuNoLmStrs.push_back(cuNoLmStr);
                         // Save to filename.{i}.cu.c
                         {
                             CompileCommand outputCommand = commandWithDefineSet
@@ -319,12 +316,12 @@ int main(const int argc, const char* argv[])
                     for (size_t i = 0; i < defineSets.size(); ++i)
                     {
                         // Hayroll Seeder
-                        // cpp2cInvocations + cpp2cRangesCompleted + cuNoLmStr + lineMap + inverseLineMap --Seeder-> seeded
+                        // cpp2cInvocations + cpp2cRangesCompleted + cuStrs + lineMap + inverseLineMap --Seeder-> seeded
                         std::string cuSeededStr = Seeder::run
                         (
                             cpp2cInvocations[i],
                             cpp2cRangesCompleted[i],
-                            cuNoLmStrs[i],
+                            cuStrs[i],
                             lineMaps[i],
                             inverseLineMaps[i]
                         );

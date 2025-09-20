@@ -251,7 +251,11 @@ public:
             tasks.push_back(taskLeft);
             // Only one tag per declaration(s).
         }
-        else assertWithTrace(false && "Unsupported AST kind");
+        else
+        {
+            SPDLOG_ERROR("Unsupported AST kind for instrumentation: {}", astKind);
+            assertWithTrace(false);
+        }
 
         return tasks;
     }
@@ -537,6 +541,29 @@ public:
         if (std::find(std::begin(validASTKinds), std::end(validASTKinds), invocation.ASTKind) == std::end(validASTKinds))
         {
             return true;
+        }
+        for (const MakiArgSummary & arg : invocation.Args)
+        {
+            if
+            (
+                arg.ASTKind.empty()
+                || arg.Name.empty()
+                || arg.ActualArgLocBegin.empty()
+                || arg.ActualArgLocEnd.empty()
+            )
+            {
+                return true;
+            }
+            auto [argPath, argLine, argCol] = parseLocation(arg.ActualArgLocBegin);
+            if (argPath != path)
+            {
+                return true;
+            }
+            auto [argPathEnd, argLineEnd, argColEnd] = parseLocation(arg.ActualArgLocEnd);
+            if (argPathEnd != path)
+            {
+                return true;
+            }
         }
         // System-include filtering using inverseLineMap
         {
