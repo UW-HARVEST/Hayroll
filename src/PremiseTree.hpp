@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <list>
 #include <queue>
+#include <ranges>
+#include <algorithm>
 
 #include <z3++.h>
 
@@ -285,6 +287,7 @@ struct PremiseTree
         const std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> & lineMap
     ) const
     {
+        CPreproc lang = CPreproc();
         std::vector<CodeRangeAnalysisTask> tasks;
         for (const PremiseTree * premiseNode : getDescendantsPreOrder())
         {
@@ -309,8 +312,37 @@ struct PremiseTree
             }
             const std::vector<int> & lineNumbers = lineMap.at(includeTree);
 
+            // This tsNode must be a block_items node
+            // Find in all its children the c_tokens nodes
+            // If it does not have any c_tokens children, skip it.
+            // Otherwise, use the beginLoc of the first c_tokens child and the endLoc of the last c_tokens child.
+            assert(tsNode.isSymbol(lang.block_items_s));
+            auto cTokenView =
+                std::views::all(tsNode.iterateChildren())
+                | std::views::filter([&lang](const TSNode & node)
+                    {
+                        return node.isSymbol(lang.c_tokens_s);
+                    });
+            std::vector<TSNode> cTokenNodes;
+            std::ranges::copy(cTokenView, std::back_inserter(cTokenNodes));
+            if (cTokenNodes.empty())
+            {
+                SPDLOG_TRACE
+                (
+                    "No c_tokens child found in block_items node at {}. Skipping premise {}.",
+                    programPoint.toString(),
+                    premiseNode->premise.to_string()
+                );
+                continue;
+            }
+            const TSNode & firstCToken = cTokenNodes.front();
+            const TSNode & lastCToken = cTokenNodes.back();
+            int beginLine = lineNumbers.at(firstCToken.startPoint().row + 1);
+            int beginCol = static_cast<int>(firstCToken.startPoint().column) + 1;
+            int endLine = lineNumbers.at(lastCToken.endPoint().row + 1);
+            int endCol = static_cast<int>(lastCToken.endPoint().column) + 1;
+
             // Find the nearest ancestor node that is a preproc_if/preproc_ifdef/preproc_ifndef node
-            CPreproc lang = CPreproc();
             TSNode ifNode = tsNode;
             while 
             (
@@ -328,10 +360,10 @@ struct PremiseTree
 
             CodeRangeAnalysisTask task =
             {
-                .beginLine = lineNumbers.at(tsNode.startPoint().row + 1),
-                .beginCol = static_cast<int>(tsNode.startPoint().column) + 1,
-                .endLine = lineNumbers.at(tsNode.endPoint().row + 1),
-                .endCol = static_cast<int>(tsNode.endPoint().column) + 1,
+                .beginLine = beginLine,
+                .beginCol = beginCol,
+                .endLine = endLine,
+                .endCol = endCol,
                 .extraInfo =
                 {
                     .premise = premiseNode->premise.to_string(),
