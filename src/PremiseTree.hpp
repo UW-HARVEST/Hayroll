@@ -14,6 +14,7 @@
 #include "Util.hpp"
 #include "IncludeTree.hpp"
 #include "TreeSitter.hpp"
+#include "TreeSitterCPreproc.hpp"
 #include "MakiWrapper.hpp"
 #include "DefineSet.hpp"
 
@@ -307,15 +308,35 @@ struct PremiseTree
                 continue; // Skip if the IncludeTree is not in the lineMap
             }
             const std::vector<int> & lineNumbers = lineMap.at(includeTree);
+
+            // Find the nearest ancestor node that is a preproc_if/preproc_ifdef/preproc_ifndef node
+            CPreproc lang = CPreproc();
+            TSNode ifNode = tsNode;
+            while 
+            (
+                !ifNode.isSymbol(lang.preproc_if_s) &&
+                !ifNode.isSymbol(lang.preproc_ifdef_s) &&
+                !ifNode.isSymbol(lang.preproc_ifndef_s)
+            )
+            {
+                ifNode = ifNode.parent();
+            }
+            int ifBeginLine = lineNumbers.at(ifNode.startPoint().row + 1);
+            int ifBeginCol = static_cast<int>(ifNode.startPoint().column) + 1;
+            int ifEndLine = lineNumbers.at(ifNode.endPoint().row + 1);
+            int ifEndCol = static_cast<int>(ifNode.endPoint().column) + 1;
+
             CodeRangeAnalysisTask task =
             {
                 .beginLine = lineNumbers.at(tsNode.startPoint().row + 1),
                 .beginCol = static_cast<int>(tsNode.startPoint().column) + 1,
                 .endLine = lineNumbers.at(tsNode.endPoint().row + 1),
                 .endCol = static_cast<int>(tsNode.endPoint().column) + 1,
-                .extraInfo = 
+                .extraInfo =
                 {
-                    .premise = premiseNode->premise.to_string()
+                    .premise = premiseNode->premise.to_string(),
+                    .ifGroupLnColBegin = std::format("{}:{}", ifBeginLine, ifBeginCol),
+                    .ifGroupLnColEnd = std::format("{}:{}", ifEndLine, ifEndCol)
                 }
             };
             tasks.push_back(task);

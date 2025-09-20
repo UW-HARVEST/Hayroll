@@ -178,6 +178,27 @@ public:
         return {lineMap, inverseLineMap};
     }
 
+    static std::string cuLnColToSrcLoc
+    (
+        std::string_view cuLnCol,
+        const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
+    )
+    {
+        auto [cuLn, cuCol] = parseLnCol(cuLnCol);
+        if (cuLn >= inverseLineMap.size())
+        {
+            throw std::out_of_range(std::format
+            (
+                "Line out of range: target {}, limit {}",
+                cuLn, inverseLineMap.size()
+            ));
+        }
+        auto [includeTree, srcLine] = inverseLineMap.at(cuLn);
+        assert(includeTree); // Should not be in a concretely executed file
+        std::filesystem::path srcPath = includeTree->path;
+        return makeLocation(srcPath, srcLine, cuCol);
+    }
+
     static std::string cuLocToSrcLoc
     (
         std::string_view cuLoc, // e.g. "/path/to/file.cu.c:123:45"

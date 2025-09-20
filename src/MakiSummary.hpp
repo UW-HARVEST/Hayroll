@@ -431,24 +431,29 @@ struct MakiInvocationSummary
 
 struct MakiRangeSummary
 {
-    std::string Location;
-    std::string LocationEnd;
+    std::string Location; // cuLoc
+    std::string LocationEnd; // cuLoc
     std::string ASTKind;
     bool IsLValue;
-    std::string ParentLocation;
+    std::string ParentLocation; // srcLoc
     CodeRangeAnalysisTaskExtraInfo ExtraInfo;
     
-    // Later collected
+    // Later collected in complementRangeSummaries
     bool IsPlaceholder = false;
+    // For expr: ParentLocation; for stmt(s): ifGroupLocation; for decl(s): ifGroupLocation
+    std::string ReferenceLocation = ""; // srcLoc
+
+    // Later collected in Seeder
     std::string Spelling = "";
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT
     (
         MakiRangeSummary,
         Location, LocationEnd, ASTKind, IsLValue, ParentLocation, ExtraInfo,
-        IsPlaceholder, Spelling
+        IsPlaceholder, ReferenceLocation, Spelling
     )
 
+    // Complement summary vectors with other vectors of different DefineSets
     // Take all range summaries generated from different DefineSets
     // For each item in a range summary vector,
     // if its ASTKind is "" but other vectors have a non-empty ASTKind at the same IncludeTreePtr,
@@ -528,7 +533,7 @@ struct MakiRangeSummary
         }
 
         // Populate the complemented range summary vectors with extra Expr handling
-        std::vector<std::vector<MakiRangeSummary>> result;
+        std::vector<std::vector<MakiRangeSummary>> rangeSummaryVecsComplemented;
         for (const auto & [rangeSummaryVec, inverseLineMap] : std::views::zip(rangeSummaryVecs, inverseLineMaps))
         {
             std::vector<MakiRangeSummary> complementedVec;
@@ -550,11 +555,60 @@ struct MakiRangeSummary
                 complementedSummary.ASTKind = commonASTKind;
                 complementedSummary.IsPlaceholder = rangeSummary.ASTKind.empty();
                 complementedSummary.ParentLocation = commonParentSrcLoc;
+
+                if (commonASTKind == "Expr")
+                {
+                    // For Expr, ReferenceLocation is ParentLocation
+                    complementedSummary.ReferenceLocation = commonParentSrcLoc;
+                }
+                else if (commonASTKind == "Stmt" || commonASTKind == "Stmts" || commonASTKind == "Decl" || commonASTKind == "Decls")
+                {
+                    complementedSummary.ReferenceLocation = 
+                        LineMatcher::cuLnColToSrcLoc
+                        (
+                            complementedSummary.ExtraInfo.ifGroupLnColBegin,
+                            inverseLineMap
+                        );
+                }
+                else assert(false);
+
                 complementedVec.push_back(std::move(complementedSummary));
             }
-            result.push_back(std::move(complementedVec));
+            rangeSummaryVecsComplemented.push_back(std::move(complementedVec));
         }
-        return result;
+
+        // Group all complemented vectors by reference location
+        // For each group, if any vector has a non-placeholder item, remove all placeholder items
+        // if all items are placeholders, keep one and remove the rest
+        std::vector<std::vector<MakiRangeSummary>> rangeSummaryVecsFinal;
+        for (const std::vector<MakiRangeSummary> & vec : rangeSummaryVecsComplemented)
+        {
+            std::map<std::string, std::vector<MakiRangeSummary>> groupedByRefLoc;
+            for (const MakiRangeSummary & rangeSummary : vec)
+            {
+                groupedByRefLoc[rangeSummary.ReferenceLocation].push_back(rangeSummary);
+            }
+
+            std::vector<MakiRangeSummary> filteredVec;
+            for (const auto & [refLoc, group] : groupedByRefLoc)
+            {
+                bool anyNonPlaceholder = std::ranges::any_of(group, [](const MakiRangeSummary & r) { return !r.IsPlaceholder; });
+                if (anyNonPlaceholder)
+                {
+                    // Keep only non-placeholder items
+                    std::ranges::copy_if(group, std::back_inserter(filteredVec), [](const MakiRangeSummary & r) { return !r.IsPlaceholder; });
+                }
+                else
+                {
+                    // Keep one placeholder item
+                    filteredVec.push_back(group.front());
+                }
+            }
+
+            rangeSummaryVecsFinal.push_back(std::move(filteredVec));
+        }
+
+        return rangeSummaryVecsFinal;
     }
 };
 

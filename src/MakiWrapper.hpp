@@ -20,8 +20,10 @@ namespace Hayroll
 struct CodeRangeAnalysisTaskExtraInfo
 {
     std::string premise; // e.g. "defNOTHING"
+    std::string ifGroupLnColBegin; // cuLnCol
+    std::string ifGroupLnColEnd; // cuLnCol
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeRangeAnalysisTaskExtraInfo, premise)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(CodeRangeAnalysisTaskExtraInfo, premise, ifGroupLnColBegin, ifGroupLnColEnd)
 };
 
 // Extra code ranges to require Maki to analyze.

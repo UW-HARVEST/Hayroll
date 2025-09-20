@@ -31,7 +31,7 @@ public:
             std::size_t ln = node.startPoint().row + 1; // Convert to 1-based line number
             std::size_t col = node.startPoint().column + 1; // Convert to 1-based column number
             std::size_t length = node.length();
-            editor.erase(ln, col, length);
+            editor.erase(ln, col, ln, col + length);
         }
         return editor.commit();
     }

@@ -16,8 +16,8 @@ int main(int argc, char **argv)
     editor.insert(1, 1, "AAA");
     editor.insert(2, 8, "BBB");
     editor.modify(3, 3, "CCC");
-    editor.modify(5, 2, "DDD"); // Modify "ine" to spaces
-    editor.erase(1, 2, 3); // Erase "ine" from "Line 1"
+    editor.modify(5, 2, "DDD"); // Modify "ine" to "DDD"
+    editor.erase(1, 2, 1, 5); // Erase "ine-" to spaces
     std::string result = editor.commit();
 
     if (result == expected)

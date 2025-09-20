@@ -110,7 +110,7 @@ fn get_source_file(node: &impl ast::AstNode) -> ast::SourceFile {
     parent_until_kind::<ast::SourceFile>(node).unwrap()
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq)]
 struct LnCol {
     line: u32,
     col: u32,
@@ -126,6 +126,21 @@ impl LnCol {
         let line: u32 = parts.next().unwrap().parse().unwrap();
         let col: u32 = parts.next().unwrap().parse().unwrap();
         LnCol::new(line, col)
+    }
+
+    // Return true if this LnCol is within [start, end] using line/column containment semantics:
+    fn is_within(&self, range: &RangeInclusive<LnCol>) -> bool {
+        // Normalize order if caller passes reversed bounds
+        if self.line < range.start().line || self.line > range.end().line {
+            return false;
+        }
+        if self.line == range.start().line && self.col < range.start().col {
+            return false;
+        }
+        if self.line == range.end().line && self.col > range.end().col {
+            return false;
+        }
+        true
     }
 }
 
@@ -144,7 +159,7 @@ fn find_items_in_range(source_file: &ast::SourceFile, range: std::ops::RangeIncl
                             .map_or(false, |string| {
                                 let cu_loc = string.value();
                                 let loc = LnCol::from_cu_ln_col(&cu_loc.as_ref().unwrap());
-                                range.contains(&loc)
+                                loc.is_within(&range)
                             })
                     })
                 })
@@ -1184,7 +1199,9 @@ fn main() -> Result<()> {
                             print!("{:?}, ", item);
                         }
                         delayed_tasks.push(Box::new(move || {
-                            ted::remove_all_iter(items);
+                            for item in items {
+                                ted::remove(item);
+                            }
                             ted::insert_all(bot, vec![get_empty_line_element_mut(), macro_call_node]);
                         }));
                     }

@@ -484,6 +484,20 @@ z3::expr simplifyOrOfAnd(const z3::expr & expr)
     return expr3;
 }
 
+std::pair<int, int> parseLnCol(const std::string_view lnCol)
+{
+    size_t colonPos = lnCol.find(':');
+    if (colonPos == std::string_view::npos)
+    {
+        throw std::invalid_argument("Invalid line:col format (no colon)." + std::string(lnCol));
+    }
+
+    int line = std::stoi(std::string(lnCol.substr(0, colonPos)));
+    int col = std::stoi(std::string(lnCol.substr(colonPos + 1)));
+
+    return {line, col};
+}
+
 // Parse a location string in the format "path:line:col" into a tuple of (path, line, col).
 // Canonicalizes the filename.
 std::tuple<std::filesystem::path, int, int> parseLocation(const std::string_view loc)

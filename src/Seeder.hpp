@@ -34,14 +34,28 @@ public:
     // InstrumentationTask will be transformed into TextEditor edits
     struct InstrumentationTask
     {
-        int line;
+        int line; // if line == -1, append new line at the end of the file
         int col;
+        bool eraseOriginal; // Whether to erase the original code before inserting the instrumentation
+        int lineEnd; // Only for eraseOriginal tasks
+        int colEnd; // Only for eraseOriginal tasks
         std::string str;
         int priority; // Lower value means before
 
         void addToEditor(TextEditor & editor) const
         {
-            editor.insert(line, col, str, priority);
+            if (eraseOriginal)
+            {
+                editor.erase(line, col, lineEnd, colEnd, priority);
+            }
+            if (line == -1)
+            {
+                editor.append(str, priority);
+            }
+            else
+            {
+                editor.insert(line, col, str, priority);
+            }
         }
 
         std::string toString() const
@@ -73,6 +87,7 @@ public:
         int beginCol,
         int endLine,
         int endCol,
+        bool eraseOriginal,
         std::string_view tagBeginLiteral,
         std::optional<std::string_view> tagEndLiteral,
         std::string_view spelling,
@@ -98,6 +113,9 @@ public:
                 {
                     .line = beginLine,
                     .col = beginCol,
+                    .eraseOriginal = eraseOriginal,
+                    .lineEnd = endLine,
+                    .colEnd = endCol,
                     .str =
                     (
                         std::stringstream()
@@ -111,6 +129,7 @@ public:
                 {
                     .line = endLine,
                     .col = endCol,
+                    .eraseOriginal = false,
                     .str =
                     (
                         std::stringstream()
@@ -131,6 +150,9 @@ public:
                 {
                     .line = beginLine,
                     .col = beginCol,
+                    .eraseOriginal = eraseOriginal,
+                    .lineEnd = endLine,
+                    .colEnd = endCol,
                     .str =
                     (
                         std::stringstream()
@@ -144,6 +166,7 @@ public:
                 {
                     .line = endLine,
                     .col = endCol,
+                    .eraseOriginal = false,
                     .str =
                     (
                         std::stringstream()
@@ -165,6 +188,9 @@ public:
             {
                 .line = beginLine,
                 .col = beginCol,
+                .eraseOriginal = eraseOriginal,
+                .lineEnd = endLine,
+                .colEnd = endCol,
                 .str =
                 (
                     std::stringstream()
@@ -178,6 +204,7 @@ public:
             {
                 .line = endLine,
                 .col = endCol,
+                .eraseOriginal = false,
                 .str =
                 (
                     std::stringstream()
@@ -208,8 +235,8 @@ public:
 
             InstrumentationTask taskLeft
             {
-                .line = beginLine,
-                .col = endCol, // Avoid affecting ORIGINAL_INVOCATION's column
+                .line = -1, // Append at the end of the file
+                .eraseOriginal = eraseOriginal,
                 .str =
                 (
                     std::stringstream()
@@ -228,7 +255,6 @@ public:
 
         return tasks;
     }
-
 
     // InvocationTag structure to be serialized and instrumented into C code
     // Contains necessary information for Hayroll Reaper on the Rust side to reconstruct macros
@@ -321,10 +347,11 @@ public:
             colBegin,
             lineEnd,
             colEnd,
+            false, // Do not erase original for body instrumentation
             tagBegin.stringLiteral(),
             (astKind == "Stmt" || astKind == "Stmts") ? std::optional(tagEnd.stringLiteral()) : std::nullopt,
             spelling,
-            -1 // priorityLeft: prefer outside
+            1 // priorityLeft: prefer inside
         );
     }
 
@@ -449,10 +476,9 @@ public:
         std::string srcLocEnd = LineMatcher::cuLocToSrcLoc(range.LocationEnd, inverseLineMap);
         std::string cuLnColBegin = locToLnCol(range.Location);
         std::string cuLnColEnd = locToLnCol(range.LocationEnd);
-        std::string locRefBegin =
-            range.ASTKind == "Expr" ?
-            LineMatcher::cuLocToSrcLoc(range.ParentLocation, inverseLineMap) :
-            ""; // Only Expr needs locRefBegin
+        std::string locRefBegin = range.ReferenceLocation;
+        auto [ifGroupLnBegin, ifGroupColBegin] = parseLnCol(range.ExtraInfo.ifGroupLnColBegin);
+        auto [ifGroupLnEnd, ifGroupColEnd] = parseLnCol(range.ExtraInfo.ifGroupLnColEnd);
 
         ConditionalTag tagBegin
         {
@@ -474,14 +500,15 @@ public:
         (
             range.ASTKind,
             range.ASTKind == "Expr" ? std::optional(range.IsLValue) : std::nullopt,
-            lineBegin,
-            colBegin,
-            lineEnd,
-            colEnd,
+            range.IsPlaceholder ? ifGroupLnBegin : lineBegin, // for placeholder ranges, enclose the whole #if group
+            range.IsPlaceholder ? ifGroupColBegin : colBegin,
+            range.IsPlaceholder ? ifGroupLnEnd : lineEnd,
+            range.IsPlaceholder ? ifGroupColEnd : colEnd,
+            range.IsPlaceholder, // Erase original when it's a placeholder, to avoid the tag being excluded from compilation
             tagBegin.stringLiteral(),
             (range.ASTKind == "Stmt" || range.ASTKind == "Stmts") ? std::optional(tagEnd.stringLiteral()) : std::nullopt,
             range.Spelling,
-            1 // priorityLeft: prefer inside
+            -1 // priorityLeft: prefer outside
         );
     }
 

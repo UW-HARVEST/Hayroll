@@ -17,8 +17,10 @@ class TextEditor
 public:
     enum EditType
     {
-        Modify = 0,
-        Insert = 1
+        Erase = 0,
+        Modify = 1,
+        Insert = 2,
+        Append = 3
     };
 
     struct Edit
@@ -26,13 +28,10 @@ public:
         EditType type;
         std::size_t ln;
         std::size_t col;
-        std::string content;
+        std::size_t lnEnd; // Only for Erase
+        std::size_t colEnd; // Only for Erase
+        std::string content; // Only for Insert and Modify
         int priority; // Lower value means lefter
-
-        Edit(EditType type, std::size_t ln, std::size_t col, std::string_view content, int priority = 0)
-            : type(type), ln(ln), col(col), content(content), priority(priority)
-        {
-        }
 
         bool operator<(const Edit & other) const
         {
@@ -69,20 +68,63 @@ public:
 
     void insert(std::size_t ln, std::size_t col, std::string_view content, int priority = 0)
     {
-        edits.emplace_back(EditType::Insert, ln, col, content, priority);
+        edits.push_back
+        (
+            Edit
+            {
+                .type = EditType::Insert,
+                .ln = ln,
+                .col = col,
+                .content = std::string(content),
+                .priority = priority
+            }
+        );
     }
 
     void modify(std::size_t ln, std::size_t col, std::string_view content, int priority = 0)
     {
-        edits.emplace_back(EditType::Modify, ln, col, content, priority);
+        edits.push_back
+        (
+            Edit
+            {
+                .type = EditType::Modify,
+                .ln = ln,
+                .col = col,
+                .content = std::string(content),
+                .priority = priority
+            }
+        );
     }
 
-    // Equivalent to changing the text to space characters
-    void erase(std::size_t ln, std::size_t col, std::size_t length, int priority = 0)
+    // Replace with spaces
+    void erase(std::size_t ln, std::size_t col, std::size_t lnEnd, std::size_t colEnd, int priority = 0)
     {
-        if (length == 0) return;
-        std::string spaces(length, ' ');
-        edits.emplace_back(EditType::Modify, ln, col, spaces, priority);
+        edits.push_back
+        (
+            Edit
+            {
+                .type = EditType::Erase,
+                .ln = ln,
+                .col = col,
+                .lnEnd = lnEnd,
+                .colEnd = colEnd,
+                .priority = priority
+            }
+        );
+    }
+
+    // Append new line at the end of the file
+    void append(std::string_view content, int priority = 0)
+    {
+        edits.push_back
+        (
+            Edit
+            {
+                .type = EditType::Append,
+                .content = std::string(content),
+                .priority = priority
+            }
+        );
     }
 
     std::string get(std::size_t ln, std::size_t col, std::size_t length) const
@@ -203,6 +245,73 @@ public:
                         }
                         line.append(edit.content);
                     }
+                    break;
+                }
+                case EditType::Erase:
+                {
+                    if (edit.ln < lines.size())
+                    {
+                        std::string & line = lines[edit.ln];
+                        if (edit.col - 1 < line.size())
+                        {
+                            // Erase content from specified column to lnEnd:colEnd
+                            // Note: edit.col is 1-based, so we adjust by subtracting 1
+                            std::size_t start = edit.col - 1;
+                            std::size_t end;
+                            if (edit.lnEnd < lines.size())
+                            {
+                                if (edit.colEnd - 1 < lines[edit.lnEnd].size())
+                                {
+                                    end = edit.colEnd - 1;
+                                }
+                                else
+                                {
+                                    end = lines[edit.lnEnd].size();
+                                }
+                            }
+                            else
+                            {
+                                end = line.size();
+                            }
+
+                            if (edit.ln == edit.lnEnd)
+                            {
+                                // Single line erase
+                                if (start < end)
+                                {
+                                    line.replace(start, end - start, std::string(end - start, ' '));
+                                }
+                            }
+                            else
+                            {
+                                // Multi-line erase
+                                // Erase from start to end of the first line
+                                line.replace(start, line.size() - start, std::string(line.size() - start, ' '));
+                                // Erase full lines in between
+                                for (std::size_t l = edit.ln + 1; l < edit.lnEnd; ++l)
+                                {
+                                    if (l < lines.size())
+                                    {
+                                        lines[l] = std::string(lines[l].size(), ' ');
+                                    }
+                                }
+                                // Erase from beginning to end on the last line
+                                if (edit.lnEnd < lines.size())
+                                {
+                                    std::string & endLine = lines[edit.lnEnd];
+                                    if (end > 0)
+                                    {
+                                        endLine.replace(0, end, std::string(end, ' '));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+                case EditType::Append:
+                {
+                    lines.push_back(edit.content);
                     break;
                 }
             }
