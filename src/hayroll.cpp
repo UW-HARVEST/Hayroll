@@ -22,12 +22,47 @@
 #include "C2RustWrapper.hpp"
 #include "ReaperWrapper.hpp"
 
+// Helper: compute output path from a base CompileCommand, optional extension override,
+// write the given content, and log a unified info message in the form:
+//   "{step} for {fileName} [DefineSet {i}] saved to: {path}"
+// The DefineSet suffix is printed only when defineSetIndex has a value.
+std::filesystem::path saveOutput
+(
+    const Hayroll::CompileCommand & base,
+    const std::filesystem::path & outputDir,
+    const std::filesystem::path & projDir,
+    const std::string & content,
+    const std::optional<std::string> & newExt,
+    const std::string & step,
+    const std::string & fileName,
+    const std::optional<std::size_t> defineSetIndex = std::nullopt
+)
+{
+    Hayroll::CompileCommand outCmd = base.withUpdatedFilePathPrefix(outputDir, projDir);
+    if (newExt)
+    {
+        outCmd = outCmd.withUpdatedFileExtension(*newExt);
+    }
+    const std::filesystem::path outPath = outCmd.file;
+    const std::string fileNameRelative = std::filesystem::relative(base.file, projDir).string();
+    Hayroll::saveStringToFile(content, outPath);
+    if (defineSetIndex)
+    {
+        SPDLOG_INFO("{} for {} DefineSet {} saved to: {}", step, fileNameRelative, *defineSetIndex, outPath.string());
+    }
+    else
+    {
+        SPDLOG_INFO("{} for {} saved to: {}", step, fileNameRelative, outPath.string());
+    }
+    return outPath;
+}
+
 int main(const int argc, const char* argv[])
 {
     using namespace Hayroll;
     using json = nlohmann::json;
 
-    size_t hardwareThreads = std::thread::hardware_concurrency();
+    std::size_t hardwareThreads = std::thread::hardware_concurrency();
     if (hardwareThreads == 0) hardwareThreads = 2;
     if (hardwareThreads > 16) hardwareThreads = 16; // Limit to 16 threads to avoid memory thrashin
 
@@ -36,7 +71,7 @@ int main(const int argc, const char* argv[])
 
     std::filesystem::path compileCommandsJsonPath;
     std::filesystem::path outputDir;
-    size_t jobs = 0;
+    std::size_t jobs = 0;
     std::filesystem::path projDir;
     int verbose = 0;
 
@@ -140,7 +175,7 @@ int main(const int argc, const char* argv[])
     std::string compileCommandsJsonStr = loadFileToString(compileCommandsJsonPath);
     json compileCommandsJson = json::parse(compileCommandsJsonStr);
     std::vector<CompileCommand> compileCommands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
-    int numTasks = compileCommands.size();
+    std::size_t numTasks = compileCommands.size();
 
     SPDLOG_INFO("Number of tasks: {}", numTasks);
     for (const CompileCommand & command : compileCommands)
@@ -157,90 +192,51 @@ int main(const int argc, const char* argv[])
         }
     }
 
-    if (jobs > static_cast<size_t>(numTasks)) jobs = static_cast<size_t>(numTasks);
+    if (jobs > numTasks) jobs = numTasks;
     SPDLOG_INFO("Using {} worker thread(s)", jobs);
 
     // Process tasks in parallel; skip failures and report at the end
     std::vector<std::pair<std::filesystem::path, std::string>> failedTasks; // Failed file -> error
     std::mutex failedMutex;
 
-    std::atomic<size_t> nextIdx{0};
+    std::atomic<std::size_t> nextIdx{0};
 
     auto worker = [&]()
     {
         while (true)
         {
-            size_t i = nextIdx.fetch_add(1, std::memory_order_relaxed);
-            if (i >= static_cast<size_t>(numTasks)) break;
+            std::size_t i = nextIdx.fetch_add(1, std::memory_order_relaxed);
+            if (i >= numTasks) break;
             const CompileCommand & command = compileCommands[i];
             std::filesystem::path srcPath = command.file;
             try
             {
                 // Copy all source files to the output directory
                 // compileCommands + src -> outputDir
-                {
-                    CompileCommand outputCommand = command.withUpdatedFilePathPrefix(outputDir, projDir);
-                    std::filesystem::path outputPath = outputCommand.file;
-                    std::string srcStr = loadFileToString(srcPath);
-                    saveStringToFile(srcStr, outputPath);
-                    SPDLOG_INFO("Source file {} copied to: {}", srcPath.string(), outputPath.string());
-                }
+                std::string srcStr = loadFileToString(srcPath);
+                saveOutput(command, outputDir, projDir, srcStr, std::nullopt,
+                            "Source file", srcPath.string());
 
                 // Hayroll Pioneer symbolic execution
                 // compileCommands + cpp2cStr --SymbolicExecutor-> includeTree + premiseTree
                 SymbolicExecutor executor(srcPath, projDir, command.getIncludePaths());
                 executor.run();
-                SPDLOG_INFO("Hayroll Pioneer symbolic execution completed for: {}", executor.srcPath.string());
                 PremiseTree * premiseTree = executor.scribe.borrowTree();
-                {
-                    std::string premiseTreeStr = premiseTree->toString();
-                    CompileCommand outputCommand = command
-                    .withUpdatedFilePathPrefix(outputDir, projDir)
-                    .withUpdatedFileExtension(".premise_tree.raw.txt");
-                    std::filesystem::path outputPath = outputCommand.file;
-                    saveStringToFile(premiseTreeStr, outputPath);
-                    SPDLOG_INFO("Raw premise tree for {} saved to: {}", command.file.string(), outputPath.string());
-                }
+                saveOutput(command, outputDir, projDir, premiseTree->toString(),
+                    ".premise_tree.raw.txt", "Raw premise tree", command.file.string());
                 premiseTree->refine();
-                {
-                    std::string premiseTreeStr = premiseTree->toString();
-                    CompileCommand outputCommand = command
-                        .withUpdatedFilePathPrefix(outputDir, projDir)
-                        .withUpdatedFileExtension(".premise_tree.txt");
-                    std::filesystem::path outputPath = outputCommand.file;
-                    saveStringToFile(premiseTreeStr, outputPath);
-                    SPDLOG_INFO("Premise tree for {} saved to: {}", command.file.string(), outputPath.string());
-                }
+                saveOutput(command, outputDir, projDir, premiseTree->toString(),
+                    ".premise_tree.txt", "Premise tree", command.file.string());
 
-                // Experimental
                 // Splitter
                 // premiseTree + compileCommands --Splitter-> DefineSets
                 std::vector<DefineSet> defineSets = Splitter::run(premiseTree, command);
                 {
-                    {
-                        CompileCommand outputCommand = command
-                            .withUpdatedFilePathPrefix(outputDir, projDir)
-                            .withUpdatedFileExtension(".defset.txt");
-                        std::filesystem::path outputPath = outputCommand.file;
-                        std::ostringstream oss;
-                        if (defineSets.empty())
-                        {
-                            oss << "// No DefineSets generated\n";
-                        }
-                        else
-                        {
-                            for (size_t i = 0; i < defineSets.size(); ++i)
-                            {
-                                oss << "// DefineSet " << i << "\n";
-                                oss << defineSets[i].toString() << "\n";
-                            }
-                        }
-                        saveStringToFile(oss.str(), outputPath);
-                        SPDLOG_INFO("{} DefineSet(s) for {} saved to single file: {}", defineSets.size(), command.file.string(), outputPath.string());
-                    }
+                    saveOutput(command, outputDir, projDir, DefineSet::defineSetsToString(defineSets),
+                        ".defset.txt", "DefineSets summary", command.file.string());
 
                     std::vector<CompileCommand> commandsWithDefSets;
-                    for (size_t i = 0; i < defineSets.size(); ++i)
+                    for (std::size_t i = 0; i < defineSets.size(); ++i)
                     {
                         CompileCommand commandWithDefineSet = command
                             .withUpdatedDefineSet(defineSets[i]);
@@ -256,7 +252,7 @@ int main(const int argc, const char* argv[])
                     std::vector<std::string> cpp2cStrs;
                     std::vector<std::vector<Hayroll::MakiInvocationSummary>> cpp2cInvocations;
                     std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRanges;
-                    for (size_t i = 0; i < defineSets.size(); ++i)
+                    for (std::size_t i = 0; i < defineSets.size(); ++i)
                     {
                         const DefineSet & defSet = defineSets[i];
                         CompileCommand commandWithDefineSet = commandsWithDefSets[i];
@@ -264,14 +260,8 @@ int main(const int argc, const char* argv[])
                         std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(commandWithDefineSet);
                         cuStrs.push_back(cuStr);
                         // Save to filename.{i}.cu.c
-                        {
-                            CompileCommand outputCommand = commandWithDefineSet
-                                .withUpdatedFilePathPrefix(outputDir, projDir)
-                                .withUpdatedFileExtension(std::format(".{}.cu.c", i));
-                            std::filesystem::path outputPath = outputCommand.file;
-                            saveStringToFile(cuStr, outputPath);
-                            SPDLOG_INFO("Compilation unit file for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
-                        }
+                        saveOutput(commandWithDefineSet, outputDir, projDir, cuStr,
+                            std::format(".{}.cu.c", i), "Compilation unit file", command.file.string(), i);
 
                         const auto [lineMap, inverseLineMap] = LineMatcher::run(cuStr, executor.includeTree, command.getIncludePaths());
                         lineMaps.push_back(lineMap);
@@ -282,14 +272,8 @@ int main(const int argc, const char* argv[])
                         std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
                         cpp2cStrs.push_back(cpp2cStr);
                         // Save to filename.{i}.cpp2c
-                        {
-                            CompileCommand outputCommand = commandWithDefineSet
-                            .withUpdatedFilePathPrefix(outputDir, projDir)
-                            .withUpdatedFileExtension(std::format(".{}.cpp2c", i));
-                            std::filesystem::path outputPath = outputCommand.file;
-                            saveStringToFile(cpp2cStr, outputPath);
-                            SPDLOG_INFO("Maki cpp2c output for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
-                        }
+                        saveOutput(commandWithDefineSet, outputDir, projDir, cpp2cStr,
+                            std::format(".{}.cpp2c", i), "Maki cpp2c output", command.file.string(), i);
 
                         auto [invocations, ranges] = parseCpp2cSummary(cpp2cStr);
                         cpp2cInvocations.push_back(invocations);
@@ -300,20 +284,18 @@ int main(const int argc, const char* argv[])
                     std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRangesCompleted
                         = Hayroll::MakiRangeSummary::complementRangeSummaries(cpp2cRanges, inverseLineMaps);
                     // Save complemented ranges
-                    for (size_t i = 0; i < defineSets.size(); ++i)
+                    for (std::size_t i = 0; i < defineSets.size(); ++i)
                     {
-                        CompileCommand outputCommand = command
-                            .withUpdatedFilePathPrefix(outputDir, projDir)
-                            .withUpdatedFileExtension(std::format(".{}.cpp2c.ranges.json", i));
-                        std::filesystem::path outputPath = outputCommand.file;
-                        saveStringToFile(json(cpp2cRangesCompleted[i]).dump(4), outputPath);
-                        SPDLOG_INFO("Complemented Maki range summary for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
+                        saveOutput(command, outputDir, projDir,
+                            json(cpp2cRangesCompleted[i]).dump(4),
+                            std::format(".{}.cpp2c.ranges.json", i),
+                            "Complemented Maki range summary", command.file.string(), i);
                     }
 
                     std::vector<std::string> cuSeededStrs;
                     std::vector<std::string> c2rustStrs;
                     std::vector<std::string> reaperStrs;
-                    for (size_t i = 0; i < defineSets.size(); ++i)
+                    for (std::size_t i = 0; i < defineSets.size(); ++i)
                     {
                         // Hayroll Seeder
                         // cpp2cInvocations + cpp2cRangesCompleted + cuStrs + lineMap + inverseLineMap --Seeder-> seeded
@@ -327,40 +309,25 @@ int main(const int argc, const char* argv[])
                         );
                         cuSeededStrs.push_back(cuSeededStr);
                         // Save to filename.{i}.seeded.cu.c
-                        {
-                            CompileCommand outputCommand = command
-                                .withUpdatedFilePathPrefix(outputDir, projDir)
-                                .withUpdatedFileExtension(std::format(".{}.seeded.cu.c", i));
-                            std::filesystem::path outputPath = outputCommand.file;
-                            saveStringToFile(cuSeededStr, outputPath);
-                            SPDLOG_INFO("Hayroll Seeded compilation unit for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
-                        }
+                        saveOutput(command, outputDir, projDir, cuSeededStr,
+                            std::format(".{}.seeded.cu.c", i),
+                            "Hayroll Seeded compilation unit", command.file.string(), i);
 
                         // c2rust -> .seeded.rs
                         std::string c2rustStr = C2RustWrapper::runC2Rust(cuSeededStr, commandsWithDefSets[i]);
                         c2rustStrs.push_back(c2rustStr);
                         // Save to filename.{i}.seeded.rs
-                        {
-                            CompileCommand outputCommand = command
-                                .withUpdatedFilePathPrefix(outputDir, projDir)
-                                .withUpdatedFileExtension(std::format(".{}.seeded.rs", i));
-                            std::filesystem::path outputPath = outputCommand.file;
-                            saveStringToFile(c2rustStr, outputPath);
-                            SPDLOG_INFO("C2Rust output for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
-                        }
+                        saveOutput(command, outputDir, projDir, c2rustStr,
+                            std::format(".{}.seeded.rs", i),
+                            "C2Rust output", command.file.string(), i);
 
                         // Reaper -> .rs
                         std::string reaperStr = ReaperWrapper::runReaper(c2rustStr);
                         reaperStrs.push_back(reaperStr);
                         // Save to filename.{i}.rs
-                        {
-                            CompileCommand outputCommand = command
-                                .withUpdatedFilePathPrefix(outputDir, projDir)
-                                .withUpdatedFileExtension(std::format(".{}.rs", i));
-                            std::filesystem::path outputPath = outputCommand.file;
-                            saveStringToFile(reaperStr, outputPath);
-                            SPDLOG_INFO("Hayroll Reaper output for DefineSet {} of {} saved to: {}", i, command.file.string(), outputPath.string());
-                        }
+                        saveOutput(command, outputDir, projDir, reaperStr,
+                            std::format(".{}.rs", i),
+                            "Hayroll Reaper output", command.file.string(), i);
                     }
                 }
             }
@@ -381,7 +348,7 @@ int main(const int argc, const char* argv[])
 
     std::vector<std::thread> threads;
     threads.reserve(jobs);
-    for (size_t t = 0; t < jobs; ++t) threads.emplace_back(worker);
+    for (std::size_t t = 0; t < jobs; ++t) threads.emplace_back(worker);
     for (auto & th : threads) th.join();
 
     // Print final results

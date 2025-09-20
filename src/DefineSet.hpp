@@ -131,6 +131,24 @@ struct DefineSet
         );
         return ok;
     }
+
+    static std::string defineSetsToString(const std::vector<DefineSet> & defineSets)
+    {
+        std::ostringstream oss;
+        if (defineSets.empty())
+        {
+            oss << "// No DefineSets generated\n";
+        }
+        else
+        {
+            for (size_t i = 0; i < defineSets.size(); ++i)
+            {
+                oss << "// DefineSet " << i << "\n";
+                oss << defineSets[i].toString() << "\n";
+            }
+        }
+        return oss.str();
+    }
 };
 
 } // namespace Hayroll
