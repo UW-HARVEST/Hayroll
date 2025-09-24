@@ -36,6 +36,9 @@ impl HasHayrollTag for HayrollTag {
 
 // Trait abstraction for hayroll metadata (blanket impl provided for HasHayrollTag types)
 pub trait HayrollMeta {
+    fn seed_type(&self) -> String;
+    fn is_invocation(&self) -> bool;
+    fn is_conditional(&self) -> bool;
     fn is_arg(&self) -> bool;
     fn name(&self) -> String;
     fn arg_names(&self) -> Vec<String>;
@@ -55,9 +58,20 @@ pub trait HayrollMeta {
     fn is_stmts(&self) -> bool;
     fn is_decl(&self) -> bool;
     fn is_decls(&self) -> bool;
+    fn is_placeholder(&self) -> bool;
+    fn premise(&self) -> String;
 }
 
 impl<T: HasHayrollTag> HayrollMeta for T {
+    fn seed_type(&self) -> String {
+        self.hayroll_tag().tag["seedType"].as_str().unwrap().to_string()
+    }
+    fn is_invocation(&self) -> bool {
+        self.seed_type() == "invocation"
+    }
+    fn is_conditional(&self) -> bool {
+        self.seed_type() == "conditional"
+    }
     fn is_arg(&self) -> bool {
         self.hayroll_tag().tag["isArg"] == true
     }
@@ -111,6 +125,12 @@ impl<T: HasHayrollTag> HayrollMeta for T {
     }
     fn is_decls(&self) -> bool {
         self.ast_kind() == "Decls"
+    }
+    fn is_placeholder(&self) -> bool {
+        self.hayroll_tag().tag["isPlaceholder"].as_bool().unwrap_or(false)
+    }
+    fn premise(&self) -> String {
+        self.hayroll_tag().tag["premise"].as_str().unwrap_or("").to_string()
     }
 }
 

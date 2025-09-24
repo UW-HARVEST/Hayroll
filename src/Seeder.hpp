@@ -264,7 +264,7 @@ public:
     // Contains necessary information for Hayroll Reaper on the Rust side to reconstruct macros
     struct InvocationTag : JsonStringLiteralMixin<InvocationTag>
     {
-        const std::string_view hayroll = "invocation";
+        const std::string_view seedType = "invocation";
         bool begin;
         bool isArg;
         std::vector<std::string> argNames;
@@ -282,7 +282,7 @@ public:
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_ONLY_SERIALIZE
         (
             InvocationTag,
-            hayroll, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
+            seedType, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd, 
             cuLnColBegin, cuLnColEnd, locRefBegin, canBeFn
         );
     };
@@ -586,7 +586,7 @@ public:
 
     struct ConditionalTag : JsonStringLiteralMixin<ConditionalTag>
     {
-        const std::string_view hayroll = "conditional";
+        const std::string_view seedType = "conditional";
         bool begin;
         std::string astKind;
         bool isLvalue;
@@ -601,7 +601,7 @@ public:
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_ONLY_SERIALIZE
         (
             ConditionalTag,
-            hayroll, begin, astKind, isLvalue, locBegin, locEnd,
+            seedType, begin, astKind, isLvalue, locBegin, locEnd,
             cuLnColBegin, cuLnColEnd, locRefBegin, isPlaceholder, premise
         );
     };
