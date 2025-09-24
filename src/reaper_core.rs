@@ -86,12 +86,15 @@ pub fn run(workspace_path: &Path) -> Result<()> {
                     let tag_res = serde_json::from_str::<serde_json::Value>(&content);
                     trace!(byte_string = %content, tag = ?tag_res, "Byte String parsed");
                     if let Ok(tag) = tag_res {
-                        if tag["seedType"] == "invocation" {
-                            return Some(HayrollTag {
+                        if tag["hayroll"] == true {
+                            let tag = HayrollTag {
                                 literal: ast::Literal::cast(element.parent()?)?,
                                 tag,
                                 file_id: file_id.clone(),
-                            });
+                            };
+                            if tag.is_invocation() {
+                                return Some(tag);
+                            }
                         }
                     }
                 }
