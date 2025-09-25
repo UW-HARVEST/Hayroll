@@ -26,6 +26,11 @@ pub fn ast_from_text<N: AstNode>(text: &str) -> N {
         Some(it) => it,
         None => {
             let node = std::any::type_name::<N>();
+            // Print out all descendants for debugging
+            eprintln!("Failed to parse node of type {node} from text {text}");
+            for descendant in parse.tree().syntax().descendants() {
+                eprintln!("  - {}", descendant);
+            }
             panic!("Failed to make ast node `{node}` from text {text}")
         }
     };

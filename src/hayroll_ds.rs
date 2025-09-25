@@ -9,10 +9,7 @@ use syntax::syntax_editor::Element; // for syntax().syntax_element()
 use tracing::warn;
 use vfs::FileId;
 
-use crate::util::{
-    ast_from_text, expr_from_text, find_items_in_range, get_dollar_token_mut, get_source_file,
-    parent_until_kind, parent_until_kind_and_cond, LnCol,
-};
+use crate::util::*;
 
 // HayrollTag literal in the source code
 #[derive(Clone)]
@@ -195,6 +192,25 @@ impl HayrollSeed {
         }
     }
 
+    // Returns immutable code region on the original AST, not including the hayroll tag itself
+    pub fn get_raw_code_region_inside_tag(&self) -> CodeRegion {
+        let region = self.get_raw_code_region(false);
+        match region {
+            CodeRegion::Expr(expr) => {
+                let if_expr = ast::IfExpr::cast(expr.syntax().clone()).unwrap();
+                CodeRegion::Expr(if_expr.then_branch().unwrap().into())
+            }
+            CodeRegion::Stmts { parent, elements } => {
+                let stmt_begin = elements.start();
+                let stmt_end = elements.end();
+                let stmt_begin_next: ast::Stmt = ast::Stmt::cast(stmt_begin.syntax().next_sibling().unwrap()).unwrap();
+                let stmt_end_prev: ast::Stmt = ast::Stmt::cast(stmt_end.syntax().prev_sibling().unwrap()).unwrap();
+                CodeRegion::Stmts { parent, elements: stmt_begin_next..=stmt_end_prev }
+            }
+            CodeRegion::Decls(_) => region,
+        }
+    }
+
     pub fn get_raw_decls_tag_item(&self) -> ast::Item {
         match self {
             HayrollSeed::Expr(_) => panic!("get_raw_decls_tag_item() is not applicable to Expr"),
@@ -291,6 +307,14 @@ impl CodeRegion {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        match self {
+            CodeRegion::Expr(_) => false,
+            CodeRegion::Stmts { .. } => false,
+            CodeRegion::Decls(decls) => decls.is_empty(),
+        }
+    }
+
     // LUB: Least Upper Bound, a single syntax node that contains all the elements in the region
     pub fn lub(&self) -> SyntaxNode {
         match self {
@@ -305,9 +329,13 @@ impl CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(mutator.make_mut(expr)),
             CodeRegion::Stmts { parent, elements } => {
+                let parent_mut = mutator.make_mut(parent);
                 let start_mut = mutator.make_mut(elements.start());
                 let end_mut = mutator.make_mut(elements.end());
-                CodeRegion::Stmts { parent: mutator.make_mut(parent), elements: start_mut..=end_mut }
+                // Assert that start_mut and end_mut are still in parent_mut
+                assert!(start_mut.syntax().parent() == Some(parent_mut.syntax().clone()));
+                assert!(end_mut.syntax().parent() == Some(parent_mut.syntax().clone()));
+                CodeRegion::Stmts { parent: parent_mut, elements: start_mut..=end_mut }
             }
             CodeRegion::Decls(decls) => {
                 let mut new_decls = Vec::new();
@@ -334,6 +362,23 @@ impl CodeRegion {
                 }
                 CodeRegion::Decls(new_decls)
             }
+        }
+    }
+
+    pub fn clone_for_update(&self) -> CodeRegion {
+        match self {
+            CodeRegion::Expr(expr) => CodeRegion::Expr(expr.clone_for_update()),
+            CodeRegion::Stmts { parent, elements } => {
+                let begin = elements.start();
+                let end = elements.end();
+                let pos_begin = parent.statements().position(|stmt| stmt == *begin).unwrap();
+                let pos_end = parent.statements().position(|stmt| stmt == *end).unwrap();
+                let parent = parent.clone_for_update();
+                let begin = parent.statements().nth(pos_begin).unwrap();
+                let end = parent.statements().nth(pos_end).unwrap();
+                CodeRegion::Stmts { parent, elements: begin..=end }
+            }
+            CodeRegion::Decls(decls) => CodeRegion::Decls(decls.iter().map(|d| d.clone_for_update()).collect()),
         }
     }
 
@@ -798,5 +843,130 @@ impl HayrollMacroDB {
             db.map.get_mut(&loc_decl).unwrap().invocations.push(mac.clone());
         }
         db
+    }
+}
+
+pub struct HayrollConditionalMacro {
+    pub seed: HayrollSeed,
+}
+
+impl HasHayrollTag for HayrollConditionalMacro {
+    fn hayroll_tag(&self) -> &HayrollTag {
+        self.seed.hayroll_tag()
+    }
+}
+
+impl HayrollConditionalMacro {
+    // Attach #[cfg(c_defs = "premise")] to every element in the code region
+    // Returns mutable CodeRegion that is no longer part of the original syntax tree
+    pub fn attach_cfg_mut(&self) -> CodeRegion {
+        let premise = self.premise();
+        if self.seed.is_placeholder() {
+            return self.seed.get_raw_code_region(false).clone_for_update();
+        }
+        match self.seed {
+            HayrollSeed::Expr(_) => {
+                // Work on the underlying IfExpr (don't include outer deref for lvalues)
+                let region = self.seed.get_raw_code_region(false);
+                if let CodeRegion::Expr(expr) = &region {
+                    // Expect the current expr to be an if-expr produced by instrumentation
+                    let if_expr = ast::IfExpr::cast(expr.syntax().clone()).expect("Expected IfExpr for conditional seed expr");
+                    let then_branch = if_expr.then_branch().expect("IfExpr must have then branch");
+                    let else_branch = if_expr.else_branch().expect("IfExpr must have else branch");
+                    let then_text = then_branch.to_string();
+                    let else_text = match else_branch {
+                        ast::ElseBranch::Block(b) => b.to_string(),
+                        ast::ElseBranch::IfExpr(e) => e.to_string(),
+                    };
+                    let new_expr_text = format!(
+                        "{{ if cfg!(c_defs = \"{}\") {} else {} }}",
+                        // No extra braces around then and else branches because they are already blocks
+                        // But provide extra braces around the whole if-expression to help replacement
+                        premise, then_text, else_text
+                    );
+                    let new_expr = expr_from_text(&new_expr_text).clone_for_update();
+                    print!("Attaching cfg to if_expr:\n{}\n", if_expr);
+                    print!("New expr:\n{}\n", new_expr);
+                    CodeRegion::Expr(new_expr)
+                } else {
+                    panic!("Expected Expr region for conditional seed expr");
+                }
+            }
+            HayrollSeed::Stmts(_, _) => {
+                let region = self.seed.get_raw_code_region(false).peel_tag();
+                // Print this code region for debugging
+                print!("Attaching cfg to stmts region:\n{}\n", region);
+                let mutator = ide_db::source_change::TreeMutator::new(&region.lub());
+                let mut region_mut = region.make_mut_with_mutator(&mutator);
+                if let CodeRegion::Stmts { parent, elements } = &mut region_mut {
+                    let start = elements.start();
+                    let end = elements.end();
+                    let mut delayed: Vec<Box<dyn FnOnce()>> = Vec::new();
+                    let mut seen_begin = false;
+                    let mut seen_end = false;
+                    let mut new_start: Option<ast::Stmt> = None;
+                    let mut new_end: Option<ast::Stmt> = None;
+                    for stmt in parent.statements() {
+                        if &stmt == start {
+                            seen_begin = true;
+                        }
+                        if seen_begin && !seen_end {
+                            // Only let-statements can take cfg directly; others must be wrapped in a block
+                            let is_let = ast::LetStmt::cast(stmt.syntax().clone()).is_some();
+                            let new_stmt: ast::Stmt = if is_let {
+                                let new_let_stmt_text = format!("#[cfg(c_defs = \"{}\")]\n{}", premise, stmt.to_string());
+                                let new_let_stmt = ast_from_text::<ast::LetStmt>(&new_let_stmt_text).clone_for_update();
+                                new_let_stmt.into()
+                            } else {
+                                let new_block_expr_text = format!("#[cfg(c_defs = \"{}\")]\n{{\n{}\n}}", premise, stmt.to_string());
+                                let new_block_expr = expr_from_text(&new_block_expr_text).clone_for_update();
+                                let new_block_stmt = ast::make::expr_stmt(new_block_expr.into()).clone_for_update();
+                                new_block_stmt.into()
+                            };
+                            print!("Attaching cfg to stmt:\n{}\n", stmt);
+                            print!("New stmt:\n{}\n", new_stmt);
+                            let old = mutator.make_mut(&stmt);
+                            // Save new start and end for assignment after the loop
+                            if &stmt == start {
+                                new_start = Some(new_stmt.clone());
+                            }
+                            if &stmt == end {
+                                new_end = Some(new_stmt.clone());
+                            }
+                            delayed.push(Box::new(move || {
+                                ted::replace(old.syntax(), new_stmt.syntax());
+                            }));
+                        }
+                        if &stmt == end {
+                            seen_end = true;
+                        }
+                        if seen_end { break; }
+                    }
+                    *elements = new_start.unwrap()..=new_end.unwrap();
+                    for t in delayed { t(); }
+                } else {
+                    panic!("Expected Stmts region for conditional seed stmts");
+                }
+                print!("After attaching cfg, stmts region is:\n{}\n", region_mut);
+                region_mut
+            }
+            HayrollSeed::Decls(_) => {
+                let region = self.seed.get_raw_code_region(false);
+                if region.is_empty() {
+                    return region
+                }
+                let mutator = ide_db::source_change::TreeMutator::new(&region.lub());
+                let region_mut = region.make_mut_with_mutator(&mutator);
+                if let CodeRegion::Decls(items) = &region_mut {
+                    let new_item = items.iter().map(|item| {
+                        let text = format!("#[cfg(c_defs = \"{}\")]\n{}", premise, item.to_string());
+                        ast_from_text::<ast::Item>(&text).clone_for_update()
+                    }).collect::<Vec<ast::Item>>();
+                    CodeRegion::Decls(new_item)
+                } else {
+                    panic!("Expected Decls region for conditional seed decls");
+                }
+            }
+        }
     }
 }

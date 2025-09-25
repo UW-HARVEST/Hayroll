@@ -19,7 +19,7 @@ use tracing::{debug, info, trace, warn};
 use vfs::FileId;
 
 use crate::hayroll_ds::{
-    CodeRegion, HayrollMacroDB, HayrollMacroInv, HayrollSeed, HayrollTag, HayrollMeta,
+    CodeRegion, HayrollConditionalMacro, HayrollMacroDB, HayrollMacroInv, HayrollMeta, HayrollSeed, HayrollTag
 };
 use crate::util::{bot_pos, get_empty_line_element_mut, top_pos};
 
@@ -92,9 +92,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
                                 tag,
                                 file_id: file_id.clone(),
                             };
-                            if tag.is_invocation() {
-                                return Some(tag);
-                            }
+                            return Some(tag);
                         }
                     }
                 }
@@ -119,7 +117,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
             for seed in acc.iter_mut().rev() {
                 match seed {
                     HayrollSeed::Stmts(tag_begin, ref mut tag_end) => {
-                        if tag_begin.loc_begin() == tag.loc_begin() {
+                        if tag_begin.loc_begin() == tag.loc_begin() && tag_begin.seed_type() == tag.seed_type() && tag.begin() == false {
                             *tag_end = tag.clone();
                             found = true;
                             break;
@@ -138,39 +136,46 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     });
 
     // A region whose isArg is false is a macro; match args to their macro
-    let hayroll_macro_invs: Vec<HayrollMacroInv> = hayroll_seeds.iter().fold(Vec::new(), |mut acc, region| {
-        if region.is_arg() == false {
-            // Pre-populate all expected argument names with empty vectors
-            let preset_args: Vec<(String, Vec<HayrollSeed>)> = region
-                .arg_names()
-                .into_iter()
-                .map(|name| (name, Vec::new()))
-                .collect();
-            acc.push(HayrollMacroInv { seed: region.clone(), args: preset_args });
-        } else {
-            let mut found = false;
-            for mac in acc.iter_mut().rev() {
-                if mac.loc_begin() == region.loc_ref_begin() {
-                    assert!(mac.args.iter().any(|(name, _)| name == &region.name()));
-                    let arg = mac.args.iter_mut().find(|(name, _)| name == &region.name()).unwrap();
-                    arg.1.push(region.clone());
-                    found = true;
-                    break;
+    let hayroll_macro_invs: Vec<HayrollMacroInv> = hayroll_seeds.iter()
+        .filter(|seed| seed.is_invocation())
+        .fold(Vec::new(), |mut acc, region| {
+            if region.is_arg() == false {
+                // Pre-populate all expected argument names with empty vectors
+                let preset_args: Vec<(String, Vec<HayrollSeed>)> = region
+                    .arg_names()
+                    .into_iter()
+                    .map(|name| (name, Vec::new()))
+                    .collect();
+                acc.push(HayrollMacroInv { seed: region.clone(), args: preset_args });
+            } else {
+                let mut found = false;
+                for mac in acc.iter_mut().rev() {
+                    if mac.loc_begin() == region.loc_ref_begin() {
+                        assert!(mac.args.iter().any(|(name, _)| name == &region.name()));
+                        let arg = mac.args.iter_mut().find(|(name, _)| name == &region.name()).unwrap();
+                        arg.1.push(region.clone());
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    panic!("No matching macro found for arg: {:?}", region.loc_begin());
                 }
             }
-            if !found {
-                panic!("No matching macro found for arg: {:?}", region.loc_begin());
-            }
+            acc
         }
-        acc
-    });
+    );
+
+    let hayroll_conditional_macros: Vec<HayrollConditionalMacro> = hayroll_seeds.iter()
+        .filter(|seed| seed.is_conditional())
+        .map(|seed| HayrollConditionalMacro { seed: seed.clone() })
+        .collect();
 
     let hayroll_macro_db = HayrollMacroDB::from_hayroll_macro_invs(&hayroll_macro_invs);
 
     // Print consumed time, tag "hayroll_literals"
     let duration = start.elapsed();
     info!(phase = "hayroll_literals", ?duration, "Time elapsed in hayroll_literals");
-
     
     let mut delayed_tasks: Vec<Box<dyn FnOnce()>> = Vec::new();
 
@@ -246,6 +251,63 @@ pub fn run(workspace_path: &Path) -> Result<()> {
             }
         } else {
             warn!(loc = %cluster.invocations[0].loc_begin(), "Hayroll macro cannot be converted: incompatible argument usage; skipping");
+        }
+    }
+
+    // Apply conditional macros: attach cfg attributes or wrap expressions
+    for conditonal_macro in hayroll_conditional_macros.iter() {
+        let file_id = conditonal_macro.file_id();
+        let (_, builder) = syntax_roots.get_mut(&file_id).unwrap();
+        let builder = builder.as_mut().unwrap();
+
+        // Original region to replace (without deref for exprs)
+        let code_region = conditonal_macro.seed.get_raw_code_region_inside_tag();
+        // New region with cfg attached
+        if code_region.is_empty() {
+            continue;
+        }
+        let new_region = conditonal_macro.attach_cfg_mut();
+        if new_region.is_empty() {
+            continue;
+        }
+
+        match (&code_region, &new_region) {
+            (CodeRegion::Expr(_), CodeRegion::Expr(new_expr)) => {
+                let region_mut = code_region.make_mut_with_builder(builder);
+                let range = region_mut.syntax_element_range();
+                let new_elem = new_expr.syntax().syntax_element().clone();
+                delayed_tasks.push(Box::new(move || {
+                    ted::replace_all(range, vec![new_elem]);
+                }));
+            }
+            (CodeRegion::Stmts { .. }, CodeRegion::Stmts { .. }) => {
+                let region_mut = code_region.make_mut_with_builder(builder);
+                let range = region_mut.syntax_element_range();
+                let new_elems = new_region.syntax_element_vec();
+                delayed_tasks.push(Box::new(move || {
+                    ted::replace_all(range, new_elems);
+                }));
+            }
+            (CodeRegion::Decls(_), CodeRegion::Decls(new_items)) => {
+                let region_mut = code_region.make_mut_with_builder(builder);
+                if let CodeRegion::Decls(old_items) = region_mut {
+                    assert_eq!(old_items.len(), new_items.len(), "decl item count should not change after cfg attach");
+                    for (old_item, new_item) in old_items.iter().zip(new_items.iter()) {
+                        // Replace each item in place
+                        let old_item_mut = builder.make_mut(old_item.clone());
+                        let new_item_node = new_item.syntax().clone();
+                        delayed_tasks.push(Box::new(move || {
+                            ted::replace(old_item_mut.syntax(), &new_item_node);
+                        }));
+                    }
+                } else {
+                    panic!("code_region should be Decls");
+                }
+            }
+            _ => {
+                // Should not happen if attach_cfg preserves the kind
+                warn!("conditional macro region kind mismatch after attach_cfg");
+            }
         }
     }
 
