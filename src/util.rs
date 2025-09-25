@@ -3,8 +3,8 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use ide::Edition;
 use syntax::{
     ast::{self, HasAttrs, SourceFile},
-    ted::Position,
     AstNode, AstToken, SyntaxElement, SyntaxNode, SyntaxToken, T,
+    syntax_editor::Position
 };
 
 // Public logging initialization
@@ -76,13 +76,12 @@ pub fn top_pos(source_file: &ast::SourceFile) -> Position {
         .syntax()
         .children()
         .find(|element| !ast::Attr::can_cast(element.kind()))
-        .unwrap()
-        .clone();
+        .unwrap();
     Position::before(&first_node)
 }
 
 pub fn bot_pos(source_file: &ast::SourceFile) -> Position {
-    let last_node = source_file.syntax().children().last().unwrap().clone();
+    let last_node = source_file.syntax().children().last().unwrap();
     Position::after(&last_node)
 }
 

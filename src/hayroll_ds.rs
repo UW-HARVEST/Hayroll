@@ -347,24 +347,6 @@ impl CodeRegion {
         }
     }
 
-    pub fn make_mut_with_builder(&self, builder: &mut ide_db::source_change::SourceChangeBuilder) -> CodeRegion {
-        match self {
-            CodeRegion::Expr(expr) => CodeRegion::Expr(builder.make_mut(expr.clone())),
-            CodeRegion::Stmts { parent, elements } => {
-                let start_mut = builder.make_mut(elements.start().clone());
-                let end_mut = builder.make_mut(elements.end().clone());
-                CodeRegion::Stmts { parent: builder.make_mut(parent.clone()), elements: start_mut..=end_mut }
-            }
-            CodeRegion::Decls(decls) => {
-                let mut new_decls = Vec::new();
-                for decl in decls {
-                    new_decls.push(builder.make_mut(decl.clone()));
-                }
-                CodeRegion::Decls(new_decls)
-            }
-        }
-    }
-
     pub fn clone_for_update(&self) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(expr.clone_for_update()),
