@@ -1,8 +1,9 @@
 use std::ops::RangeInclusive;
 
-use serde_json;
+use ide_db::source_change::SourceChangeBuilder;
+use serde_json::{self};
 use syntax::{
-    ast::{self},
+    ast::{self, edit_in_place::AttrsOwnerEdit},
     ted, AstNode, SyntaxElement, SyntaxNode,
 };
 use syntax::syntax_editor::Element; // for syntax().syntax_element()
@@ -13,6 +14,7 @@ use crate::util::*;
 
 // HayrollTag literal in the source code
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct HayrollTag {
     pub literal: ast::Literal,
     pub tag: serde_json::Value,
@@ -347,6 +349,25 @@ impl CodeRegion {
         }
     }
 
+    pub fn make_mut_with_builder(&self, builder: &mut ide_db::source_change::SourceChangeBuilder) -> CodeRegion {
+        match self {
+            CodeRegion::Expr(expr) => CodeRegion::Expr(builder.make_mut(expr.clone())),
+            CodeRegion::Stmts { parent, elements } => {
+                let start_mut = builder.make_mut(elements.start().clone());
+                let end_mut = builder.make_mut(elements.end().clone());
+                CodeRegion::Stmts { parent: builder.make_mut(parent.clone()), elements: start_mut..=end_mut }
+            }
+            CodeRegion::Decls(decls) => {
+                let mut new_decls = Vec::new();
+                for decl in decls {
+                    new_decls.push(builder.make_mut(decl.clone()));
+                }
+                CodeRegion::Decls(new_decls)
+            }
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn clone_for_update(&self) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(expr.clone_for_update()),
@@ -841,11 +862,12 @@ impl HasHayrollTag for HayrollConditionalMacro {
 impl HayrollConditionalMacro {
     // Attach #[cfg(c_defs = "premise")] to every element in the code region
     // Returns mutable CodeRegion that is no longer part of the original syntax tree
-    pub fn attach_cfg_mut(&self) -> CodeRegion {
-        let premise = self.premise();
+    pub fn attach_cfg_teds(&self, builder: &mut SourceChangeBuilder) -> Vec<Box<dyn FnOnce()>> {
+        let mut teds: Vec<Box<dyn FnOnce()>> = Vec::new();
         if self.seed.is_placeholder() {
-            return self.seed.get_raw_code_region(false).clone_for_update();
+            return Vec::new();
         }
+        let premise = self.premise();
         match self.seed {
             HayrollSeed::Expr(_) => {
                 // Work on the underlying IfExpr (don't include outer deref for lvalues)
@@ -866,89 +888,82 @@ impl HayrollConditionalMacro {
                         // But provide extra braces around the whole if-expression to help replacement
                         premise, then_text, else_text
                     );
-                    let new_expr = expr_from_text(&new_expr_text).clone_for_update();
+                    let new_expr_mut = expr_from_text(&new_expr_text).clone_for_update();
                     print!("Attaching cfg to if_expr:\n{}\n", if_expr);
-                    print!("New expr:\n{}\n", new_expr);
-                    CodeRegion::Expr(new_expr)
+                    let if_expr_mut = builder.make_mut(if_expr);
+                    let then_branch_mut = builder.make_mut(then_branch);
+                    teds.push(Box::new(move || {
+                        ted::replace(then_branch_mut.syntax(), new_expr_mut.syntax());
+                        print!("After attaching cfg, new if_expr:\n{}\n", if_expr_mut);
+                    }));
                 } else {
                     panic!("Expected Expr region for conditional seed expr");
                 }
             }
             HayrollSeed::Stmts(_, _) => {
-                let region = self.seed.get_raw_code_region(false).peel_tag();
+                let region = self.seed.get_raw_code_region_inside_tag();
                 // Print this code region for debugging
-                print!("Attaching cfg to stmts region:\n{}\n", region);
-                let mutator = ide_db::source_change::TreeMutator::new(&region.lub());
-                let mut region_mut = region.make_mut_with_mutator(&mutator);
-                if let CodeRegion::Stmts { parent, elements } = &mut region_mut {
+                if let CodeRegion::Stmts { parent, elements } = &region {
                     let start = elements.start();
                     let end = elements.end();
-                    let mut delayed: Vec<Box<dyn FnOnce()>> = Vec::new();
                     let mut seen_begin = false;
                     let mut seen_end = false;
-                    let mut new_start: Option<ast::Stmt> = None;
-                    let mut new_end: Option<ast::Stmt> = None;
                     for stmt in parent.statements() {
                         if &stmt == start {
                             seen_begin = true;
                         }
                         if seen_begin && !seen_end {
-                            // Only let-statements can take cfg directly; others must be wrapped in a block
-                            let is_let = ast::LetStmt::cast(stmt.syntax().clone()).is_some();
-                            let new_stmt: ast::Stmt = if is_let {
-                                let new_let_stmt_text = format!("#[cfg(c_defs = \"{}\")]\n{}", premise, stmt.to_string());
-                                let new_let_stmt = ast_from_text::<ast::LetStmt>(&new_let_stmt_text).clone_for_update();
-                                new_let_stmt.into()
+                            let attr_text = format!("#[cfg(c_defs = \"{}\")]", premise);
+                            let attr = ast_from_text::<ast::Attr>(&attr_text).clone_for_update();
+                            if let Some(let_stmt) = ast::LetStmt::cast(stmt.syntax().clone()) {
+                                print!("Attaching cfg to let_stmt:\n{}\n", let_stmt);
+                                let let_stmt_mut = builder.make_mut(let_stmt);
+                                teds.push(Box::new(move || {
+                                    let_stmt_mut.add_attr(attr);
+                                    print!("After attaching cfg, new let_stmt:\n{}\n", let_stmt_mut);
+                                }));
                             } else {
-                                let new_block_expr_text = format!("#[cfg(c_defs = \"{}\")]\n{{\n{}\n}}", premise, stmt.to_string());
-                                let new_block_expr = expr_from_text(&new_block_expr_text).clone_for_update();
-                                let new_block_stmt = ast::make::expr_stmt(new_block_expr.into()).clone_for_update();
-                                new_block_stmt.into()
-                            };
-                            print!("Attaching cfg to stmt:\n{}\n", stmt);
-                            print!("New stmt:\n{}\n", new_stmt);
-                            let old = mutator.make_mut(&stmt);
-                            // Save new start and end for assignment after the loop
-                            if &stmt == start {
-                                new_start = Some(new_stmt.clone());
+                                print!("Attaching cfg to stmt:\n{}\n", stmt);
+                                let block_expr_mut = ast::make::block_expr(vec![stmt.clone()], None).clone_for_update();
+                                block_expr_mut.add_attr(attr);
+                                let original_stmt_mut = builder.make_mut(stmt.clone());
+                                teds.push(Box::new(move || {
+                                    ted::replace(original_stmt_mut.syntax(), block_expr_mut.syntax());
+                                    print!("After attaching cfg, new stmt:\n{}\n", block_expr_mut);
+                                }));
                             }
-                            if &stmt == end {
-                                new_end = Some(new_stmt.clone());
-                            }
-                            delayed.push(Box::new(move || {
-                                ted::replace(old.syntax(), new_stmt.syntax());
-                            }));
                         }
                         if &stmt == end {
                             seen_end = true;
                         }
                         if seen_end { break; }
                     }
-                    *elements = new_start.unwrap()..=new_end.unwrap();
-                    for t in delayed { t(); }
                 } else {
                     panic!("Expected Stmts region for conditional seed stmts");
                 }
-                print!("After attaching cfg, stmts region is:\n{}\n", region_mut);
-                region_mut
             }
             HayrollSeed::Decls(_) => {
                 let region = self.seed.get_raw_code_region(false);
                 if region.is_empty() {
-                    return region
+                    return Vec::new();
                 }
-                let mutator = ide_db::source_change::TreeMutator::new(&region.lub());
-                let region_mut = region.make_mut_with_mutator(&mutator);
-                if let CodeRegion::Decls(items) = &region_mut {
-                    let new_item = items.iter().map(|item| {
-                        let text = format!("#[cfg(c_defs = \"{}\")]\n{}", premise, item.to_string());
-                        ast_from_text::<ast::Item>(&text).clone_for_update()
-                    }).collect::<Vec<ast::Item>>();
-                    CodeRegion::Decls(new_item)
+                let region_mut = region.make_mut_with_builder(builder);
+                if let CodeRegion::Decls(items_mut) = region_mut {
+                    items_mut.iter().for_each(|item_mut| {
+                        print!("Attaching cfg to item:\n{}\n", item_mut);
+                        let attr_text = format!("#[cfg(c_defs = \"{}\")]", premise);
+                        let attr = ast_from_text::<ast::Attr>(&attr_text).clone_for_update();
+                        let item_mut_clone = item_mut.clone();
+                        teds.push(Box::new(move || {
+                            item_mut_clone.add_attr(attr);
+                            print!("After attaching cfg, new item:\n{}\n", item_mut_clone);
+                        }));
+                    });
                 } else {
                     panic!("Expected Decls region for conditional seed decls");
                 }
             }
         }
+        teds
     }
 }

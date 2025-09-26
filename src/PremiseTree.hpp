@@ -315,13 +315,19 @@ struct PremiseTree
             // This tsNode must be a block_items node
             // Find in all its children the c_tokens nodes
             // If it does not have any c_tokens children, skip it.
-            // Otherwise, use the beginLoc of the first c_tokens child and the endLoc of the last c_tokens child.
+            // Otherwise, use the beginLoc of the first c_tokens child and the endLoc of the last c_tokens child that is not entirely comments. 
             assert(tsNode.isSymbol(lang.block_items_s));
             auto cTokenView =
                 std::views::all(tsNode.iterateChildren())
                 | std::views::filter([&lang](const TSNode & node)
                     {
-                        return node.isSymbol(lang.c_tokens_s);
+
+                        if (!node.isSymbol(lang.c_tokens_s)) return false;
+                        for (const TSNode & child : node.iterateChildren())
+                        {
+                            if (!child.isSymbol(lang.comment_s)) return true;
+                        }
+                        return false;
                     });
             std::vector<TSNode> cTokenNodes;
             std::ranges::copy(cTokenView, std::back_inserter(cTokenNodes));

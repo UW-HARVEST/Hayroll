@@ -1,11 +1,15 @@
+use std::collections::{HashMap, HashSet};
+
+use ide_db::{base_db::{SourceDatabase, SourceRootDatabase}, source_change::SourceChangeBuilder, EditionedFileId};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use ide::Edition;
+use ide::{Edition, RootDatabase};
 use syntax::{
     ast::{self, HasAttrs, SourceFile},
     AstNode, AstToken, SyntaxElement, SyntaxNode, SyntaxToken, T,
     syntax_editor::Position
 };
+use vfs::FileId;
 
 // Public logging initialization
 pub fn init_logging() {
@@ -178,4 +182,46 @@ pub fn find_items_in_range(
             })
         })
         .collect()
+}
+
+// Collect all parsed `SourceFile` roots from the database without using VFS.
+//
+// Strategy:
+// - Gather all SourceRootIds by walking the crate graph's root files.
+// - For each SourceRoot, iterate all files and parse them to `ast::SourceFile`.
+//
+// Note: we don't filter by file extension here; non-Rust files will parse to empty/near-empty trees
+// and will be naturally ignored by later passes that expect Rust syntax nodes.
+pub fn collect_syntax_roots_from_db(db: &RootDatabase) -> HashMap<FileId, SourceFile> {
+    let graph = db.crate_graph();
+    let mut source_root_ids = HashSet::new();
+    for krate in graph.iter() {
+        let root_file = graph[krate].root_file_id;
+        source_root_ids.insert(db.file_source_root(root_file));
+    }
+
+    let mut out = HashMap::new();
+    for sr_id in source_root_ids {
+        let sr = db.source_root(sr_id);
+        // Iterate all files in this source root; parse and record their trees.
+        // Depending on the RA version, the `SourceRoot` may expose iteration via `iter()` over FileId.
+        for file_id in sr.iter() {
+            let tree = db.parse(EditionedFileId::current_edition(file_id)).tree();
+            out.insert(file_id, tree);
+        }
+    }
+    out
+}
+
+pub fn make_builders_from_syntax_roots(
+    syntax_roots: &HashMap<FileId, SourceFile>,
+) -> HashMap<FileId, Option<SourceChangeBuilder>> {
+    let mut builders = HashMap::new();
+    for (file_id, source_file) in syntax_roots {
+        let mut builder = SourceChangeBuilder::new(*file_id);
+        // VERY IMPORTANT: make the builder maintain a complete mutable tree
+        builder.make_mut(source_file.clone());
+        builders.insert(*file_id, Some(builder));
+    }
+    builders
 }

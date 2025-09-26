@@ -129,7 +129,7 @@ public:
                 {
                     .line = endLine,
                     .col = endCol,
-                    .eraseOriginal = false,
+                    .eraseOriginal = eraseOriginal, // Not necessary, but a hack to prevent it from being erased by other tasks
                     .str =
                     (
                         std::stringstream()
@@ -166,7 +166,7 @@ public:
                 {
                     .line = endLine,
                     .col = endCol,
-                    .eraseOriginal = false,
+                    .eraseOriginal = eraseOriginal, // Not necessary, but a hack to prevent it from being erased by other tasks
                     .str =
                     (
                         std::stringstream()
@@ -204,7 +204,7 @@ public:
             {
                 .line = endLine,
                 .col = endCol,
-                .eraseOriginal = false,
+                .eraseOriginal = eraseOriginal, // Not necessary, but a hack to prevent it from being erased by other tasks
                 .str =
                 (
                     std::stringstream()
@@ -728,6 +728,83 @@ public:
         {
             std::list<InstrumentationTask> rangeTasks = genConditionalInstrumentationTasks(range, inverseLineMap);
             tasks.splice(tasks.end(), rangeTasks);
+        }
+
+        // Prevent inserting invocation tags into placeholder conditional ranges
+        // Remove tasks that are overlapped by any eraseOriginal task
+        // Policy: If a task A (eraseOriginal == false) has its position/range overlapping
+        // with any task B (eraseOriginal == true), drop A. The erasing range takes precedence.
+        if (!tasks.empty())
+        {
+            auto posLt = [](int l1, int c1, int l2, int c2)
+            {
+                return (l1 < l2) || (l1 == l2 && c1 < c2);
+            };
+            auto normalize = [&](int &sl, int &sc, int &el, int &ec)
+            {
+                if (posLt(el, ec, sl, sc))
+                {
+                    std::swap(sl, el);
+                    std::swap(sc, ec);
+                }
+            };
+
+            // Collect erasing ranges (only valid if they have concrete positions)
+            std::vector<const InstrumentationTask *> erasers;
+            erasers.reserve(tasks.size());
+            for (const auto &t : tasks)
+            {
+                if (t.eraseOriginal && t.line >= 0 && t.lineEnd >= 0)
+                {
+                    erasers.push_back(&t);
+                }
+            }
+
+            if (!erasers.empty())
+            {
+                for (auto it = tasks.begin(); it != tasks.end();)
+                {
+                    const InstrumentationTask &A = *it;
+                    // Skip erasing tasks themselves or tasks without concrete begin position
+                    if (A.eraseOriginal || A.line < 0)
+                    {
+                        ++it;
+                        continue;
+                    }
+
+                    // Define A's range: non-eraseOriginal tasks are treated as a point [line:col, line:col]
+                    int a_sl = A.line, a_sc = A.col;
+                    int a_el = A.eraseOriginal ? A.lineEnd : A.line;
+                    int a_ec = A.eraseOriginal ? A.colEnd : A.col;
+                    normalize(a_sl, a_sc, a_el, a_ec);
+
+                    bool remove_A = false;
+                    for (const auto *bp : erasers)
+                    {
+                        const auto &B = *bp;
+                        int b_sl = B.line, b_sc = B.col;
+                        int b_el = B.lineEnd, b_ec = B.colEnd;
+                        normalize(b_sl, b_sc, b_el, b_ec);
+                        // Overlap test: !(A_end < B_begin || B_end < A_begin)
+                        bool a_end_lt_b_begin = posLt(a_el, a_ec, b_sl, b_sc);
+                        bool b_end_lt_a_begin = posLt(b_el, b_ec, a_sl, a_sc);
+                        if (!(a_end_lt_b_begin || b_end_lt_a_begin))
+                        {
+                            remove_A = true;
+                            break;
+                        }
+                    }
+
+                    if (remove_A)
+                    {
+                        it = tasks.erase(it);
+                    }
+                    else
+                    {
+                        ++it;
+                    }
+                }
+            }
         }
 
         for (const InstrumentationTask & task : tasks)

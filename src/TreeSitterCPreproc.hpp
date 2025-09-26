@@ -137,6 +137,7 @@ public:
         X(c_tokens) \
             Y(token) \
         XX \
+        X(comment) XX \
         X(parenthesized_expression) \
             Y(expr) \
         XX \
