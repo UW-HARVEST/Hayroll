@@ -225,3 +225,27 @@ pub fn make_builders_from_syntax_roots(
     }
     builders
 }
+
+pub fn stmt_is_hayroll_tag(stmt: &ast::Stmt) -> bool {
+    // Strategy: look for any byte string literal inside the stmt whose decoded contents
+    // parse as JSON and contain { "hayroll": true }.
+    // This matches instrumentation like:
+    // *(b"{\"astKind\":\"Stmts\",... ,\"hayroll\":true,...}\0" as *const u8 as *const libc::c_char);
+    for element in stmt.syntax().descendants_with_tokens() {
+        if let Some(token) = element.clone().into_token() {
+            if let Some(byte_str) = ast::ByteString::cast(token) {
+                let content = match byte_str.value() {
+                    Ok(cow) => String::from_utf8_lossy(&cow).to_string(),
+                    Err(_) => continue,
+                };
+                let content = content.trim_end_matches(char::from(0));
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if val.get("hayroll").and_then(|v| v.as_bool()) == Some(true) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}

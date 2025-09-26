@@ -927,10 +927,21 @@ impl HayrollConditionalMacro {
                                 let block_expr_mut = ast::make::block_expr(vec![stmt.clone()], None).clone_for_update();
                                 block_expr_mut.add_attr(attr);
                                 let original_stmt_mut = builder.make_mut(stmt.clone());
-                                teds.push(Box::new(move || {
-                                    ted::replace(original_stmt_mut.syntax(), block_expr_mut.syntax());
-                                    print!("After attaching cfg, new stmt:\n{}\n", block_expr_mut);
-                                }));
+                                if !stmt_is_hayroll_tag(&original_stmt_mut) {
+                                    teds.push(Box::new(move || {
+                                        // The sequence here is very tricky
+                                        // parent{orig}, block{}(detached)
+                                        ted::replace(original_stmt_mut.syntax(), block_expr_mut.syntax());
+                                        // parent{block{}}, orig(detached)
+                                        let stmt_list = block_expr_mut.stmt_list().unwrap();
+                                        let statements: Vec<_> = stmt_list.statements().collect();
+                                        let range = statements.first().unwrap().syntax().syntax_element().clone()..=statements.last().unwrap().syntax().syntax_element().clone();
+                                        let new_elements = vec![original_stmt_mut.syntax().syntax_element().clone()];
+                                        ted::replace_all(range, new_elements);
+                                        // parent{block{orig}}
+                                        print!("After attaching cfg, new stmt:\n{}\n", block_expr_mut);
+                                    }));
+                                }
                             }
                         }
                         if &stmt == end {
