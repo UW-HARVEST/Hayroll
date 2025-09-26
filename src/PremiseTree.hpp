@@ -313,21 +313,18 @@ struct PremiseTree
             const std::vector<int> & lineNumbers = lineMap.at(includeTree);
 
             // This tsNode must be a block_items node
-            // Find in all its children the c_tokens nodes
-            // If it does not have any c_tokens children, skip it.
-            // Otherwise, use the beginLoc of the first c_tokens child and the endLoc of the last c_tokens child that is not entirely comments. 
+            // Find in all its descendants the c_token nodes (whose parent is c_tokens)
+            // If it does not have any c_tokens descendants, skip it.
+            // Otherwise, use the beginLoc of the first c_token descendant and the endLoc of the last c_token descendant that is not a comment.
             assert(tsNode.isSymbol(lang.block_items_s));
             auto cTokenView =
-                std::views::all(tsNode.iterateChildren())
+                std::views::all(tsNode.iterateDescendants())
                 | std::views::filter([&lang](const TSNode & node)
                     {
-
-                        if (!node.isSymbol(lang.c_tokens_s)) return false;
-                        for (const TSNode & child : node.iterateChildren())
-                        {
-                            if (!child.isSymbol(lang.comment_s)) return true;
-                        }
-                        return false;
+                        if (!node.parent()) return false;
+                        if (!node.parent().isSymbol(lang.c_tokens_s)) return false;
+                        if (node.isSymbol(lang.comment_s)) return false;
+                        return true;
                     });
             std::vector<TSNode> cTokenNodes;
             std::ranges::copy(cTokenView, std::back_inserter(cTokenNodes));
