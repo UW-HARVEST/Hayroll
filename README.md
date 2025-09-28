@@ -1,13 +1,21 @@
-<img src="images/hayroll-200x200.png" align="right" width="200px"/>
+<!-- markdownlint-disable MD041 --><!-- text before heading -->
+![A hayroll](images/hayroll-200x200.png){ align=right; width=200px; }
+<!-- markdownlint-enable MD041 --><!-- text before heading -->
 
 # Hayroll: translate C macros to Rust
 
-Hayroll converts C macros into Rust code.  Hayroll wraps the [c2rust](https://github.com/immunant/c2rust) tool for converting code written in C to the Rust programming language, improving c2rust's translation of C preprocessor macros and conditional compilation.  The `hayroll` command is a drop-in replacement for c2rust.  "Hayroll" stands for "**H**ARVEST **A**nnotator for **Y**ielding **R**egions **O**f **L**exical **L**ogic".
-
+Hayroll converts C macros into Rust code.  Hayroll wraps the
+[c2rust](https://github.com/immunant/c2rust) tool for converting code written in
+C to the Rust programming language, improving c2rust's translation of C
+preprocessor macros and conditional compilation.  The `hayroll` command is a
+drop-in replacement for c2rust.  "Hayroll" stands for "**H**ARVEST **A**nnotator
+for **Y**ielding **R**egions **O**f **L**exical **L**ogic".
 
 ## Example output of c2rust and Hayroll
 
-The `c2rust` program runs the C preprocessor before translating from C to Rust.  This means that macros are expanded (which destroys abstractions that the programmer put in the code) and that conditionally-compiled code is lost.
+The `c2rust` program runs the C preprocessor before translating from C to Rust.
+This means that macros are expanded (which destroys abstractions that the
+programmer put in the code) and that conditionally-compiled code is lost.
 
 For example, consider translating this C code (note especially the code comments):
 
@@ -73,7 +81,6 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
     h = 0.5f32;
 ```
 
-
 ## Installation
 
 Ensure that only one version of LLVM and Clang are installed on your computer,
@@ -81,13 +88,14 @@ and that they are the same version and not version 20.
 (This is necessary for c2rust.)
 
 Install Rust, if it is not already installed:
-```
+
+```sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 Now, install Hayroll:
 
-```
+```sh
 git clone https://github.com/UW-HARVEST/Hayroll
 cd Hayroll
 ./prerequisites.bash
@@ -97,7 +105,10 @@ cd ./build && ctest
 ```
 
 The `prerequisites.bash` script has been tested on Ubuntu.
-For installation on other operating systems, follow the instructions in [prerequisites.md](prerequisites.md), and please contribute back your instructions or a pull request to make `prerequisites.bash` work on more operating systems.  Thanks!
+For installation on other operating systems, follow the instructions in
+[prerequisites.md](prerequisites.md), and please contribute back your
+instructions or a pull request to make `prerequisites.bash` work on more
+operating systems.  Thanks!
 
 ## Usage
 
@@ -108,7 +119,8 @@ compiler with a long list of arguments. A `compile_commands.json` records these
 commands and arguments for the convenience of downstream analysis.
 
 An easy way to generate a `compile_commands.json` file is to run
-```
+
+```sh
 make clean && bear -- make
 ```
 
@@ -123,7 +135,7 @@ The `./hayroll` executable offers a turn-key solution from C source
 files to Rust files, with macros (partially) preserving their
 structure.
 
-```
+```sh
  <path_to_Hayroll>/hayroll <path_to_compile_commands.json> <output_directory>
 ```
 
@@ -133,23 +145,30 @@ structure.
 files for each original C file.
 
 - `xxx.c`: The C source file.
-- `xxx.cu.c`: The C compilation unit source file. This is `xxx.c` with all necessary `#include`s copy-pasted into a single file, which we call the compilation unit file. A compilation unit file is standalone compilable.
-- `xxx.premise_tree.c`: Output by the Hayroll Pioneer symbolic executor from executing `xxx.c`. For each line of code, it shows the compilation flag combination required for the code to survive conditional compilation macros.
+- `xxx.cu.c`: The C compilation unit source file. This is `xxx.c` with all
+  necessary `#include`s copy-pasted into a single file, which we call the
+  compilation unit file. A compilation unit file is standalone compilable.
+- `xxx.premise_tree.c`: Output by the Hayroll Pioneer symbolic executor from
+  executing `xxx.c`. For each line of code, it shows the compilation flag
+  combination required for the code to survive conditional compilation macros.
 - `xxx.cpp2c`: Maki's macro analysis result on `xxx.cu.c`.
 - `xxx.seeded.cu.c`: `xxx.cu.c` with Hayroll's macro info tags (seeds) inserted (seeded).
-- `xxx.seeded.rs`: `xxx.seeded.cu.c` translated to Rust by C2Rust, where C macros were expanded and translated as-is, together with Hayroll's seeds.
-- `xxx.rs`: The final output, Rust code with previously expanded C macro sections reverted into Rust functions or Rust macros.
-
+- `xxx.seeded.rs`: `xxx.seeded.cu.c` translated to Rust by C2Rust, where C
+  macros were expanded and translated as-is, together with Hayroll's seeds.
+- `xxx.rs`: The final output, Rust code with previously expanded C macro
+  sections reverted into Rust functions or Rust macros.
 
 ### Example of running Hayroll
 
-This section shows how to run Hayroll on version 1.2.0 of the [LibmCS mathematical library](https://gitlab.com/gtd-gmbh/libmcs).
+This section shows how to run Hayroll on version 1.2.0 of the [LibmCS
+mathematical library](https://gitlab.com/gtd-gmbh/libmcs).
 
 #### Clone and configure LibmCS
 
-If you installed Hayroll via `prerequisites.bash`, this step should have already been done automatically.
+If you installed Hayroll via `prerequisites.bash`, this step should have already
+been done automatically.
 
-```
+```sh
 git clone --branch 1.2.0 https://gitlab.com/gtd-gmbh/libmcs.git
 cd libmcs
 # Passing an explicit empty string to --cross-compile prevents the script
@@ -166,13 +185,13 @@ cd libmcs
 
 #### Create `compile_commands.json`
 
-```
+```sh
 make clean && bear -- make
 ```
 
 This command creates a `compile_commands.json` file of this form:
 
-```
+```json
 [
   {
     "arguments": [
@@ -205,13 +224,16 @@ This command creates a `compile_commands.json` file of this form:
 
 #### Remove some entries from `compile_commands.json`
 
-LibmCS uses complex numbers, but c2rust does not have full support for complex numbers.
-If you installed and configured LibmCS via `prerequisites.bash`, it is expected that no entires in `compile_commands.json` should point to source files under `libm/complexf/`.
+LibmCS uses complex numbers, but `c2rust` does not have full support for complex
+numbers.
+If you installed and configured LibmCS via `prerequisites.bash`, it is expected
+that no entires in `compile_commands.json` should point to source files under
+`libm/complexf/`.
 In case you configured it manually, please remove such entries.
 
 #### Run Hayroll
 
-```
+```sh
 /PATH/TO/hayroll compile_commands.json hayroll-output/
 ```
 
@@ -219,11 +241,16 @@ In the `hayroll-output/` directory, you will find files such as `xxx.rs`.
 
 #### Compare Hayroll and c2rust output
 
-To see the difference between Hayroll and c2rust output, you can use `diff` to compare the intermediate and final Rust files:
+To see the difference between Hayroll and c2rust output, you can use `diff` to
+compare the intermediate and final Rust files:
 
-```
+```sh
 diff hayroll-output/xxx.seeded.rs hayroll-output/xxx.rs
 ```
 
-- `xxx.seeded.rs` is generated by c2rust and contains Rust code with C macros expanded and tagged by Hayroll. The macros are expanded as plain code, but Hayroll inserts special markers (seeds) to indicate macro regions.
-- `xxx.rs` is the final output from Hayroll, where macros have been extracted and converted into Rust functions or macros based on the tags. This file is typically much simpler and more readable than the direct c2rust output.
+- `xxx.seeded.rs` is generated by c2rust and contains Rust code with C macros
+  expanded and tagged by Hayroll. The macros are expanded as plain code, but
+  Hayroll inserts special markers (seeds) to indicate macro regions.
+- `xxx.rs` is the final output from Hayroll, where macros have been extracted
+  and converted into Rust functions or macros based on the tags. This file is
+  typically much simpler and more readable than the direct c2rust output.
