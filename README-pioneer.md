@@ -28,8 +28,8 @@ needed is still work-in-progress.
 
 ## Input and Output
 
-Pioneer is provided as a C++ library. The input is a path to the source file, 
-and the outputs are in-memory data structures that will be described later. 
+Pioneer is provided as a C++ library. The input is a path to the source file,
+and the outputs are in-memory data structures that will be described later.
 
 - **Input:** A single C compilation unit.
 - **Output:**
@@ -40,17 +40,23 @@ and the outputs are in-memory data structures that will be described later.
     - For each possible macro definition that may expand at this site: the
       premise under which this definition is expanded.
 
-Note: The actual output of the program is structured as a hierarchical premise tree rather than a direct mapping from each line to its premise.
+Note: The actual output of the program is structured as a hierarchical
+premise tree rather than a direct mapping from each line to its premise.
+
 ## Core Concepts
 
 ### Symbolic Value and Expression
 
-Symbolic values express the definedness and value of user-defined macros (`-D`). We assume such macros are defined to integers, which is the common case. Pioneer does not explore potential executions from non-integer `-D` values. Each macro is associated with two symbolic values:
+Symbolic values express the definedness and value of user-defined macros
+(`-D`). We assume such macros are defined to integers, which is the common
+case. Pioneer does not explore potential executions from non-integer `-D`
+values. Each macro is associated with two symbolic values:
 
 - Boolean value (`defMACRO_NAME`) indicating whether the macro is defined.
 - Integer value (`valMACRO_NAME`) representing its numeric value.
 
-These two values are distinct because the C macro system allows testing a macro's definedness independently from its value.
+These two values are distinct because the C macro system allows testing a
+macro's definedness independently from its value.
 
 A macro that is defined by a `#define` directive in program text or a system
 header is not represented with symbolic values, as the user cannot customize its
@@ -89,7 +95,7 @@ make it easier to collect information about macro expansions in our algorithm.
 
 For example, the following C program:
 
-```
+```c
 #ifndef HEADER_GUARD
 #define HEADER_GUARD
 int f();
@@ -98,7 +104,7 @@ int f();
 
 is parsed into this AST:
 
-```
+```ast
 preproc_ifndef "#ifndef HEADER_GUARD [then] #endif"
   then:
     preproc_define "#define HEADER_GUARD"
@@ -119,7 +125,8 @@ $$
 \sigma : String \rightarrow ProgramPoint
 $$
 
-indicating the mapping from macro names to their definition nodes (the `#define` line). 
+indicating the mapping from macro names to their definition nodes (the
+`#define` line).
 
 ### State
 
@@ -130,29 +137,30 @@ $$
 s: State = (n: ProgramPoint, \sigma: SymbolTable, p: Premise)
 $$
 
-Pioneer keeps a set of States during execution. A certain State being in the
-set means that, when the user-provided macro definitions satisfy its $p$ (a symbolic expression), a
-concrete preprocessor execution will pass by this $n$, at which time macros in
-$\sigma$ are defined. Pioneer explores the reachable state space according to
-its algorithm.
+Pioneer keeps a set of States during execution. A certain State being in
+the set means that, when the user-provided macro definitions satisfy its
+$p$ (a symbolic expression), a concrete preprocessor execution will pass by
+this $n$, at which time macros in $\sigma$ are defined. Pioneer explores
+the reachable state space according to its algorithm.
 
 ## Symbolic Executor Algorithm
 
 ### Notations
 
-- $F : ProgramPoint \rightarrow (SymbolTable, Premise) \rightarrow List(State)$ turns $n : ProgramPoint$ into the transition
-  function associated with the AST node immediately after $n$.
+- $F : ProgramPoint \rightarrow (SymbolTable, Premise) \rightarrow
+  List(State)$ turns $n : ProgramPoint$ into the transition function
+  associated with the AST node immediately after $n$.
 
 - $next : ProgramPoint \rightarrow ProgramPoint$ identifies the next
-  ProgramPoint according to control flow sequence. 
-  It only accepts non-conditional preprocessor directives. 
+  ProgramPoint according to control flow sequence.
+  It only accepts non-conditional preprocessor directives.
   The last ProgramPoint is
   repesented with `EOF`.
 
 - $nextThen : ProgramPoint \rightarrow ProgramPoint$ and $nextElse :
   ProgramPoint \rightarrow ProgramPoint$ refer to the initial ProgramPoints of
   the respective branches following an `#if` directive.
-  They only accept conditional preprocessor directives. 
+  They only accept conditional preprocessor directives.
 
 - Given a symbol table $\sigma$, the function $eval_\sigma : Tokens \rightarrow
   Premise$ evaluates tokens into a symbolic expression within the context of
@@ -160,7 +168,7 @@ its algorithm.
 
 ### Algorithm Pseudocode
 
-```
+```pseudocode
 Input: astRoot: ProgramPoint
 
 worklist = {(astRoot, emptySymbolTable, true)} : List(State)
@@ -183,7 +191,7 @@ Output: lineToPremise, expansionToPremise
 
 ### Invariant of Outputs
 
-For any given $e : ExpansionSite$, all possible different definitions 
+For any given $e : ExpansionSite$, all possible different definitions
 $d_i : MacroDef, 0 \le i < k$ according to which it expands,
 and $n: ProgramPoint$ which contains $e$,
 it is guaranteed that
@@ -220,6 +228,7 @@ further exploration from such points.
 
 ### State Transitions
 
+<!-- markdownlint-disable MD013 --><!-- long lines -->
 #### `#define name body` and `#undef name`
 
 $$
@@ -265,14 +274,16 @@ $$
 $$
 F(EOF: ProgramPoint)(\sigma: SymbolTable, p: Premise) = \lbrace\rbrace
 $$
+<!-- markdownlint-enable MD013 --><!-- long lines -->
 
 ## Optimizations
 
 ### Symbol Segment
 
-Symbol tables are implemented as chained hash maps sharing common underlying
-hash map instances, or **SymbolSegment**s. Consecutive `#define` directives aggregate into a single
-hash table (SymbolSegment) to prevent exponential growth in symbol table storage.
+Symbol tables are implemented as chained hash maps sharing common
+underlying hash map instances, or **SymbolSegment**s. Consecutive `#define`
+directives aggregate into a single hash table (SymbolSegment) to prevent
+exponential growth in symbol table storage.
 
 ### Warp
 
@@ -294,4 +305,10 @@ corresponding leaf node.
 
 ### Concrete Execution of System Headers
 
-Much control flow complexity hide in the system headers that the target project includes, but the user usually does not care about that. Pioneer concretely executes such system headers (by calling `cc -dM -E` and adding all resulting macro definitions to the symbol table) to avoid state explosion and to simplify output. The user can tell Pioneer what to consider as target project headers, and the rest are treated as system headers and concretely executed. 
+Much control flow complexity hide in the system headers that the target
+project includes, but the user usually does not care about that. Pioneer
+concretely executes such system headers (by calling `cc -dM -E` and adding
+all resulting macro definitions to the symbol table) to avoid state
+explosion and to simplify output. The user can tell Pioneer what to
+consider as target project headers, and the rest are treated as system
+headers and concretely executed.
