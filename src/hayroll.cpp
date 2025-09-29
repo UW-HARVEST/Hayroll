@@ -205,9 +205,9 @@ int main(const int argc, const char* argv[])
     {
         while (true)
         {
-            std::size_t i = nextIdx.fetch_add(1, std::memory_order_relaxed);
-            if (i >= numTasks) break;
-            const CompileCommand & command = compileCommands[i];
+            std::size_t taskIdx = nextIdx.fetch_add(1, std::memory_order_relaxed);
+            if (taskIdx >= numTasks) break;
+            const CompileCommand & command = compileCommands[taskIdx];
             std::filesystem::path srcPath = command.file;
             try
             {
@@ -328,6 +328,8 @@ int main(const int argc, const char* argv[])
                         saveOutput(command, outputDir, projDir, reaperStr,
                             std::format(".{}.rs", i),
                             "Hayroll Reaper output", command.file.string(), i);
+
+                        SPDLOG_INFO("Task {}/{} {} completed", taskIdx, numTasks, command.file.string());
                     }
                 }
             }
@@ -335,13 +337,13 @@ int main(const int argc, const char* argv[])
             {
                 std::lock_guard<std::mutex> lock(failedMutex);
                 failedTasks.emplace_back(command.file, e.what());
-                SPDLOG_ERROR("Task {} failed: {}", command.file.string(), e.what());
+                SPDLOG_ERROR("Task {}/{} {} failed: {}", taskIdx, numTasks, command.file.string(), e.what());
             }
             catch (...)
             {
                 std::lock_guard<std::mutex> lock(failedMutex);
                 failedTasks.emplace_back(command.file, "unknown error");
-                SPDLOG_ERROR("Task {} failed: unknown error", command.file.string());
+                SPDLOG_ERROR("Task {}/{} {} failed: unknown error", taskIdx, numTasks, command.file.string());
             }
         }
     };
