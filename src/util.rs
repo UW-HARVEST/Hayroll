@@ -213,18 +213,6 @@ pub fn collect_syntax_roots_from_db(db: &RootDatabase) -> HashMap<FileId, Source
     out
 }
 
-pub fn make_builders_from_syntax_roots(
-    syntax_roots: &HashMap<FileId, SourceFile>,
-) -> HashMap<FileId, Option<SourceChangeBuilder>> {
-    let mut builders = HashMap::new();
-    for (file_id, source_file) in syntax_roots {
-        let mut builder = SourceChangeBuilder::new(*file_id);
-        // VERY IMPORTANT: make the builder maintain a complete mutable tree
-        builder.make_mut(source_file.clone());
-        builders.insert(*file_id, Some(builder));
-    }
-    builders
-}
 
 pub fn stmt_is_hayroll_tag(stmt: &ast::Stmt) -> bool {
     // Strategy: look for any byte string literal inside the stmt whose decoded contents
@@ -248,4 +236,97 @@ pub fn stmt_is_hayroll_tag(stmt: &ast::Stmt) -> bool {
         }
     }
     false
+}
+
+// A helper structure to manage multiple SourceChangeBuilders keyed by FileId.
+// It provides a facade mirroring a subset of SourceChangeBuilder's API, routing
+// calls to the appropriate underlying builder based on the file being edited.
+pub struct SourceChangeBuilderSet {
+    builders: HashMap<FileId, SourceChangeBuilder>,
+    root_to_file: HashMap<syntax::SyntaxNode, FileId>,
+}
+
+impl SourceChangeBuilderSet {
+    pub fn new() -> Self { Self { builders: HashMap::new(), root_to_file: HashMap::new() } }
+
+    // Pre-populate a builder per file, each with a full mutable tree initialized.
+    pub fn from_syntax_roots(syntax_roots: &HashMap<FileId, ast::SourceFile>) -> Self {
+        let mut set = SourceChangeBuilderSet::new();
+        for (file_id, source_file) in syntax_roots {
+            let mut builder = SourceChangeBuilder::new(*file_id);
+            // Initialize mutable tree for that file (mirrors previous helper behavior)
+            builder.make_mut(source_file.clone());
+            let root = source_file.syntax().clone();
+            // let ptr = syntax::SyntaxNodePtr::new(&root);
+            set.root_to_file.insert(root, *file_id);
+            set.builders.insert(*file_id, builder);
+        }
+        set
+    }
+
+    pub fn get(&mut self, file_id: FileId) -> &mut SourceChangeBuilder {
+        self.builders.get_mut(&file_id).expect("No builder for file id (did you forget from_syntax_roots?)")
+    }
+
+    pub fn builder_mut(&mut self, file_id: FileId) -> &mut SourceChangeBuilder { self.get(file_id) }
+
+    // Attempt to derive the file id from an arbitrary node by walking to its immutable root.
+    // NOTE: This works only for nodes from the original syntax trees (immutable roots). After
+    // a node is cloned_for_update() the root changes and resolution may fail.
+    fn file_id_of_node(&self, node: &syntax::SyntaxNode) -> Option<FileId> {
+        let root = node.ancestors().last().unwrap_or_else(|| node.clone());
+        self.root_to_file.get(&root).copied()
+    }
+
+    #[allow(dead_code)]
+    pub fn builder_mut_for_node(&mut self, node: &syntax::SyntaxNode) -> &mut SourceChangeBuilder {
+        let file_id = self.file_id_of_node(node).expect("Unable to resolve FileId from node root");
+        self.get(file_id)
+    }
+
+    // Mirror SourceChangeBuilder::make_editor (independent of which builder).
+    #[allow(dead_code)]
+    pub fn make_editor(&self, node: &syntax::SyntaxNode) -> syntax::syntax_editor::SyntaxEditor {
+        syntax::syntax_editor::SyntaxEditor::new(
+            node.ancestors().last().unwrap_or_else(|| node.clone())
+        )
+    }
+
+    // Route add_file_edits to the correct underlying builder.
+    #[allow(dead_code)]
+    pub fn add_file_edits(&mut self, file_id: FileId, editor: syntax::syntax_editor::SyntaxEditor) {
+        self.builder_mut(file_id).add_file_edits(file_id, editor);
+    }
+
+    // Force a commit on every underlying builder without consuming them. Since
+    // SourceChangeBuilder::commit is private, we trigger it indirectly by
+    // calling edit_file with the same file_id, which internally performs a commit.
+    pub fn commit(&mut self) {
+        for (_fid, builder) in self.builders.iter_mut() {
+            let fid = builder.file_id;
+            builder.edit_file(fid); // self-commit
+        }
+    }
+
+    // Convenience: infer file id from the node itself.
+    pub fn make_mut<N: syntax::AstNode>(&mut self, node: N) -> N {
+        let file_id = self.file_id_of_node(node.syntax()).expect("Unable to resolve FileId from node");
+        self.get(file_id).make_mut(node)
+    }
+
+    // Route make_syntax_mut to the appropriate builder.
+    #[allow(dead_code)]
+    pub fn make_syntax_mut(&mut self, node: syntax::SyntaxNode) -> syntax::SyntaxNode {
+        let file_id = self.file_id_of_node(&node).expect("Unable to resolve FileId from node");
+        self.get(file_id).make_syntax_mut(node)
+    }
+
+    // Finish all builders, merging their SourceChanges.
+    pub fn finish(mut self) -> ide::SourceChange {
+        self.commit();
+        self.builders.into_iter().fold(ide::SourceChange::default(), |acc, (_fid, builder)| {
+            let change = builder.finish();
+            acc.merge(change)
+        })
+    }
 }

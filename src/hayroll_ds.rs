@@ -1,6 +1,5 @@
 use std::ops::RangeInclusive;
 
-use ide_db::source_change::SourceChangeBuilder;
 use serde_json::{self};
 use syntax::{
     ast::{self, edit_in_place::AttrsOwnerEdit},
@@ -350,6 +349,24 @@ impl CodeRegion {
     }
 
     pub fn make_mut_with_builder(&self, builder: &mut ide_db::source_change::SourceChangeBuilder) -> CodeRegion {
+        match self {
+            CodeRegion::Expr(expr) => CodeRegion::Expr(builder.make_mut(expr.clone())),
+            CodeRegion::Stmts { parent, elements } => {
+                let start_mut = builder.make_mut(elements.start().clone());
+                let end_mut = builder.make_mut(elements.end().clone());
+                CodeRegion::Stmts { parent: builder.make_mut(parent.clone()), elements: start_mut..=end_mut }
+            }
+            CodeRegion::Decls(decls) => {
+                let mut new_decls = Vec::new();
+                for decl in decls {
+                    new_decls.push(builder.make_mut(decl.clone()));
+                }
+                CodeRegion::Decls(new_decls)
+            }
+        }
+    }
+
+    pub fn make_mut_with_builder_set(&self, builder: &mut SourceChangeBuilderSet) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(builder.make_mut(expr.clone())),
             CodeRegion::Stmts { parent, elements } => {
@@ -862,7 +879,7 @@ impl HasHayrollTag for HayrollConditionalMacro {
 impl HayrollConditionalMacro {
     // Attach #[cfg(c_defs = "premise")] to every element in the code region
     // Returns mutable CodeRegion that is no longer part of the original syntax tree
-    pub fn attach_cfg_teds(&self, builder: &mut SourceChangeBuilder) -> Vec<Box<dyn FnOnce()>> {
+    pub fn attach_cfg_teds(&self, builder: &mut SourceChangeBuilderSet) -> Vec<Box<dyn FnOnce()>> {
         let mut teds: Vec<Box<dyn FnOnce()>> = Vec::new();
         if self.seed.is_placeholder() {
             return Vec::new();
@@ -924,11 +941,13 @@ impl HayrollConditionalMacro {
                                 }));
                             } else {
                                 print!("Attaching cfg to stmt:\n{}\n", stmt);
-                                let block_expr_mut = ast::make::block_expr(vec![stmt.clone()], None).clone_for_update();
+                                let dummy_stmt = ast::Stmt::LetStmt(ast_from_text::<ast::LetStmt>("fn f() { let dummy = 1; }"));
+                                let block_expr_mut = ast::make::block_expr(vec![dummy_stmt], None).clone_for_update();
                                 block_expr_mut.add_attr(attr);
                                 let original_stmt_mut = builder.make_mut(stmt.clone());
                                 if !stmt_is_hayroll_tag(&original_stmt_mut) {
                                     teds.push(Box::new(move || {
+                                        print!("Created block expr:\n{}\n", block_expr_mut);
                                         // The sequence here is very tricky
                                         // parent{orig}, block{}(detached)
                                         ted::replace(original_stmt_mut.syntax(), block_expr_mut.syntax());
@@ -958,7 +977,7 @@ impl HayrollConditionalMacro {
                 if region.is_empty() {
                     return Vec::new();
                 }
-                let region_mut = region.make_mut_with_builder(builder);
+                let region_mut = region.make_mut_with_builder_set(builder);
                 if let CodeRegion::Decls(items_mut) = region_mut {
                     items_mut.iter().for_each(|item_mut| {
                         print!("Attaching cfg to item:\n{}\n", item_mut);

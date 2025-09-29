@@ -38,6 +38,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
 
     // Collect syntax roots from the database (no VFS dependency for discovery)
     let syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&db);
+    let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
     info!(found_files = syntax_roots.len(), "Found Rust files in the workspace");
     for (file_id, _root) in &syntax_roots {
         debug!(file = %vfs.file_path(*file_id), "workspace file");
@@ -45,8 +46,6 @@ pub fn run(workspace_path: &Path) -> Result<()> {
 
     // We are using the SyntaxEditor paradigm, so we need only one builder
     // Create a single global builder; pick any file id
-    let first_file_id = *syntax_roots.keys().next().expect("No Rust files found in workspace");
-    let mut builder = SourceChangeBuilder::new(first_file_id);
     let hayroll_seeds = extract_hayroll_seeds_from_syntax_roots(&syntax_roots);
     let hayroll_macro_invs = extract_hayroll_macro_invs_from_seeds(&hayroll_seeds);
     let hayroll_macro_db = HayrollMacroDB::from_hayroll_macro_invs(&hayroll_macro_invs);
@@ -57,7 +56,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         // Work in the declaration file for inserts
         let decl_file_id = cluster.file_id();
         let decl_root = syntax_roots.get(&decl_file_id).unwrap();
-        let mut editor = builder.make_editor(decl_root.syntax());
+        let mut editor = builder_set.make_editor(decl_root.syntax());
 
         if cluster.can_be_fn() {
             // Add the function definition to the bottom of the file
@@ -110,18 +109,18 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         } else {
             warn!(loc = %cluster.invocations[0].loc_begin(), "Hayroll macro cannot be converted: incompatible argument usage; skipping");
         }
-        builder.add_file_edits(decl_file_id, editor);
+        builder_set.add_file_edits(decl_file_id, editor);
     }
 
     // Finalize edits from the single global builder
-    let source_change = builder.finish();
+    let source_change = builder_set.finish();
     // Apply edits to the in-memory DB via file_text inputs
     apply_source_change(&mut db, &source_change);
 
     // ---- Second Pass: handle conditional macros ----
 
     let syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&db);
-    let mut builders: HashMap<FileId, Option<SourceChangeBuilder>> = make_builders_from_syntax_roots(&syntax_roots);
+    let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
     let hayroll_seeds: Vec<HayrollSeed> = extract_hayroll_seeds_from_syntax_roots(&syntax_roots);
 
     // Print number of syntax roots found
@@ -154,9 +153,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
             return Vec::new();
         }
 
-        let file_id = conditional_macro.file_id();
-        let builder = builders.get_mut(&file_id).unwrap().as_mut().unwrap();
-        let new_teds = conditional_macro.attach_cfg_teds(builder);
+        let new_teds = conditional_macro.attach_cfg_teds(&mut builder_set);
         new_teds
     }).collect::<Vec<Box<dyn FnOnce()>>>();
 
@@ -165,12 +162,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     }
 
     // Finalize edits from the single global builder
-    let source_change = builders.iter_mut()
-        .filter_map(|(_file_id, builder_opt)| builder_opt.take())
-        .fold(ide::SourceChange::default(), |acc, builder| {
-            let change = builder.finish();
-            acc.merge(change)
-        });
+    let source_change = builder_set.finish();
     // Apply edits to the in-memory DB via file_text inputs
     apply_source_change(&mut db, &source_change);
 
