@@ -2,10 +2,7 @@ use std::{collections::HashMap, fs, path::Path};
 
 use anyhow::Result;
 use ide::RootDatabase;
-use ide_db::{
-    base_db::{SourceDatabase, SourceDatabaseFileInputExt},
-    source_change::SourceChangeBuilder,
-};
+use ide_db::base_db::{SourceDatabase, SourceDatabaseFileInputExt};
 use load_cargo;
 use project_model::CargoConfig;
 use serde_json;

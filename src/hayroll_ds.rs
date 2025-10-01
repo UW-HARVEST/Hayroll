@@ -290,7 +290,6 @@ pub enum CodeRegion {
 }
 
 impl CodeRegion {
-    #[allow(dead_code)]
     pub fn clone_subtree(&self) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(expr.clone_subtree()),
@@ -348,6 +347,7 @@ impl CodeRegion {
         }
     }
 
+    #[allow(dead_code)]
     pub fn make_mut_with_builder(&self, builder: &mut ide_db::source_change::SourceChangeBuilder) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(builder.make_mut(expr.clone())),
@@ -489,7 +489,6 @@ impl CodeRegion {
     }
 
     // Returns a vector of syntax elements that represent the code region.
-    #[allow(dead_code)]
     pub fn syntax_element_vec(&self) -> Vec<SyntaxElement> {
         match self {
             CodeRegion::Expr(expr) => vec![expr.syntax().syntax_element().clone()],

@@ -285,7 +285,6 @@ impl SourceChangeBuilderSet {
     }
 
     // Mirror SourceChangeBuilder::make_editor (independent of which builder).
-    #[allow(dead_code)]
     pub fn make_editor(&self, node: &syntax::SyntaxNode) -> syntax::syntax_editor::SyntaxEditor {
         syntax::syntax_editor::SyntaxEditor::new(
             node.ancestors().last().unwrap_or_else(|| node.clone())
@@ -293,7 +292,6 @@ impl SourceChangeBuilderSet {
     }
 
     // Route add_file_edits to the correct underlying builder.
-    #[allow(dead_code)]
     pub fn add_file_edits(&mut self, file_id: FileId, editor: syntax::syntax_editor::SyntaxEditor) {
         self.builder_mut(file_id).add_file_edits(file_id, editor);
     }
