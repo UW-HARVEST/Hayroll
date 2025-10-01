@@ -272,7 +272,7 @@ fn extract_hayroll_seeds_from_syntax_roots(syntax_roots: &HashMap<FileId, Source
                 }
             }
             if !found {
-                panic!("No matching begin stmt found for end stmt");
+                panic!("No matching begin stmt found for end stmt {}", tag.loc_begin());
             }
         } else {
             panic!("Unknown tag");

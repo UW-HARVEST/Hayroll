@@ -37,6 +37,7 @@ public:
         int line; // if line == -1, append new line at the end of the file
         int col;
         bool eraseOriginal; // Whether to erase the original code before inserting the instrumentation
+        bool nonErasable;
         int lineEnd; // Only for eraseOriginal tasks
         int colEnd; // Only for eraseOriginal tasks
         std::string str;
@@ -114,6 +115,7 @@ public:
                     .line = beginLine,
                     .col = beginCol,
                     .eraseOriginal = eraseOriginal,
+                    .nonErasable = eraseOriginal,
                     .lineEnd = endLine,
                     .colEnd = endCol,
                     .str =
@@ -129,7 +131,8 @@ public:
                 {
                     .line = endLine,
                     .col = endCol,
-                    .eraseOriginal = eraseOriginal, // Not necessary, but a hack to prevent it from being erased by other tasks
+                    .eraseOriginal = false,
+                    .nonErasable = eraseOriginal,
                     .str =
                     (
                         std::stringstream()
@@ -151,6 +154,7 @@ public:
                     .line = beginLine,
                     .col = beginCol,
                     .eraseOriginal = eraseOriginal,
+                    .nonErasable = eraseOriginal,
                     .lineEnd = endLine,
                     .colEnd = endCol,
                     .str =
@@ -166,7 +170,8 @@ public:
                 {
                     .line = endLine,
                     .col = endCol,
-                    .eraseOriginal = eraseOriginal, // Not necessary, but a hack to prevent it from being erased by other tasks
+                    .eraseOriginal = false,
+                    .nonErasable = eraseOriginal,
                     .str =
                     (
                         std::stringstream()
@@ -189,6 +194,7 @@ public:
                 .line = beginLine,
                 .col = beginCol,
                 .eraseOriginal = eraseOriginal,
+                .nonErasable = eraseOriginal,
                 .lineEnd = endLine,
                 .colEnd = endCol,
                 .str =
@@ -204,7 +210,8 @@ public:
             {
                 .line = endLine,
                 .col = endCol,
-                .eraseOriginal = eraseOriginal, // Not necessary, but a hack to prevent it from being erased by other tasks
+                .eraseOriginal = false,
+                .nonErasable = eraseOriginal,
                 .str =
                 (
                     std::stringstream()
@@ -237,6 +244,7 @@ public:
             {
                 .line = -1, // Append at the end of the file
                 .eraseOriginal = eraseOriginal,
+                .nonErasable = eraseOriginal,
                 .str =
                 (
                     std::stringstream()
@@ -732,7 +740,7 @@ public:
 
         // Prevent inserting invocation tags into placeholder conditional ranges
         // Remove tasks that are overlapped by any eraseOriginal task
-        // Policy: If a task A (eraseOriginal == false) has its position/range overlapping
+        // Policy: If a task A (nonErasable == false) has its position/range overlapping
         // with any task B (eraseOriginal == true), drop A. The erasing range takes precedence.
         if (!tasks.empty())
         {
@@ -765,8 +773,8 @@ public:
                 for (auto it = tasks.begin(); it != tasks.end();)
                 {
                     const InstrumentationTask &A = *it;
-                    // Skip erasing tasks themselves or tasks without concrete begin position
-                    if (A.eraseOriginal || A.line < 0)
+                    // Skip unremovable tasks and tasks without concrete positions
+                    if (A.nonErasable || A.line < 0)
                     {
                         ++it;
                         continue;
