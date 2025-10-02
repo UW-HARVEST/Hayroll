@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use ide_db::{base_db::{SourceDatabase, SourceRootDatabase}, source_change::SourceChangeBuilder, EditionedFileId};
+use ide_db::{base_db::{SourceDatabase, SourceDatabaseFileInputExt, SourceRootDatabase}, source_change::SourceChangeBuilder, EditionedFileId};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use ide::{Edition, RootDatabase};
@@ -326,5 +326,22 @@ impl SourceChangeBuilderSet {
             let change = builder.finish();
             acc.merge(change)
         })
+    }
+}
+
+
+// Apply the source change to the RootDatabase
+pub fn apply_source_change(db: &mut RootDatabase, source_change: &ide::SourceChange) {
+    // Best-effort transactional behavior: cancel outstanding queries first.
+    db.request_cancellation();
+
+    // Apply per-file text edits directly to DB inputs.
+    for (file_id, (text_edit, snippet)) in source_change.source_file_edits.iter() {
+        let mut code = db.file_text(*file_id).to_string();
+        text_edit.apply(&mut code);
+        if let Some(snippet) = snippet {
+            snippet.apply(&mut code);
+        }
+        db.set_file_text(*file_id, &code);
     }
 }

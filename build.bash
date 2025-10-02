@@ -55,5 +55,6 @@ fi
 ln -sf "${BUILD_DIR}/hayroll" ../hayroll
 # Rust binaries are in debug subdirectory
 ln -sf "${BUILD_DIR}/debug/reaper" ../reaper
+ln -sf "${BUILD_DIR}/debug/merger" ../merger
 
 echo "Build completed"

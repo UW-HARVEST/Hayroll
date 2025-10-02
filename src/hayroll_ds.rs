@@ -1,12 +1,11 @@
-use std::ops::RangeInclusive;
+use std::{collections::HashMap, ops::RangeInclusive};
 
 use serde_json::{self};
 use syntax::{
-    ast::{self, edit_in_place::AttrsOwnerEdit},
-    ted, AstNode, SyntaxElement, SyntaxNode,
+    ast::{self, edit_in_place::AttrsOwnerEdit}, ted, AstNode, AstToken, SourceFile, SyntaxElement, SyntaxNode
 };
 use syntax::syntax_editor::Element; // for syntax().syntax_element()
-use tracing::warn;
+use tracing::{trace, warn};
 use vfs::FileId;
 
 use crate::util::*;
@@ -995,4 +994,124 @@ impl HayrollConditionalMacro {
         }
         teds
     }
+}
+
+pub fn extract_hayroll_macro_invs_from_seeds(hayroll_seeds: &Vec<HayrollSeed>) -> Vec<HayrollMacroInv> {
+    // A region whose isArg is false is a macro; match args to their macro
+    let hayroll_macro_invs: Vec<HayrollMacroInv> = hayroll_seeds.iter()
+        .filter(|seed| seed.is_invocation())
+        .fold(Vec::new(), |mut acc, region| {
+            if region.is_arg() == false {
+                // Pre-populate all expected argument names with empty vectors
+                let preset_args: Vec<(String, Vec<HayrollSeed>)> = region
+                    .arg_names()
+                    .into_iter()
+                    .map(|name| (name, Vec::new()))
+                    .collect();
+                acc.push(HayrollMacroInv { seed: region.clone(), args: preset_args });
+            } else {
+                let mut found = false;
+                for mac in acc.iter_mut().rev() {
+                    if mac.loc_begin() == region.loc_ref_begin() {
+                        assert!(mac.args.iter().any(|(name, _)| name == &region.name()));
+                        let arg = mac.args.iter_mut().find(|(name, _)| name == &region.name()).unwrap();
+                        arg.1.push(region.clone());
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    panic!("No matching macro found for arg: {:?}", region.loc_begin());
+                }
+            }
+            acc
+        }
+    );
+    hayroll_macro_invs
+}
+
+pub fn extract_hayroll_seeds_from_syntax_roots(syntax_roots: &HashMap<FileId, SourceFile>) -> Vec<HayrollSeed> {
+    let hayroll_tags: Vec<HayrollTag> = syntax_roots
+        .iter()
+        .flat_map(|(file_id, root)| {
+            root.syntax()
+                .descendants_with_tokens()
+                // Attach a file_id to each node
+                .map(move |element| (element, file_id))
+        })
+        .filter_map(|(element, file_id)| {
+            if let Some(token) = element.clone().into_token() {
+                if let Some(byte_str) = ast::ByteString::cast(token) {
+                    // Try to parse into serde_json::Value, if it fails, it's not a JSON string
+                    let content = match byte_str.value() {
+                        Ok(cow) => String::from_utf8_lossy(&cow).to_string(),
+                        Err(_) => return None,
+                    };
+                    // Delete the last \0 byte
+                    let content = content.trim_end_matches(char::from(0));
+                    let tag_res = serde_json::from_str::<serde_json::Value>(&content);
+                    trace!(byte_string = %content, tag = ?tag_res, "Byte String parsed");
+                    if let Ok(tag) = tag_res {
+                        if tag["hayroll"] == true {
+                            let tag = HayrollTag {
+                                literal: ast::Literal::cast(element.parent()?)?,
+                                tag,
+                                file_id: file_id.clone(),
+                            };
+                            return Some(tag);
+                        }
+                    }
+                }
+            }
+            None
+        })
+        .collect();
+    
+    // Pair up stmt hayroll_literals that are in the same scope and share the locInv in info
+    let hayroll_seeds: Vec<HayrollSeed> = hayroll_tags.iter().fold(Vec::new(), |mut acc, tag| {
+        if tag.is_expr() {
+            assert!(tag.begin());
+            acc.push(HayrollSeed::Expr(tag.clone()));
+        } else if (tag.is_stmt() || tag.is_stmts()) && tag.begin() == true {
+            acc.push(HayrollSeed::Stmts(tag.clone(), tag.clone())); // For now seedBegin == seedEnd
+        } else if tag.is_decl() || tag.is_decls() {
+            assert!(tag.begin());
+            acc.push(HayrollSeed::Decls(tag.clone()));
+        } else if !tag.begin() {
+            // Search through the acc to find the begin stmt with the same locInv
+            let mut found = false;
+            for seed in acc.iter_mut().rev() {
+                match seed {
+                    HayrollSeed::Stmts(tag_begin, ref mut tag_end) => {
+                        if tag_begin.loc_begin() == tag.loc_begin() && tag_begin.seed_type() == tag.seed_type() && tag.begin() == false {
+                            *tag_end = tag.clone();
+                            found = true;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if !found {
+                panic!("No matching begin stmt found for end stmt {}", tag.loc_begin());
+            }
+        } else {
+            panic!("Unknown tag");
+        }
+        acc
+    });
+
+    // Check that all Stmts seeds have both begin and end tags
+    for seed in &hayroll_seeds {
+        if let HayrollSeed::Stmts(tag_begin, tag_end) = seed {
+            if !tag_begin.begin()
+                || tag_end.begin()
+                || tag_begin.loc_begin() != tag_end.loc_begin()
+                || tag_begin.seed_type() != tag_end.seed_type() {
+                panic!("Unmatched begin/end tags for Stmts seed: {:?} {:?}", tag_begin, tag_end);
+            }
+        }
+    }
+
+    hayroll_seeds
 }

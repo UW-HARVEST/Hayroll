@@ -25,3 +25,7 @@ tracing-log = "0.1"
 [[bin]]
 name = "reaper"
 path = "src/reaper.rs"
+
+[[bin]]
+name = "merger"
+path = "src/merger.rs"
