@@ -744,66 +744,71 @@ public:
         // with any task B (eraseOriginal == true), drop A. The erasing range takes precedence.
         if (!tasks.empty())
         {
-            auto posLt = [](int l1, int c1, int l2, int c2)
+            // Compare (line, col) pairs in source order
+            auto isBefore = [](int l1, int c1, int l2, int c2)
             {
                 return (l1 < l2) || (l1 == l2 && c1 < c2);
             };
-            auto normalize = [&](int &sl, int &sc, int &el, int &ec)
+            // Ensure (lineBegin,colBegin) is not after (lineEnd,colEnd)
+            auto normalizeRange = [&](int &lineBegin, int &colBegin, int &lineEnd, int &colEnd)
             {
-                if (posLt(el, ec, sl, sc))
+                if (isBefore(lineEnd, colEnd, lineBegin, colBegin))
                 {
-                    std::swap(sl, el);
-                    std::swap(sc, ec);
+                    std::swap(lineBegin, lineEnd);
+                    std::swap(colBegin, colEnd);
                 }
             };
 
-            // Collect erasing ranges (only valid if they have concrete positions)
-            std::vector<const InstrumentationTask *> erasers;
-            erasers.reserve(tasks.size());
-            for (const auto &t : tasks)
+            // Collect erasing tasks having a concrete span
+            std::vector<const InstrumentationTask *> erasingTasks;
+            erasingTasks.reserve(tasks.size());
+            for (const auto &task : tasks)
             {
-                if (t.eraseOriginal && t.line >= 0 && t.lineEnd >= 0)
+                if (task.eraseOriginal && task.line >= 0 && task.lineEnd >= 0)
                 {
-                    erasers.push_back(&t);
+                    erasingTasks.push_back(&task);
                 }
             }
 
-            if (!erasers.empty())
+            if (!erasingTasks.empty())
             {
                 for (auto it = tasks.begin(); it != tasks.end();)
                 {
-                    const InstrumentationTask &A = *it;
-                    // Skip unremovable tasks and tasks without concrete positions
-                    if (A.nonErasable || A.line < 0)
+                    const InstrumentationTask &taskA = *it;
+                    // Skip protected (nonErasable) or position-less tasks
+                    if (taskA.nonErasable || taskA.line < 0)
                     {
                         ++it;
                         continue;
                     }
 
-                    // Define A's range: non-eraseOriginal tasks are treated as a point [line:col, line:col]
-                    int a_sl = A.line, a_sc = A.col;
-                    int a_el = A.eraseOriginal ? A.lineEnd : A.line;
-                    int a_ec = A.eraseOriginal ? A.colEnd : A.col;
-                    normalize(a_sl, a_sc, a_el, a_ec);
+                    // Range for A: if not eraseOriginal treat as a point
+                    int aLineBegin = taskA.line;
+                    int aColBegin  = taskA.col;
+                    int aLineEnd   = taskA.eraseOriginal ? taskA.lineEnd : taskA.line;
+                    int aColEnd    = taskA.eraseOriginal ? taskA.colEnd  : taskA.col;
+                    normalizeRange(aLineBegin, aColBegin, aLineEnd, aColEnd);
 
-                    bool remove_A = false;
-                    for (const auto *bp : erasers)
+                    bool removeA = false;
+                    for (const auto *erasePtr : erasingTasks)
                     {
-                        const auto &B = *bp;
-                        int b_sl = B.line, b_sc = B.col;
-                        int b_el = B.lineEnd, b_ec = B.colEnd;
-                        normalize(b_sl, b_sc, b_el, b_ec);
+                        const InstrumentationTask &taskB = *erasePtr;
+                        int bLineBegin = taskB.line;
+                        int bColBegin  = taskB.col;
+                        int bLineEnd   = taskB.lineEnd;
+                        int bColEnd    = taskB.colEnd;
+                        normalizeRange(bLineBegin, bColBegin, bLineEnd, bColEnd);
                         // Overlap test: !(A_end < B_begin || B_end < A_begin)
-                        bool a_end_lt_b_begin = posLt(a_el, a_ec, b_sl, b_sc);
-                        bool b_end_lt_a_begin = posLt(b_el, b_ec, a_sl, a_sc);
-                        if (!(a_end_lt_b_begin || b_end_lt_a_begin))
+                        bool aEndBeforeBBegin = isBefore(aLineEnd, aColEnd, bLineBegin, bColBegin);
+                        bool bEndBeforeABegin = isBefore(bLineEnd, bColEnd, aLineBegin, aColBegin);
+                        if (!(aEndBeforeBBegin || bEndBeforeABegin))
                         {
-                            remove_A = true;
+                            removeA = true;
                             break;
                         }
                     }
 
-                    if (remove_A)
+                    if (removeA)
                     {
                         it = tasks.erase(it);
                     }
