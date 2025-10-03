@@ -100,6 +100,7 @@ set(LIBMCS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../libmcs")
 add_library(hayroll_exe_config INTERFACE)
 target_compile_definitions(hayroll_exe_config INTERFACE
     HAYROLL_REAPER_EXE="${CMAKE_SOURCE_DIR}/reaper"
+    HAYROLL_MERGER_EXE="${CMAKE_SOURCE_DIR}/merger"
 )
 
 add_library(external_exe_config INTERFACE)

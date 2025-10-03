@@ -864,6 +864,7 @@ impl HayrollMacroDB {
     }
 }
 
+#[derive(Clone)]
 pub struct HayrollConditionalMacro {
     pub seed: HayrollSeed,
 }

@@ -21,6 +21,7 @@
 #include "Seeder.hpp"
 #include "C2RustWrapper.hpp"
 #include "ReaperWrapper.hpp"
+#include "MergerWrapper.hpp"
 
 // Helper: compute output path from a base CompileCommand, optional extension override,
 // write the given content, and log a unified info message in the form:
@@ -330,6 +331,22 @@ int main(const int argc, const char* argv[])
                             "Hayroll Reaper output", command.file.string(), i);
 
                         SPDLOG_INFO("Task {}/{} {} completed", taskIdx, numTasks, command.file.string());
+                    }
+
+                    // If multiple DefineSets, run Merger on each pair of adjacent DefineSets
+                    // Merge 0 and 1, save as filename.1.merged.rs, etc.
+                    std::vector<std::string> mergedRustStrs;
+                    mergedRustStrs.push_back(reaperStrs[0]); // The first one is not merged
+                    for (std::size_t i = 1; i < defineSets.size(); ++i)
+                    {
+                        std::string & reapedRustStrBase = mergedRustStrs[i - 1];
+                        std::string & reapedRustStrPatch = reaperStrs[i];
+                        std::string mergedRustStr = MergerWrapper::runMerger(reapedRustStrBase, reapedRustStrPatch);
+                        mergedRustStrs.push_back(mergedRustStr);
+                        // Save to filename.{i}.merged.rs
+                        saveOutput(command, outputDir, projDir, mergedRustStr,
+                            std::format(".{}.merged.rs", i),
+                            "Hayroll Merger output", command.file.string(), i);
                     }
                 }
             }

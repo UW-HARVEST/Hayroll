@@ -32,6 +32,7 @@ const std::filesystem::path ClangExe = std::filesystem::canonical(std::filesyste
 const std::filesystem::path MakiDir = std::filesystem::canonical(std::filesystem::path(MAKI_DIR));
 const std::filesystem::path LibmcsDir = std::filesystem::canonical(std::filesystem::path(LIBMCS_DIR));
 const std::filesystem::path HayrollReaperExe = std::filesystem::canonical(std::filesystem::path(HAYROLL_REAPER_EXE));
+const std::filesystem::path HayrollMergerExe = std::filesystem::canonical(std::filesystem::path(HAYROLL_MERGER_EXE));
 
 template<class... Ts>
 struct overloaded : Ts... { using Ts::operator()...; };

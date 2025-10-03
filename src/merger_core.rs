@@ -51,10 +51,20 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
         .map(|seed| HayrollConditionalMacro { seed: seed.clone() })
         .collect();
 
+    // In base_hayroll_conditional_macros, some may share the same loc_ref_begin()
+    // Create a list that only keeps one of them (the first one encountered)
+    let base_hayroll_conditional_macros_unique_ref: Vec<HayrollConditionalMacro> = base_hayroll_conditional_macros.iter()
+        .fold(Vec::new(), |mut acc, macro_| {
+            if !acc.iter().any(|m| m.seed.loc_ref_begin() == macro_.seed.loc_ref_begin()) {
+                acc.push(macro_.clone());
+            }
+            acc
+        });
+
     // Pair the elements in base_hayroll_conditional_macros with patch_hayroll_conditional_macros by loc_ref_begin()
     // Note that not every element in either list will have a match in the other list
     // We only keep the ones that have a match in both lists
-    let mut paired_conditional_macros: Vec<(&HayrollConditionalMacro, &HayrollConditionalMacro)> = base_hayroll_conditional_macros.iter()
+    let paired_conditional_macros: Vec<(&HayrollConditionalMacro, &HayrollConditionalMacro)> = base_hayroll_conditional_macros_unique_ref.iter()
         .filter_map(|base_macro| {
             patch_hayroll_conditional_macros.iter()
                 .find(|patch_macro| patch_macro.seed.loc_ref_begin() == base_macro.seed.loc_ref_begin())
@@ -72,9 +82,27 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
                 info!("Base has concrete code, patch is placeholder, no edit needed");
             }
             (true, false) => {
-                // Base is placeholder, patch has concrete code, need to insert patch code into base
-                info!("Base is placeholder, patch has concrete code, need to insert patch code into base");
-                // TODO: implement insertion logic
+                // Base is placeholder, patch has concrete code, need to replace base with patch
+                info!("Base is placeholder, patch has concrete code, need to replace base with patch");
+                // TODO: implement replacement logic
+                let base_code_region = base_macro.seed.get_raw_code_region(true);
+                let patch_code_region = patch_macro.seed.get_raw_code_region(true);
+                let patch_code_region_mut = patch_code_region.make_mut_with_builder_set(&mut patch_builder_set);
+                match (&base_code_region, &patch_code_region) {
+                    (CodeRegion::Expr(_), CodeRegion::Expr(_)) | (CodeRegion::Stmts { .. }, CodeRegion::Stmts { .. }) => {
+                        let base_region_element_range = base_code_region.syntax_element_range();
+                        let patch_stmts_nodes = patch_code_region_mut.syntax_element_vec();
+                        base_editor.replace_all(base_region_element_range, patch_stmts_nodes);
+                    }
+                    (CodeRegion::Decls(_), CodeRegion::Decls(_)) => {
+                        // We will merge all top-level declarations later anyways
+                        // So no need to do anything here
+                    }
+                    _ => {
+                        // Mismatched types, cannot replace
+                        info!("Mismatched types between base and patch code regions, cannot replace");
+                    }
+                }
             }
             (false, false) => {
                 // Both have concrete code, need to merge
@@ -86,7 +114,7 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
                 info!("Both are placeholders, no edit needed");
             }
         }
-            
+        base_builder_set.add_file_edits(base_macro.seed.file_id(), base_editor);       
     }
 
     // Finalize edits from the single global builder
