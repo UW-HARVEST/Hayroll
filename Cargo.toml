@@ -13,7 +13,7 @@ load-cargo = { git = "https://github.com/rust-lang/rust-analyzer" , tag = "2024-
 hir = { git = "https://github.com/rust-lang/rust-analyzer" , tag = "2024-12-16" }
 ide-assists = { git = "https://github.com/rust-lang/rust-analyzer" , tag = "2024-12-16" }
 rustc-hash = "2.0.0"
-rowan = "0.14.0"
+rowan = "0.16.0"
 anyhow = "1.0.75"
 camino = "1.1.9"
 serde_json = "1.0.133"
