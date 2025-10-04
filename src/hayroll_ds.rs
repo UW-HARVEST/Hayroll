@@ -2,10 +2,10 @@ use std::{collections::HashMap, ops::RangeInclusive};
 
 use serde_json::{self};
 use syntax::{
-    ast::{self, edit_in_place::AttrsOwnerEdit}, ted, AstNode, AstToken, SourceFile, SyntaxElement, SyntaxNode
+    ast::{self, edit_in_place::AttrsOwnerEdit, HasAttrs}, ted, AstNode, AstToken, SourceFile, SyntaxElement, SyntaxNode
 };
 use syntax::syntax_editor::Element; // for syntax().syntax_element()
-use tracing::{trace, warn};
+use tracing::{error, trace, warn};
 use vfs::FileId;
 
 use crate::util::*;
@@ -931,34 +931,69 @@ impl HayrollConditionalMacro {
                         if seen_begin && !seen_end {
                             let attr_text = format!("#[cfg(c_defs = \"{}\")]", premise);
                             let attr = ast_from_text::<ast::Attr>(&attr_text).clone_for_update();
-                            if let Some(let_stmt) = ast::LetStmt::cast(stmt.syntax().clone()) {
-                                print!("Attaching cfg to let_stmt:\n{}\n", let_stmt);
-                                let let_stmt_mut = builder.make_mut(let_stmt);
-                                teds.push(Box::new(move || {
-                                    let_stmt_mut.add_attr(attr);
-                                    print!("After attaching cfg, new let_stmt:\n{}\n", let_stmt_mut);
-                                }));
-                            } else {
-                                print!("Attaching cfg to stmt:\n{}\n", stmt);
-                                let dummy_stmt = ast::Stmt::LetStmt(ast_from_text::<ast::LetStmt>("fn f() { let dummy = 1; }"));
-                                let block_expr_mut = ast::make::block_expr(vec![dummy_stmt], None).clone_for_update();
-                                block_expr_mut.add_attr(attr);
-                                let original_stmt_mut = builder.make_mut(stmt.clone());
-                                if !stmt_is_hayroll_tag(&original_stmt_mut) {
+                            match &stmt {
+                                ast::Stmt::LetStmt(let_stmt) => {
+                                    print!("Attaching cfg to let stmt:\n{}\n", let_stmt);
+                                    let let_stmt_mut = builder.make_mut(let_stmt.clone());
                                     teds.push(Box::new(move || {
-                                        print!("Created block expr:\n{}\n", block_expr_mut);
-                                        // The sequence here is very tricky
-                                        // parent{orig}, block{}(detached)
-                                        ted::replace(original_stmt_mut.syntax(), block_expr_mut.syntax());
-                                        // parent{block{}}, orig(detached)
-                                        let stmt_list = block_expr_mut.stmt_list().unwrap();
-                                        let statements: Vec<_> = stmt_list.statements().collect();
-                                        let range = statements.first().unwrap().syntax().syntax_element().clone()..=statements.last().unwrap().syntax().syntax_element().clone();
-                                        let new_elements = vec![original_stmt_mut.syntax().syntax_element().clone()];
-                                        ted::replace_all(range, new_elements);
-                                        // parent{block{orig}}
-                                        print!("After attaching cfg, new stmt:\n{}\n", block_expr_mut);
+                                        let_stmt_mut.add_attr(attr);
+                                        print!("After attaching cfg, new let_stmt:\n{}\n", let_stmt_mut);
                                     }));
+                                }
+                                ast::Stmt::Item(item_stmt) => {
+                                    print!("Attaching cfg to item stmt:\n{}\n", item_stmt);
+                                    let item_mut = builder.make_mut(item_stmt.clone());
+                                    teds.push(Box::new(move || {
+                                        item_mut.add_attr(attr);
+                                        print!("After attaching cfg, new item stmt:\n{}\n", item_mut);
+                                    }));
+                                }
+                                ast::Stmt::ExprStmt(expr_stmt) => {
+                                    if !stmt_is_hayroll_tag(&stmt) {
+                                        if let Some(expr) = expr_stmt.expr() {
+                                            // First, try to attach the attr directly on any HasAttrs expression type.
+                                            let attached = schedule_add_attr_on_expr_if_possible(
+                                                builder,
+                                                expr.clone(),
+                                                attr.clone(),
+                                                &mut teds,
+                                            );
+                                            if !attached {
+                                                // Fallback: wrap with a ParenExpr and attach the attr to it.
+                                                print!("Attaching cfg to expr stmt by wrapping:\n{}\n", expr_stmt);
+                                                let paren_expr = expr_from_text("(1)");
+                                                let paren_expr = ast::ParenExpr::cast(paren_expr.syntax().clone()).unwrap();
+                                                let paren_expr_mut = paren_expr.clone_for_update();
+                                                paren_expr_mut.add_attr(attr.clone());
+                                                let original_expr_mut = builder.make_mut(expr);
+                                                teds.push(Box::new(move || {
+                                                    // If the parent of original_expr_mut is a paren expr with existing attrs,
+                                                    // (in case where other transformations have already wrapped it)
+                                                    // then attatch to that. Otherwise, create a new paren expr.
+                                                    if let Some(original_expr_mut_parent) = original_expr_mut.syntax().parent() {
+                                                        if let Some(existing_paren) = ast::ParenExpr::cast(original_expr_mut_parent.clone()) {
+                                                            if !existing_paren.attrs().next().is_none() {
+                                                                // Attach to existing paren expr
+                                                                existing_paren.add_attr(attr.clone());
+                                                                print!("Attached cfg to existing paren expr:\n{}\n", existing_paren);
+                                                                return;
+                                                            }
+                                                        }
+                                                    }
+                                                    print!("Created paren expr:\n{}\n", paren_expr_mut);
+                                                    // The sequence here is very tricky
+                                                    // parent{orig;}, paren() (detached)
+                                                    ted::replace(original_expr_mut.syntax(), paren_expr_mut.syntax());
+                                                    // parent{paren();}, orig (detached)
+                                                    ted::replace(paren_expr_mut.expr().unwrap().syntax(), original_expr_mut.syntax());
+                                                    // parent{paren(orig);}
+                                                    print!("After attaching cfg, new stmt:\n{}\n", paren_expr_mut);
+                                                }));
+                                            }
+                                        } else {
+                                            error!("ExprStmt has no expr: {}", expr_stmt);
+                                        }
+                                    }
                                 }
                             }
                         }

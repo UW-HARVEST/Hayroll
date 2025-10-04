@@ -5,7 +5,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use ide::{Edition, RootDatabase};
 use syntax::{
-    ast::{self, HasAttrs, SourceFile},
+    ast::{self, HasAttrs, edit_in_place::AttrsOwnerEdit, SourceFile},
     AstNode, AstToken, SyntaxElement, SyntaxNode, SyntaxToken, T,
     syntax_editor::Position
 };
@@ -236,6 +236,53 @@ pub fn stmt_is_hayroll_tag(stmt: &ast::Stmt) -> bool {
         }
     }
     false
+}
+
+// Try to attach an attribute to an expression by casting it into one of the
+// AST node types that implement HasAttrs. Returns true if a closure was scheduled.
+pub fn schedule_add_attr_on_expr_if_possible(
+    builder: &mut SourceChangeBuilderSet,
+    expr: ast::Expr,
+    attr: ast::Attr,
+    teds: &mut Vec<Box<dyn FnOnce()>>,
+) -> bool {
+    macro_rules! try_cast {
+        ($($T:ty),* $(,)?) => {{
+            $(
+                if let Some(node) = < $T >::cast(expr.syntax().clone()) {
+                    let node_mut = builder.make_mut(node);
+                    teds.push(Box::new(move || {
+                        node_mut.add_attr(attr);
+                    }));
+                    return true;
+                }
+            )*
+            false
+        }};
+    }
+
+    // Cover a broad set of expression nodes that support outer attributes.
+    // Some are commented out to avoid false positives where attributes are not allowed.
+    try_cast!(
+        ast::ParenExpr,
+        ast::IfExpr,
+        ast::BlockExpr,
+        // ast::CallExpr,
+        // ast::MethodCallExpr,
+        ast::MatchExpr,
+        ast::LoopExpr,
+        ast::ForExpr,
+        // ast::AwaitExpr,
+        // ast::BinExpr,
+        // ast::CastExpr,
+        // ast::FieldExpr,
+        // ast::ArrayExpr,
+        ast::LetExpr,
+        // ast::MacroCall,
+        // ast::BreakExpr,
+        // ast::ContinueExpr,
+        // ast::IndexExpr,
+    )
 }
 
 // A helper structure to manage multiple SourceChangeBuilders keyed by FileId.
