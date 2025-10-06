@@ -6,7 +6,8 @@ use ide_db::base_db::{SourceDatabase, SourceDatabaseFileInputExt};
 use load_cargo;
 use project_model::CargoConfig;
 use syntax::{
-    ast::SourceFile,
+    ast::{self, HasModuleItem, SourceFile},
+    syntax_editor::Element,
     AstNode,
 };
 use tracing::{debug, info};
@@ -37,7 +38,7 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
         .map(|seed| HayrollConditionalMacro { seed: seed.clone() })
         .collect();
 
-    let (mut patch_db, patch_vfs, _proc_macro) =
+    let (patch_db, patch_vfs, _proc_macro) =
         load_cargo::load_workspace_at(patch_workspace_path, &cargo_config, &load_cargo_config, &|_| {})?;
     let patch_syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&patch_db);
     let mut patch_builder_set = SourceChangeBuilderSet::from_syntax_roots(&patch_syntax_roots);
@@ -84,7 +85,6 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
             (true, false) => {
                 // Base is placeholder, patch has concrete code, need to replace base with patch
                 info!("Base is placeholder, patch has concrete code, need to replace base with patch");
-                // TODO: implement replacement logic
                 let base_code_region = base_macro.seed.get_raw_code_region(true);
                 let patch_code_region = patch_macro.seed.get_raw_code_region(true);
                 let patch_code_region_mut = patch_code_region.make_mut_with_builder_set(&mut patch_builder_set);
@@ -115,6 +115,106 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
             }
         }
         base_builder_set.add_file_edits(base_macro.seed.file_id(), base_editor);       
+    }
+
+    // Merge top-level items from patch into corresponding base files
+    // Strategy:
+    // - For each patch file that also exists in base (matched by file path),
+    //   compute signatures of base items (name + attr set ignoring order).
+    // - For each patch item, if not a HAYROLL_TAG_FOR* and its signature isn't in base,
+    //   insert it: macros at file top (after top-level attrs), others at file bottom.
+    // - Only consider items with a name; unnamed items are skipped to avoid accidental duplication.
+
+    // Build a relpath->FileId index for base files (strip workspace root prefix)
+    let mut base_path_to_id: HashMap<String, FileId> = HashMap::new();
+    for (fid, _) in &base_syntax_roots {
+        let vfs_path = base_vfs.file_path(*fid);
+        let abs_ra = vfs_path.as_path().unwrap();
+        let abs_std: &std::path::Path = abs_ra.as_ref();
+        let rel = abs_std.strip_prefix(base_workspace_path)?;
+        let rel_str = rel.to_string_lossy().to_string();
+        base_path_to_id.insert(rel_str, *fid);
+    }
+
+    // Helper to get an item's simple name (direct child Name)
+    let item_name = |item: &ast::Item| -> Option<String> {
+        item.syntax().children().find_map(ast::Name::cast).map(|n| n.to_string())
+    };
+    // Helper to collect the set of attribute spellings directly on the item (ignore order)
+    // Note: ignore #[c2rust::src_loc = "..."] when comparing, so this attr doesn't affect equality.
+    let item_attr_set = |item: &ast::Item| -> std::collections::BTreeSet<String> {
+        item.syntax()
+            .children()
+            .filter_map(ast::Attr::cast)
+            .filter(|attr| {
+                // Keep attr if its path is not c2rust::src_loc; if meta/path missing, keep by default.
+                attr.meta()
+                    .and_then(|m| m.path())
+                    .map(|p| p.to_string() != "c2rust::src_loc")
+                    .unwrap_or(true)
+            })
+            .map(|a| a.to_string())
+            .collect()
+    };
+    // Helper to decide if an item is a macro definition
+    let is_macro_def = |item: &ast::Item| -> bool {
+        ast::MacroRules::cast(item.syntax().clone()).is_some()
+            || ast::MacroDef::cast(item.syntax().clone()).is_some()
+    };
+
+    for (patch_fid, patch_root) in &patch_syntax_roots {
+    let vfs_path = patch_vfs.file_path(*patch_fid);
+    let Some(abs_ra) = vfs_path.as_path() else { continue };
+    let abs_std: &std::path::Path = abs_ra.as_ref();
+    let Ok(rel) = abs_std.strip_prefix(patch_workspace_path) else { continue };
+    let rel_str = rel.to_string_lossy().to_string();
+        let Some(base_fid) = base_path_to_id.get(&rel_str).copied() else { continue };
+        let base_root = base_syntax_roots.get(&base_fid).unwrap();
+
+        // Build signature set for base
+        let mut base_sigs: std::collections::BTreeSet<(String, std::collections::BTreeSet<String>)> =
+            std::collections::BTreeSet::new();
+        for b_item in base_root.items() {
+            if let Some(name) = item_name(&b_item) {
+                let attrs = item_attr_set(&b_item);
+                base_sigs.insert((name, attrs));
+            }
+        }
+
+        // Collect items to insert, categorized by placement
+        let mut to_top: Vec<syntax::SyntaxElement> = Vec::new();
+        let mut to_bot: Vec<syntax::SyntaxElement> = Vec::new();
+
+        for p_item in patch_root.items() {
+            let Some(name) = item_name(&p_item) else { continue };
+            if name.starts_with("HAYROLL_TAG_FOR") { continue }
+            let attrs = item_attr_set(&p_item);
+            if base_sigs.contains(&(name.clone(), attrs.clone())) { continue }
+
+            let elem = p_item.syntax().clone_for_update().syntax_element();
+            if is_macro_def(&p_item) {
+                // insert macro at top (after file attrs), keep an empty line after
+                to_top.push(elem);
+                to_top.push(get_empty_line_element_mut());
+            } else {
+                // insert others at bottom, with an empty line before
+                to_bot.push(get_empty_line_element_mut());
+                to_bot.push(elem);
+            }
+        }
+
+        if !to_top.is_empty() || !to_bot.is_empty() {
+            let mut editor = base_builder_set.make_editor(base_root.syntax());
+            if !to_top.is_empty() {
+                let top = top_pos(base_root);
+                editor.insert_all(top, to_top);
+            }
+            if !to_bot.is_empty() {
+                let bot = bot_pos(base_root);
+                editor.insert_all(bot, to_bot);
+            }
+            base_builder_set.add_file_edits(base_fid, editor);
+        }
     }
 
     // Finalize edits from the single global builder

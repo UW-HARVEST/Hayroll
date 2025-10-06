@@ -880,7 +880,10 @@ impl HayrollConditionalMacro {
     // Returns mutable CodeRegion that is no longer part of the original syntax tree
     pub fn attach_cfg_teds(&self, builder: &mut SourceChangeBuilderSet) -> Vec<Box<dyn FnOnce()>> {
         let mut teds: Vec<Box<dyn FnOnce()>> = Vec::new();
-        if self.seed.is_placeholder() {
+        // Force attaching cfg to a placeholder decl/decls is a hack
+        // We do this because Maki frequently thinks a decl/decls is a placeholder
+        // when other preprocessor directives "invade" the range
+        if self.is_placeholder() && !(self.is_decl() || self.is_decls()) {
             return Vec::new();
         }
         let premise = self.premise();

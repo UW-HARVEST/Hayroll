@@ -128,23 +128,15 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         .collect();
 
     // Apply conditional macros: attach cfg attributes or wrap expressions
-    // for conditional_macro in hayroll_conditional_macros.iter() {
     let teds = hayroll_conditional_macros.iter()
         .flat_map(|conditional_macro| {
 
-        if conditional_macro.is_placeholder() {
-            return Vec::new();
-        }
-
-        // let file_id = conditional_macro.file_id();
-        // let syntax_root = syntax_roots.get(&file_id).unwrap();
-
-        // Original region to replace (without deref for exprs)
-        let code_region = conditional_macro.seed.get_raw_code_region_inside_tag();
-        // New region with cfg attached
-        if code_region.is_empty() {
-            return Vec::new();
-        }
+        // // Original region to replace (without deref for exprs)
+        // let code_region = conditional_macro.seed.get_raw_code_region_inside_tag();
+        // // New region with cfg attached
+        // if code_region.is_empty() {
+        //     return Vec::new();
+        // }
 
         let new_teds = conditional_macro.attach_cfg_teds(&mut builder_set);
         new_teds
