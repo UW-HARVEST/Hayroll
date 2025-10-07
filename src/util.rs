@@ -288,6 +288,29 @@ pub fn stmt_is_hayroll_tag(stmt: &ast::Stmt) -> bool {
     false
 }
 
+// Detect whether an ast::Item represents a Hayroll tag (instrumentation placeholder).
+// Strategy mirrors stmt_is_hayroll_tag: search for a byte string literal anywhere under the item,
+// parse its contents as JSON, and return true if it contains { "hayroll": true }.
+pub fn item_is_hayroll_tag(item: &ast::Item) -> bool {
+    for element in item.syntax().descendants_with_tokens() {
+        if let Some(token) = element.clone().into_token() {
+            if let Some(byte_str) = ast::ByteString::cast(token) {
+                let content = match byte_str.value() {
+                    Ok(cow) => String::from_utf8_lossy(&cow).to_string(),
+                    Err(_) => continue,
+                };
+                let content = content.trim_end_matches(char::from(0));
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if val.get("hayroll").and_then(|v| v.as_bool()) == Some(true) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 // Try to attach an attribute to an expression by casting it into one of the
 // AST node types that implement HasAttrs. Returns true if a closure was scheduled.
 pub fn schedule_add_attr_on_expr_if_possible(

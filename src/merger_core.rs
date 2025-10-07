@@ -6,7 +6,7 @@ use ide_db::base_db::{SourceDatabase, SourceDatabaseFileInputExt};
 use load_cargo;
 use project_model::CargoConfig;
 use syntax::{
-    ast::{self, HasModuleItem, SourceFile},
+    ast::{self, HasAttrs, HasModuleItem, SourceFile},
     syntax_editor::Element,
     AstNode,
 };
@@ -141,18 +141,8 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
         item.syntax().children().find_map(ast::Name::cast).map(|n| n.to_string())
     };
     // Helper to collect the set of attribute spellings directly on the item (ignore order)
-    // Note: ignore #[c2rust::src_loc = "..."] when comparing, so this attr doesn't affect equality.
     let item_attr_set = |item: &ast::Item| -> std::collections::BTreeSet<String> {
-        item.syntax()
-            .children()
-            .filter_map(ast::Attr::cast)
-            .filter(|attr| {
-                // Keep attr if its path is not c2rust::src_loc; if meta/path missing, keep by default.
-                attr.meta()
-                    .and_then(|m| m.path())
-                    .map(|p| p.to_string() != "c2rust::src_loc")
-                    .unwrap_or(true)
-            })
+        item.attrs()
             .map(|a| a.to_string())
             .collect()
     };
@@ -187,7 +177,6 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
 
         for p_item in patch_root.items() {
             let Some(name) = item_name(&p_item) else { continue };
-            if name.starts_with("HAYROLL_TAG_FOR") { continue }
             let attrs = item_attr_set(&p_item);
             if base_sigs.contains(&(name.clone(), attrs.clone())) { continue }
 

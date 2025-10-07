@@ -4,7 +4,7 @@ use anyhow::Result;
 use ide_db::base_db::SourceDatabase;
 use load_cargo;
 use project_model::CargoConfig;
-use syntax::ast::{self, HasModuleItem, Item};
+use syntax::ast::{HasModuleItem, Item};
 use syntax::{
     ast::SourceFile,
     syntax_editor::Element,
@@ -169,18 +169,11 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         let mut editor = builder_set.make_editor(item.syntax());
         let file_id = builder_set.file_id_of_node(item.syntax()).unwrap();
 
-         // Helper to get an item's simple name (direct child Name)
-        let item_name = |item: &Item| -> Option<String> {
-            item.syntax().children().find_map(ast::Name::cast).map(|n| n.to_string())
-        };
-
-        // Remove HAYROLL_TAG_FOR_* items
-        if let Some(name) = item_name(&item) {
-            if name.starts_with("HAYROLL_TAG_FOR") {
-                editor.delete(item.syntax().syntax_element().clone());
-                builder_set.add_file_edits(file_id, editor);
-                continue; // Skip further processing for this item
-            }
+        // Remove Hayroll tag items (detected by embedded JSON with {"hayroll": true})
+        if item_is_hayroll_tag(&item) {
+            editor.delete(item.syntax().syntax_element().clone());
+            builder_set.add_file_edits(file_id, editor);
+            continue; // Skip further processing for this item
         }
 
         // Remove c2rust::src_loc attributes
