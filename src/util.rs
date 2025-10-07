@@ -184,6 +184,56 @@ pub fn find_items_in_range(
         .collect()
 }
 
+// Remove all #[c2rust::src_loc = "..."] attributes from an ast::Item
+// Returns immutable ast::Item that is no longer tied to the original tree
+pub fn peel_c2rust_src_locs_from_item(item: &ast::Item) -> ast::Item {
+    // Helper to detect #[c2rust::src_loc = "<digits>:<digits>"] attributes by textual form.
+    fn is_c2rust_src_loc_attr(attr: &ast::Attr) -> bool {
+        let s = attr.to_string();
+        if !s.contains("c2rust::src_loc") {
+            return false;
+        }
+        // Find the first quoted string in the attribute and verify it matches \d+:\d+
+        if let Some(start_q) = s.find('"') {
+            if let Some(rel_end_q) = s[start_q + 1..].find('"') {
+                let end_q = start_q + 1 + rel_end_q;
+                let content = &s[start_q + 1..end_q];
+                let mut parts = content.split(':');
+                if let (Some(a), Some(b), None) = (parts.next(), parts.next(), parts.next()) {
+                    return a.chars().all(|c| c.is_ascii_digit())
+                        && b.chars().all(|c| c.is_ascii_digit());
+                }
+            }
+        }
+        false
+    }
+
+    let mutator = ide_db::source_change::TreeMutator::new(&item.syntax());
+
+    let item_mut = mutator.make_mut(item);
+
+    // Collect all existing outer attributes attached directly to this item.
+    let all_attrs: Vec<ast::Attr> = item_mut.attrs().collect();
+
+    // Retain only non-c2rust::src_loc attributes; clone for reinsertion.
+    let retained: Vec<ast::Attr> = all_attrs
+        .iter()
+        .filter(|a| !is_c2rust_src_loc_attr(a))
+        .map(|a| a.clone())
+        .collect();
+
+    // Remove all existing attributes from the item.
+    item_mut.remove_attrs_and_docs();
+
+    // Re-add retained attributes at the start of the item node, preserving order.
+    for attr in retained.into_iter().rev() {
+        // Insert in reverse so final order matches the original.
+        item_mut.add_attr(attr);
+    }
+
+    item_mut.clone_subtree()
+}
+
 // Collect all parsed `SourceFile` roots from the database without using VFS.
 //
 // Strategy:
@@ -320,7 +370,7 @@ impl SourceChangeBuilderSet {
     // Attempt to derive the file id from an arbitrary node by walking to its immutable root.
     // NOTE: This works only for nodes from the original syntax trees (immutable roots). After
     // a node is cloned_for_update() the root changes and resolution may fail.
-    fn file_id_of_node(&self, node: &syntax::SyntaxNode) -> Option<FileId> {
+    pub fn file_id_of_node(&self, node: &syntax::SyntaxNode) -> Option<FileId> {
         let root = node.ancestors().last().unwrap_or_else(|| node.clone());
         self.root_to_file.get(&root).copied()
     }

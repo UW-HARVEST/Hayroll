@@ -471,6 +471,23 @@ impl CodeRegion {
         mut_region.clone_subtree()
     }
 
+    // Peel off any #[c2rust::src_loc = "..."] attributes in the code region (only decls could have these)
+    // Returns immutable CodeRegion that is no longer part of the original syntax tree
+    pub fn peel_c2rust_src_locs(&self) -> CodeRegion {
+        let region = match self {
+            CodeRegion::Expr(_) => self.clone(),
+            CodeRegion::Stmts { .. } => self.clone(),
+            CodeRegion::Decls(items) => {
+                let items_processed: Vec<ast::Item> = items
+                    .into_iter()
+                    .map(|item| peel_c2rust_src_locs_from_item(&item))
+                    .collect::<Vec<_>>();
+                CodeRegion::Decls(items_processed)
+            }
+        };
+        region.clone_subtree()
+    }
+
     // Returns a range of syntax elements that represent the code region.
     // NOTE: Only valid for Expr and Stmts variants; Decls is not well-defined for syntax element ranges.
     pub fn syntax_element_range(&self) -> RangeInclusive<SyntaxElement> {
@@ -639,7 +656,8 @@ impl HayrollMacroInv {
                     vec![syntax::NodeOrToken::Token(dollar_token_mut), syntax::NodeOrToken::Node(name_node)]
                 },
             ),
-            HayrollSeed::Decls(_) => self.seed.get_raw_code_region(true).individualize_decls(),
+            HayrollSeed::Decls(_) => self.seed.get_raw_code_region(true)
+                .individualize_decls().peel_c2rust_src_locs(),
         };
         let macro_def = format!(
             "macro_rules! {}\n{{\n    ({}) => {{\n    {}\n    }}\n}}",

@@ -4,6 +4,7 @@ use anyhow::Result;
 use ide_db::base_db::SourceDatabase;
 use load_cargo;
 use project_model::CargoConfig;
+use syntax::ast::{self, HasModuleItem, Item};
 use syntax::{
     ast::SourceFile,
     syntax_editor::Element,
@@ -144,6 +145,52 @@ pub fn run(workspace_path: &Path) -> Result<()> {
 
     for ted in teds {
         ted();
+    }
+
+    // Finalize edits from the single global builder
+    let source_change = builder_set.finish();
+    // Apply edits to the in-memory DB via file_text inputs
+    apply_source_change(&mut db, &source_change);
+
+    // ---- Third Pass: remove any c2rust::src_loc attributes from global items ----
+    // Also remove any global items starting with HAYROLL_TAG_FOR
+
+    let syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&db);
+    let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
+
+    // All items, ignore filtering out HAYROLL_TAG_FOR_* yet
+    let global_items: Vec<Item> = syntax_roots.iter()
+        .flat_map(|(_file_id, root)| {
+            root.items()
+        })
+        .collect();
+
+    for item in global_items {
+        let mut editor = builder_set.make_editor(item.syntax());
+        let file_id = builder_set.file_id_of_node(item.syntax()).unwrap();
+
+         // Helper to get an item's simple name (direct child Name)
+        let item_name = |item: &Item| -> Option<String> {
+            item.syntax().children().find_map(ast::Name::cast).map(|n| n.to_string())
+        };
+
+        // Remove HAYROLL_TAG_FOR_* items
+        if let Some(name) = item_name(&item) {
+            if name.starts_with("HAYROLL_TAG_FOR") {
+                editor.delete(item.syntax().syntax_element().clone());
+                builder_set.add_file_edits(file_id, editor);
+                continue; // Skip further processing for this item
+            }
+        }
+
+        // Remove c2rust::src_loc attributes
+        let item_no_c2rust = peel_c2rust_src_locs_from_item(&item).clone_for_update();
+        editor.replace(
+            item.syntax().syntax_element().clone(),
+            item_no_c2rust.syntax().syntax_element().clone(),
+        );
+        print!("Removed c2rust::src_loc from item: {} into {}\n", item.syntax().text(), item_no_c2rust.syntax().text());
+        builder_set.add_file_edits(file_id, editor);
     }
 
     // Finalize edits from the single global builder
