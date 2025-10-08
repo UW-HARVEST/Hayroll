@@ -288,11 +288,21 @@ pub fn stmt_is_hayroll_tag(stmt: &ast::Stmt) -> bool {
     false
 }
 
-// Detect whether an ast::Item represents a Hayroll tag (instrumentation placeholder).
-// Strategy mirrors stmt_is_hayroll_tag: search for a byte string literal anywhere under the item,
-// parse its contents as JSON, and return true if it contains { "hayroll": true }.
+// Detect whether an ast::Item is a Hayroll tag global (the static that carries the JSON byte string).
+// We restrict detection to top-level `static` items and only inspect their initializer expression,
+// so a function containing a hayroll-like byte string won't be misclassified.
 pub fn item_is_hayroll_tag(item: &ast::Item) -> bool {
-    for element in item.syntax().descendants_with_tokens() {
+    let Some(st) = ast::Static::cast(item.syntax().clone()) else { return false };
+
+    // Optional: require pointer type to reduce false positives (e.g., *const ...)
+    if let Some(ty) = st.ty() {
+        if let ast::Type::PtrType(_ptr) = ty { /* ok */ } else {
+            // If the declared type is not a pointer, it's unlikely to be the tag global.
+            return false;
+        }
+    }
+
+    for element in st.syntax().descendants_with_tokens() {
         if let Some(token) = element.clone().into_token() {
             if let Some(byte_str) = ast::ByteString::cast(token) {
                 let content = match byte_str.value() {
