@@ -4,7 +4,7 @@ use serde_json::{self};
 use syntax::{
     ast::{self, edit_in_place::AttrsOwnerEdit, HasAttrs}, ted, AstNode, AstToken, SourceFile, SyntaxElement, SyntaxNode
 };
-use syntax::syntax_editor::Element; // for syntax().syntax_element()
+use syntax::syntax_editor::Element;
 use tracing::{error, trace, warn};
 use vfs::FileId;
 
@@ -57,6 +57,8 @@ pub trait HayrollMeta {
     fn is_decls(&self) -> bool;
     fn is_placeholder(&self) -> bool;
     fn premise(&self) -> String;
+    fn merged_variants(&self) -> Vec<String>;
+    fn with_appended_merged_variants(&self, new_variant: &str) -> ast::Literal;
 }
 
 impl<T: HasHayrollTag> HayrollMeta for T {
@@ -124,10 +126,36 @@ impl<T: HasHayrollTag> HayrollMeta for T {
         self.ast_kind() == "Decls"
     }
     fn is_placeholder(&self) -> bool {
-        self.hayroll_tag().tag["isPlaceholder"].as_bool().unwrap_or(false)
+        self.hayroll_tag().tag["isPlaceholder"].as_bool().unwrap()
     }
     fn premise(&self) -> String {
-        self.hayroll_tag().tag["premise"].as_str().unwrap_or("").to_string()
+        self.hayroll_tag().tag["premise"].as_str().unwrap().to_string()
+    }
+    fn merged_variants(&self) -> Vec<String> {
+        self.hayroll_tag().tag["mergedVariants"].as_array().unwrap().iter().map(|a| a.as_str().unwrap().to_string()).collect()
+    }
+    fn with_appended_merged_variants(&self, new_variant: &str) -> ast::Literal {
+        // Clone and update mergedVariants
+        let mut new_tag = self.hayroll_tag().tag.clone();
+        let mut merged_variants = self.merged_variants();
+        merged_variants.push(new_variant.to_string());
+        new_tag["mergedVariants"] = serde_json::Value::Array(
+            merged_variants
+                .iter()
+                .map(|s| serde_json::Value::String(s.clone()))
+                .collect(),
+        );
+
+        // Serialize full JSON compactly
+        let json = serde_json::to_string(&new_tag).unwrap();
+
+        // Build a Rust byte string literal: b"{json}\0"
+        // Escape for Rust string literal context
+        let escaped: String = json.chars().flat_map(|c| c.escape_default()).collect();
+        let literal_text = format!("b\"{}\\0\"", escaped);
+
+        // Create an AST literal from the exact literal text
+        ast::make::expr_literal(&literal_text)
     }
 }
 
@@ -895,7 +923,7 @@ impl HasHayrollTag for HayrollConditionalMacro {
 
 impl HayrollConditionalMacro {
     // Attach #[cfg(c_defs = "premise")] to every element in the code region
-    // Returns mutable CodeRegion that is no longer part of the original syntax tree
+    // Returns a list of ted-style delayed tasks to be executed later
     pub fn attach_cfg_teds(&self, builder: &mut SourceChangeBuilderSet) -> Vec<Box<dyn FnOnce()>> {
         let mut teds: Vec<Box<dyn FnOnce()>> = Vec::new();
         // Force attaching cfg to a placeholder decl/decls is a hack
@@ -1052,6 +1080,53 @@ impl HayrollConditionalMacro {
         teds
     }
 }
+
+// // HayrollConditionalMacroGroup is a group of HayrollConditionalMacro that share the same loc_ref_begin (the same conditional slot)
+// pub struct HayrollConditionalMacroGroup {
+//     pub conditionals: Vec<HayrollConditionalMacro>,
+// }
+
+// impl HayrollConditionalMacroGroup {
+//     pub fn loc_ref_begin(&self) -> String {
+//         self.conditionals[0].loc_ref_begin()
+//     }
+
+//     pub fn is_placeholder(&self) -> bool {
+//         self.conditionals.len() == 1 && self.conditionals[0].is_placeholder()
+//     }
+
+//     pub fn placeholder_macro(&self) -> &HayrollConditionalMacro {
+//         assert!(self.is_placeholder());
+//         &self.conditionals[0]
+//     }
+
+//     pub fn has_implementation_for(&self, loc_begin: &str) -> bool {
+//         self.conditionals.iter().any(|cond| cond.loc_begin() == loc_begin)
+//     }
+
+//     pub fn file_id(&self) -> FileId {
+//         self.conditionals[0].file_id().clone()
+//     }
+// }
+
+// pub fn group_hayroll_conditionals(hayroll_conditionals: &Vec<HayrollConditionalMacro>) -> Vec<HayrollConditionalMacroGroup> {
+//     // Classify by loc_ref_begin; do not assume input is pre-sorted.
+//     let mut buckets: HashMap<String, Vec<HayrollConditionalMacro>> = HashMap::new();
+//     let mut order: Vec<String> = Vec::new();
+//     for cond in hayroll_conditionals.iter() {
+//         let key = cond.loc_ref_begin();
+//         if !buckets.contains_key(&key) {
+//             order.push(key.clone());
+//             buckets.insert(key.clone(), Vec::new());
+//         }
+//         buckets.get_mut(&key).unwrap().push(cond.clone());
+//     }
+//     order
+//         .into_iter()
+//         .filter_map(|k| buckets.remove(&k))
+//         .map(|v| HayrollConditionalMacroGroup { conditionals: v })
+//         .collect()
+// }
 
 pub fn extract_hayroll_macro_invs_from_seeds(hayroll_seeds: &Vec<HayrollSeed>) -> Vec<HayrollMacroInv> {
     // A region whose isArg is false is a macro; match args to their macro

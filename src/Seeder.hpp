@@ -504,7 +504,8 @@ public:
             .cuLnColEnd = cuLnColEnd,
             .locRefBegin = locRefBegin,
             .isPlaceholder = range.IsPlaceholder,
-            .premise = range.ExtraInfo.premise
+            .premise = range.ExtraInfo.premise,
+            .mergedVariants = { srcLocBegin }
         };
         ConditionalTag tagEnd = tagBegin;
         tagEnd.begin = false;
@@ -604,15 +605,19 @@ public:
         std::string locEnd;
         std::string cuLnColBegin;
         std::string cuLnColEnd;
-        std::string locRefBegin; // Parent AST node location, for unifying same-slot expressions. This is not sound for mult-ary operators.
+        // Parent AST node location, for unifying same-slot expressions. This is not sound for mult-ary operators.
+        std::string locRefBegin;
         bool isPlaceholder;
         std::string premise;
+        // For merger to record which variants (identified via locBegins) ar included in this seed
+        std::vector<std::string> mergedVariants;
 
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_ONLY_SERIALIZE
         (
             ConditionalTag,
             hayroll, seedType, begin, astKind, isLvalue, locBegin, locEnd,
-            cuLnColBegin, cuLnColEnd, locRefBegin, isPlaceholder, premise
+            cuLnColBegin, cuLnColEnd, locRefBegin, isPlaceholder, premise,
+            mergedVariants
         );
     };
 

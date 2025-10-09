@@ -107,7 +107,11 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
             (false, false) => {
                 // Both have concrete code, need to merge
                 info!("Both have concrete code, need to merge");
-                // TODO: implement merging logic
+                // Test: Update the HayrollTag in the replaced code to append the merged variant
+                let new_variant = "TEST_ADDED_VARIANT"; // TODO: use actual source location
+                let new_literal = base_macro.with_appended_merged_variants(new_variant).clone_for_update();
+                let old_literal = base_macro.seed.first_tag().literal.clone();
+                base_editor.replace(old_literal.syntax(), new_literal.syntax());
             }
             (true, true) => {
                 // Both are placeholders, no edit needed
