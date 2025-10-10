@@ -6,7 +6,7 @@ use ide_db::base_db::{SourceDatabase, SourceDatabaseFileInputExt};
 use load_cargo;
 use project_model::CargoConfig;
 use syntax::{
-    ast::{self, HasAttrs, HasModuleItem, SourceFile},
+    ast::{self, ElseBranch, HasAttrs, HasModuleItem, SourceFile},
     syntax_editor::Element,
     AstNode,
 };
@@ -88,7 +88,7 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
                 let base_code_region = base_macro.seed.get_raw_code_region(true);
                 let patch_code_region = patch_macro.seed.get_raw_code_region(true);
                 let patch_code_region_mut = patch_code_region.make_mut_with_builder_set(&mut patch_builder_set);
-                match (&base_code_region, &patch_code_region) {
+                match (&base_code_region, &patch_code_region_mut) {
                     (CodeRegion::Expr(_), CodeRegion::Expr(_)) | (CodeRegion::Stmts { .. }, CodeRegion::Stmts { .. }) => {
                         let base_region_element_range = base_code_region.syntax_element_range();
                         let patch_stmts_nodes = patch_code_region_mut.syntax_element_vec();
@@ -105,13 +105,56 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
                 }
             }
             (false, false) => {
-                // Both have concrete code, need to merge
-                info!("Both have concrete code, need to merge");
-                // Test: Update the HayrollTag in the replaced code to append the merged variant
-                let new_variant = "TEST_ADDED_VARIANT"; // TODO: use actual source location
-                let new_literal = base_macro.with_appended_merged_variants(new_variant).clone_for_update();
-                let old_literal = base_macro.seed.first_tag().literal.clone();
-                base_editor.replace(old_literal.syntax(), new_literal.syntax());
+                // Check if the base seed already has the patch variant in mergedVariants
+                if base_macro.seed.merged_variants().contains(&patch_macro.loc_begin()) {
+                    info!("Base macro already has the patch variant in mergedVariants, skipping merge");
+                } else {
+                    // Both have concrete code, need to merge
+                    info!("Both have concrete code, need to merge");
+                    let base_code_region = base_macro.seed.get_raw_code_region_inside_tag();
+                    let patch_code_region = patch_macro.seed.get_raw_code_region_inside_tag();
+                    let patch_code_region_mut = patch_code_region.make_mut_with_builder_set(&mut patch_builder_set);
+                    match (&base_code_region, &patch_code_region_mut) {
+                        (CodeRegion::Expr(base_expr), CodeRegion::Expr(patch_expr)) => {
+                            // base: if cfg!(xx) { val1 } [else if cfg!(yy) { val2 } ...] else { 0 }
+                            // patch: if cfg!(zz) { val3 } else { 0 }
+                            // merged: if cfg!(xx) { val1 } [else if cfg!(yy) { val2 } ...] else if cfg!(zz) { val3 } else { 0 }
+                            print!("Merging exprs: base {} and patch {}\n", base_expr.syntax(), patch_expr.syntax());
+                            let base_block = ast::BlockExpr::cast(base_expr.syntax().clone()).unwrap();
+                            let base_if = ast::IfExpr::cast(base_block.tail_expr().unwrap().syntax().clone()).unwrap();
+                            let patch_block = ast::BlockExpr::cast(patch_expr.syntax().clone()).unwrap();
+                            let patch_if = ast::IfExpr::cast(patch_block.tail_expr().unwrap().syntax().clone()).unwrap();
+
+                            let mut else_branch = base_if.else_branch().unwrap();
+                            while let ElseBranch::IfExpr(else_if) = else_branch {
+                                // There is no if without else branch in cfg expr, so unwrap is safe
+                                let next_else = else_if.else_branch().unwrap();
+                                else_branch = next_else;
+                            }
+                            let last_block = match else_branch {
+                                ElseBranch::Block(block) => block,
+                                ElseBranch::IfExpr(_) => unreachable!(), // because of the while let above
+                            };
+                            base_editor.replace(last_block.syntax(), patch_if.syntax());
+                        }
+                        (CodeRegion::Stmts { .. }, CodeRegion::Stmts { .. }) => {
+                            // TBD
+                        }
+                        (CodeRegion::Decls(_), CodeRegion::Decls(_)) => {
+                            // We will merge all top-level declarations later anyways
+                            // So no need to do anything here
+                        }
+                        _ => {
+                            // Mismatched types, cannot merge
+                            info!("Mismatched types between base and patch code regions, cannot merge");
+                        }
+                    }
+                    // Update the HayrollTag in the replaced code to append the merged variant
+                    let new_variant = patch_macro.loc_begin();
+                    let new_literal = base_macro.with_appended_merged_variants(&new_variant).clone_for_update();
+                    let old_literal = base_macro.seed.first_tag().literal.clone();
+                    base_editor.replace(old_literal.syntax(), new_literal.syntax());
+                }
             }
             (true, true) => {
                 // Both are placeholders, no edit needed
