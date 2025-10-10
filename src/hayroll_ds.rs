@@ -1,4 +1,5 @@
-use std::{collections::HashMap, ops::RangeInclusive};
+use std::collections::HashMap;
+use std::ops::RangeInclusive;
 
 use serde_json::{self};
 use syntax::{
@@ -203,9 +204,9 @@ impl HayrollSeed {
                 let stmt_begin = parent_until_kind::<ast::Stmt>(&tag_begin.literal).unwrap();
                 let stmt_end = parent_until_kind::<ast::Stmt>(&tag_end.literal).unwrap();
                 let stmt_list = parent_until_kind::<ast::StmtList>(&stmt_begin).unwrap();
-                let elements = stmt_begin..=stmt_end;
-                let region = CodeRegion::Stmts { parent: stmt_list, elements };
-                region
+                let start_idx = stmt_list.statements().position(|s| s == stmt_begin).unwrap();
+                let end_idx = stmt_list.statements().position(|s| s == stmt_end).unwrap();
+                CodeRegion::Stmts { parent: stmt_list, range: start_idx..=end_idx }
             }
             HayrollSeed::Decls(tag) => {
                 // Collect all the Items in the SourceFile where the seed is
@@ -228,12 +229,10 @@ impl HayrollSeed {
                 let if_expr = ast::IfExpr::cast(expr.syntax().clone()).unwrap();
                 CodeRegion::Expr(if_expr.then_branch().unwrap().into())
             }
-            CodeRegion::Stmts { parent, elements } => {
-                let stmt_begin = elements.start();
-                let stmt_end = elements.end();
-                let stmt_begin_next: ast::Stmt = ast::Stmt::cast(stmt_begin.syntax().next_sibling().unwrap()).unwrap();
-                let stmt_end_prev: ast::Stmt = ast::Stmt::cast(stmt_end.syntax().prev_sibling().unwrap()).unwrap();
-                CodeRegion::Stmts { parent, elements: stmt_begin_next..=stmt_end_prev }
+            CodeRegion::Stmts { parent, range } => {
+                let new_start = range.start() + 1;
+                let new_end = range.end() - 1;
+                CodeRegion::Stmts { parent, range: new_start..=new_end }
             }
             CodeRegion::Decls(_) => region,
         }
@@ -311,7 +310,7 @@ pub enum CodeRegion {
     // A single Expr
     Expr(ast::Expr),
     // A consecutive span of Stmts
-    Stmts { parent: ast::StmtList, elements: RangeInclusive<ast::Stmt> },
+    Stmts { parent: ast::StmtList, range: RangeInclusive<usize> },
     // A list of possibly scattered Fn/Static/Struct/Union/Const/TypeAlias/...
     Decls(Vec<ast::Item>),
 }
@@ -320,15 +319,9 @@ impl CodeRegion {
     pub fn clone_subtree(&self) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(expr.clone_subtree()),
-            CodeRegion::Stmts { parent, elements } => {
-                let begin = elements.start();
-                let end = elements.end();
-                let pos_begin = parent.statements().position(|stmt| stmt == *begin).unwrap();
-                let pos_end = parent.statements().position(|stmt| stmt == *end).unwrap();
+            CodeRegion::Stmts { parent, range } => {
                 let parent = parent.clone_subtree();
-                let begin = parent.statements().nth(pos_begin).unwrap();
-                let end = parent.statements().nth(pos_end).unwrap();
-                CodeRegion::Stmts { parent, elements: begin..=end }
+                CodeRegion::Stmts { parent, range: range.clone() }
             }
             CodeRegion::Decls(decls) => CodeRegion::Decls(decls.iter().map(|d| d.clone_subtree()).collect()),
         }
@@ -355,14 +348,9 @@ impl CodeRegion {
     pub fn make_mut_with_mutator(&self, mutator: &ide_db::source_change::TreeMutator) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(mutator.make_mut(expr)),
-            CodeRegion::Stmts { parent, elements } => {
+            CodeRegion::Stmts { parent, range } => {
                 let parent_mut = mutator.make_mut(parent);
-                let start_mut = mutator.make_mut(elements.start());
-                let end_mut = mutator.make_mut(elements.end());
-                // Assert that start_mut and end_mut are still in parent_mut
-                assert!(start_mut.syntax().parent() == Some(parent_mut.syntax().clone()));
-                assert!(end_mut.syntax().parent() == Some(parent_mut.syntax().clone()));
-                CodeRegion::Stmts { parent: parent_mut, elements: start_mut..=end_mut }
+                CodeRegion::Stmts { parent: parent_mut, range: range.clone() }
             }
             CodeRegion::Decls(decls) => {
                 let mut new_decls = Vec::new();
@@ -378,10 +366,9 @@ impl CodeRegion {
     pub fn make_mut_with_builder(&self, builder: &mut ide_db::source_change::SourceChangeBuilder) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(builder.make_mut(expr.clone())),
-            CodeRegion::Stmts { parent, elements } => {
-                let start_mut = builder.make_mut(elements.start().clone());
-                let end_mut = builder.make_mut(elements.end().clone());
-                CodeRegion::Stmts { parent: builder.make_mut(parent.clone()), elements: start_mut..=end_mut }
+            CodeRegion::Stmts { parent, range } => {
+                let parent_mut = builder.make_mut(parent.clone());
+                CodeRegion::Stmts { parent: parent_mut, range: range.clone() }
             }
             CodeRegion::Decls(decls) => {
                 let mut new_decls = Vec::new();
@@ -396,10 +383,9 @@ impl CodeRegion {
     pub fn make_mut_with_builder_set(&self, builder: &mut SourceChangeBuilderSet) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(builder.make_mut(expr.clone())),
-            CodeRegion::Stmts { parent, elements } => {
-                let start_mut = builder.make_mut(elements.start().clone());
-                let end_mut = builder.make_mut(elements.end().clone());
-                CodeRegion::Stmts { parent: builder.make_mut(parent.clone()), elements: start_mut..=end_mut }
+            CodeRegion::Stmts { parent, range } => {
+                let parent_mut = builder.make_mut(parent.clone());
+                CodeRegion::Stmts { parent: parent_mut, range: range.clone() }
             }
             CodeRegion::Decls(decls) => {
                 let mut new_decls = Vec::new();
@@ -415,15 +401,9 @@ impl CodeRegion {
     pub fn clone_for_update(&self) -> CodeRegion {
         match self {
             CodeRegion::Expr(expr) => CodeRegion::Expr(expr.clone_for_update()),
-            CodeRegion::Stmts { parent, elements } => {
-                let begin = elements.start();
-                let end = elements.end();
-                let pos_begin = parent.statements().position(|stmt| stmt == *begin).unwrap();
-                let pos_end = parent.statements().position(|stmt| stmt == *end).unwrap();
+            CodeRegion::Stmts { parent, range } => {
                 let parent = parent.clone_for_update();
-                let begin = parent.statements().nth(pos_begin).unwrap();
-                let end = parent.statements().nth(pos_end).unwrap();
-                CodeRegion::Stmts { parent, elements: begin..=end }
+                CodeRegion::Stmts { parent, range: range.clone() }
             }
             CodeRegion::Decls(decls) => CodeRegion::Decls(decls.iter().map(|d| d.clone_for_update()).collect()),
         }
@@ -455,13 +435,13 @@ impl CodeRegion {
                     CodeRegion::Expr(star_expr_mut.into())
                 }
             }
-            CodeRegion::Stmts { parent, elements } => {
-                let stmt_begin = elements.start();
-                let stmt_end = elements.end();
-                let stmt_begin_next: ast::Stmt = ast::Stmt::cast(stmt_begin.syntax().next_sibling().unwrap()).unwrap();
-                let stmt_end_prev: ast::Stmt = ast::Stmt::cast(stmt_end.syntax().prev_sibling().unwrap()).unwrap();
+            CodeRegion::Stmts { parent, range } => {
                 let parent_mut = mutator.make_mut(parent);
-                CodeRegion::Stmts { parent: parent_mut, elements: stmt_begin_next..=stmt_end_prev }
+                let start = *range.start();
+                let end = *range.end();
+                let new_start = if start == end { start } else { start + 1 };
+                let new_end = if end == 0 { 0 } else { end - 1 };
+                CodeRegion::Stmts { parent: parent_mut, range: new_start..=new_end }
             }
             CodeRegion::Decls(_) => self.make_mut_with_mutator(&mutator),
         };
@@ -521,9 +501,9 @@ impl CodeRegion {
     pub fn syntax_element_range(&self) -> RangeInclusive<SyntaxElement> {
         match self {
             CodeRegion::Expr(expr) => expr.syntax().syntax_element().clone()..=expr.syntax().syntax_element().clone(),
-            CodeRegion::Stmts { elements, .. } => {
-                let start = elements.start();
-                let end = elements.end();
+            CodeRegion::Stmts { parent, range } => {
+                let start = parent.statements().nth(*range.start()).unwrap();
+                let end = parent.statements().nth(*range.end()).unwrap();
                 start.syntax().syntax_element().clone()..=end.syntax().syntax_element().clone()
             }
             CodeRegion::Decls(_) => {
@@ -536,15 +516,11 @@ impl CodeRegion {
     pub fn syntax_element_vec(&self) -> Vec<SyntaxElement> {
         match self {
             CodeRegion::Expr(expr) => vec![expr.syntax().syntax_element().clone()],
-            CodeRegion::Stmts { parent, elements } => {
-                let start = elements.start();
-                let end = elements.end();
-                let pos_begin = parent.statements().position(|s| &s == start).unwrap();
-                let pos_end = parent.statements().position(|s| &s == end).unwrap();
+        CodeRegion::Stmts { parent, range } => {
                 parent
                     .statements()
                     .enumerate()
-                    .filter(|(i, _)| *i >= pos_begin && *i <= pos_end)
+                    .filter(|(i, _)| range.contains(i))
                     .map(|(_, stmt)| stmt.syntax().syntax_element().clone())
                     // Attach a new line for each statement to preserve formatting
                     .flat_map(|se| vec![se, get_empty_line_element_mut()])
@@ -557,8 +533,8 @@ impl CodeRegion {
     pub fn position_after(&self) -> Position {
         match self {
             CodeRegion::Expr(expr) => Position::after(expr.syntax()),
-            CodeRegion::Stmts { parent: _, elements } => {
-                let end = elements.end();
+            CodeRegion::Stmts { parent, range } => {
+                let end = parent.statements().nth(*range.end()).unwrap();
                 Position::after(end.syntax())
             }
             CodeRegion::Decls(decls) => {
@@ -573,18 +549,14 @@ impl std::fmt::Display for CodeRegion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CodeRegion::Expr(expr) => write!(f, "{}", expr),
-            CodeRegion::Stmts { parent, elements } => {
-                let start = elements.start();
-                let end = elements.end();
-                let pos_begin = parent.statements().position(|s| &s == start).unwrap();
-                let pos_end = parent.statements().position(|s| &s == end).unwrap();
+            CodeRegion::Stmts { parent, range } => {
                 write!(
                     f,
                     "{}",
                     parent
                         .statements()
                         .enumerate()
-                        .filter(|(i, _)| *i >= pos_begin && *i <= pos_end)
+                        .filter(|(i, _)| range.contains(i))
                         .map(|(_, stmt)| stmt.to_string())
                         .collect::<Vec<String>>()
                         .join("\n")
@@ -959,13 +931,9 @@ impl HayrollConditionalMacro {
             HayrollSeed::Stmts(_, _) => {
                 let region = self.seed.get_raw_code_region_inside_tag();
                 // Print this code region for debugging
-                if let CodeRegion::Stmts { parent, elements } = &region {
-                    let start = elements.start();
-                    let end = elements.end();
-                    let pos_begin = parent.statements().position(|s| &s == start).unwrap();
-                    let pos_end = parent.statements().position(|s| &s == end).unwrap();
+                if let CodeRegion::Stmts { parent, range } = &region {
                     for (i, stmt) in parent.statements().enumerate() {
-                        if i < pos_begin || i > pos_end { continue; }
+                        if !range.contains(&i) { continue; }
                         let attr_text = format!("#[cfg(c_defs = \"{}\")]", premise);
                         let attr = ast_from_text::<ast::Attr>(&attr_text).clone_for_update();
                         match &stmt {
@@ -1053,53 +1021,6 @@ impl HayrollConditionalMacro {
         teds
     }
 }
-
-// // HayrollConditionalMacroGroup is a group of HayrollConditionalMacro that share the same loc_ref_begin (the same conditional slot)
-// pub struct HayrollConditionalMacroGroup {
-//     pub conditionals: Vec<HayrollConditionalMacro>,
-// }
-
-// impl HayrollConditionalMacroGroup {
-//     pub fn loc_ref_begin(&self) -> String {
-//         self.conditionals[0].loc_ref_begin()
-//     }
-
-//     pub fn is_placeholder(&self) -> bool {
-//         self.conditionals.len() == 1 && self.conditionals[0].is_placeholder()
-//     }
-
-//     pub fn placeholder_macro(&self) -> &HayrollConditionalMacro {
-//         assert!(self.is_placeholder());
-//         &self.conditionals[0]
-//     }
-
-//     pub fn has_implementation_for(&self, loc_begin: &str) -> bool {
-//         self.conditionals.iter().any(|cond| cond.loc_begin() == loc_begin)
-//     }
-
-//     pub fn file_id(&self) -> FileId {
-//         self.conditionals[0].file_id().clone()
-//     }
-// }
-
-// pub fn group_hayroll_conditionals(hayroll_conditionals: &Vec<HayrollConditionalMacro>) -> Vec<HayrollConditionalMacroGroup> {
-//     // Classify by loc_ref_begin; do not assume input is pre-sorted.
-//     let mut buckets: HashMap<String, Vec<HayrollConditionalMacro>> = HashMap::new();
-//     let mut order: Vec<String> = Vec::new();
-//     for cond in hayroll_conditionals.iter() {
-//         let key = cond.loc_ref_begin();
-//         if !buckets.contains_key(&key) {
-//             order.push(key.clone());
-//             buckets.insert(key.clone(), Vec::new());
-//         }
-//         buckets.get_mut(&key).unwrap().push(cond.clone());
-//     }
-//     order
-//         .into_iter()
-//         .filter_map(|k| buckets.remove(&k))
-//         .map(|v| HayrollConditionalMacroGroup { conditionals: v })
-//         .collect()
-// }
 
 pub fn extract_hayroll_macro_invs_from_seeds(hayroll_seeds: &Vec<HayrollSeed>) -> Vec<HayrollMacroInv> {
     // A region whose isArg is false is a macro; match args to their macro
