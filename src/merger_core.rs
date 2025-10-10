@@ -83,8 +83,8 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
                 info!("Base has concrete code, patch is placeholder, no edit needed");
             }
             (true, false) => {
-                // Base is placeholder, patch has concrete code, need to replace base with patch
                 info!("Base is placeholder, patch has concrete code, need to replace base with patch");
+                // Replace the tags themselves altogether
                 let base_code_region = base_macro.seed.get_raw_code_region(true);
                 let patch_code_region = patch_macro.seed.get_raw_code_region(true);
                 let patch_code_region_mut = patch_code_region.make_mut_with_builder_set(&mut patch_builder_set);
@@ -137,7 +137,9 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
                             base_editor.replace(last_block.syntax(), patch_if.syntax());
                         }
                         (CodeRegion::Stmts { .. }, CodeRegion::Stmts { .. }) => {
-                            let patch_stmts_nodes = patch_code_region_mut.syntax_element_vec();
+                            let mut patch_stmts_nodes = patch_code_region_mut.syntax_element_vec();
+                            // Put an empty line before the inserted stmts to make it look better
+                            patch_stmts_nodes.insert(0, get_empty_line_element_mut());
                             base_editor.insert_all(base_code_region.position_after(), patch_stmts_nodes);
                         }
                         (CodeRegion::Decls(_), CodeRegion::Decls(_)) => {
