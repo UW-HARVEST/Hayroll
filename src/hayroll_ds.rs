@@ -2,7 +2,7 @@ use std::{collections::HashMap, ops::RangeInclusive};
 
 use serde_json::{self};
 use syntax::{
-    ast::{self, edit_in_place::AttrsOwnerEdit, HasAttrs}, ted, AstNode, AstToken, SourceFile, SyntaxElement, SyntaxNode
+    ast::{self, edit_in_place::AttrsOwnerEdit, HasAttrs}, syntax_editor::Position, ted, AstNode, AstToken, SourceFile, SyntaxElement, SyntaxNode
 };
 use syntax::syntax_editor::Element;
 use tracing::{error, trace, warn};
@@ -562,6 +562,20 @@ impl CodeRegion {
                     .collect::<Vec<SyntaxElement>>()
             }
             CodeRegion::Decls(decls) => decls.iter().map(|d| d.syntax().syntax_element().clone()).collect(),
+        }
+    }
+
+    pub fn position_after(&self) -> Position {
+        match self {
+            CodeRegion::Expr(expr) => Position::after(expr.syntax()),
+            CodeRegion::Stmts { parent: _, elements } => {
+                let end = elements.end();
+                Position::after(end.syntax())
+            }
+            CodeRegion::Decls(decls) => {
+                let last_decl = decls.last().unwrap();
+                Position::after(last_decl.syntax())
+            }
         }
     }
 }

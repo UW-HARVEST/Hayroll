@@ -119,7 +119,6 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
                             // base: if cfg!(xx) { val1 } [else if cfg!(yy) { val2 } ...] else { 0 }
                             // patch: if cfg!(zz) { val3 } else { 0 }
                             // merged: if cfg!(xx) { val1 } [else if cfg!(yy) { val2 } ...] else if cfg!(zz) { val3 } else { 0 }
-                            print!("Merging exprs: base {} and patch {}\n", base_expr.syntax(), patch_expr.syntax());
                             let base_block = ast::BlockExpr::cast(base_expr.syntax().clone()).unwrap();
                             let base_if = ast::IfExpr::cast(base_block.tail_expr().unwrap().syntax().clone()).unwrap();
                             let patch_block = ast::BlockExpr::cast(patch_expr.syntax().clone()).unwrap();
@@ -138,7 +137,8 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
                             base_editor.replace(last_block.syntax(), patch_if.syntax());
                         }
                         (CodeRegion::Stmts { .. }, CodeRegion::Stmts { .. }) => {
-                            // TBD
+                            let patch_stmts_nodes = patch_code_region_mut.syntax_element_vec();
+                            base_editor.insert_all(base_code_region.position_after(), patch_stmts_nodes);
                         }
                         (CodeRegion::Decls(_), CodeRegion::Decls(_)) => {
                             // We will merge all top-level declarations later anyways
