@@ -76,12 +76,11 @@ pub fn get_empty_line_element_mut() -> SyntaxElement {
 }
 
 pub fn top_pos(source_file: &ast::SourceFile) -> Position {
-    let first_node = source_file
+    source_file
         .syntax()
         .children()
         .find(|element| !ast::Attr::can_cast(element.kind()))
-        .unwrap();
-    Position::before(&first_node)
+        .map_or(bot_pos(source_file), |n| Position::before(&n))
 }
 
 pub fn bot_pos(source_file: &ast::SourceFile) -> Position {
@@ -182,6 +181,14 @@ pub fn find_items_in_range(
             })
         })
         .collect()
+}
+
+pub fn item_has_c2rust_src_loc(item: &ast::Item) -> bool {
+    item.attrs().any(|attr| {
+        attr.meta().map_or(false, |meta| {
+            meta.path().map_or(false, |path| path.to_string() == "c2rust::src_loc")
+        })
+    })
 }
 
 // Remove all #[c2rust::src_loc = "..."] attributes from an ast::Item

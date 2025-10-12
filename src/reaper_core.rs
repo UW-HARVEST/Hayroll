@@ -4,7 +4,7 @@ use anyhow::Result;
 use ide_db::base_db::SourceDatabase;
 use load_cargo;
 use project_model::CargoConfig;
-use syntax::ast::{HasModuleItem, Item};
+use syntax::ast::{Item};
 use syntax::{
     ast::SourceFile,
     syntax_editor::Element,
@@ -132,13 +132,6 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     let teds = hayroll_conditional_macros.iter()
         .flat_map(|conditional_macro| {
 
-        // // Original region to replace (without deref for exprs)
-        // let code_region = conditional_macro.seed.get_raw_code_region_inside_tag();
-        // // New region with cfg attached
-        // if code_region.is_empty() {
-        //     return Vec::new();
-        // }
-
         let new_teds = conditional_macro.attach_cfg_teds(&mut builder_set);
         new_teds
     }).collect::<Vec<Box<dyn FnOnce()>>>();
@@ -152,20 +145,21 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     // Apply edits to the in-memory DB via file_text inputs
     apply_source_change(&mut db, &source_change);
 
-    // ---- Third Pass: remove any c2rust::src_loc attributes from global items ----
+    // ---- Third Pass: remove any c2rust::src_loc attributes from all items ----
     // Also remove any global items starting with HAYROLL_TAG_FOR
 
     let syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&db);
     let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
 
     // All items, ignore filtering out HAYROLL_TAG_FOR_* yet
-    let global_items: Vec<Item> = syntax_roots.iter()
+    let items: Vec<Item> = syntax_roots.iter()
         .flat_map(|(_file_id, root)| {
-            root.items()
+            root.syntax().descendants()
         })
+        .filter_map(|node| Item::cast(node))
         .collect();
 
-    for item in global_items {
+    for item in items {
         let mut editor = builder_set.make_editor(item.syntax());
         let file_id = builder_set.file_id_of_node(item.syntax()).unwrap();
 
@@ -176,6 +170,10 @@ pub fn run(workspace_path: &Path) -> Result<()> {
             continue; // Skip further processing for this item
         }
 
+        if !item_has_c2rust_src_loc(&item) {
+            continue; // No c2rust::src_loc attribute, skip
+        }
+        
         // Remove c2rust::src_loc attributes
         let item_no_c2rust = peel_c2rust_src_locs_from_item(&item).clone_for_update();
         editor.replace(
