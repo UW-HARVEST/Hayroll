@@ -141,7 +141,7 @@ target_link_libraries(tree_sitter_config INTERFACE
 include_directories(include)
 include_directories(src)
 
-add_executable(hayroll src/hayroll.cpp)
+add_executable(hayroll src/HayrollCLI.cpp)
 target_link_libraries(hayroll PRIVATE
     hayroll_exe_config
     external_exe_config
@@ -268,6 +268,19 @@ target_link_libraries(Seeder_test PRIVATE
 add_test(
     NAME Seeder_test
     COMMAND Seeder_test
+)
+
+add_executable(Pipeline_test tests/Pipeline_test.cpp)
+target_link_libraries(Pipeline_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME Pipeline_test
+    COMMAND Pipeline_test
 )
 
 add_executable(TextEditor_test tests/TextEditor_test.cpp)
