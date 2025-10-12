@@ -202,11 +202,11 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
     };
 
     for (patch_fid, patch_root) in &patch_syntax_roots {
-    let vfs_path = patch_vfs.file_path(*patch_fid);
-    let Some(abs_ra) = vfs_path.as_path() else { continue };
-    let abs_std: &std::path::Path = abs_ra.as_ref();
-    let Ok(rel) = abs_std.strip_prefix(patch_workspace_path) else { continue };
-    let rel_str = rel.to_string_lossy().to_string();
+        let vfs_path = patch_vfs.file_path(*patch_fid);
+        let Some(abs_ra) = vfs_path.as_path() else { continue };
+        let abs_std: &std::path::Path = abs_ra.as_ref();
+        let Ok(rel) = abs_std.strip_prefix(patch_workspace_path) else { continue };
+        let rel_str = rel.to_string_lossy().to_string();
         let Some(base_fid) = base_path_to_id.get(&rel_str).copied() else { continue };
         let base_root = base_syntax_roots.get(&base_fid).unwrap();
 

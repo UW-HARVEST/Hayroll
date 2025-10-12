@@ -358,7 +358,7 @@ int Pipeline::run
                         );
                     }
 
-                    // If multiple DefineSets, run Merger on each pair of adjacent DefineSets
+                    // If multiple DefineSets, run Merger accumulatively
                     std::vector<std::string> mergedRustStrs;
                     if (!reaperStrs.empty())
                     {
@@ -366,7 +366,7 @@ int Pipeline::run
                     }
                     for (std::size_t i = 1; i < defineSets.size(); ++i)
                     {
-                        std::string merged = MergerWrapper::runMerger(reaperStrs[i - 1], reaperStrs[i]);
+                        std::string merged = MergerWrapper::runMerger(mergedRustStrs[i - 1], reaperStrs[i]);
                         mergedRustStrs.push_back(merged);
                         Pipeline::saveOutput
                         (
