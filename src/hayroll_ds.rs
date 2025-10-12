@@ -60,6 +60,7 @@ pub trait HayrollMeta {
     fn premise(&self) -> String;
     fn merged_variants(&self) -> Vec<String>;
     fn with_appended_merged_variants(&self, new_variant: &str) -> ast::Literal;
+    fn with_updated_begin(&self, new_begin: bool) -> ast::Literal;
 }
 
 impl<T: HasHayrollTag> HayrollMeta for T {
@@ -146,6 +147,22 @@ impl<T: HasHayrollTag> HayrollMeta for T {
                 .map(|s| serde_json::Value::String(s.clone()))
                 .collect(),
         );
+
+        // Serialize full JSON compactly
+        let json = serde_json::to_string(&new_tag).unwrap();
+
+        // Build a Rust byte string literal: b"{json}\0"
+        // Escape for Rust string literal context
+        let escaped: String = json.chars().flat_map(|c| c.escape_default()).collect();
+        let literal_text = format!("b\"{}\\0\"", escaped);
+
+        // Create an AST literal from the exact literal text
+        ast::make::expr_literal(&literal_text)
+    }
+    fn with_updated_begin(&self, new_begin: bool) -> ast::Literal {
+        // Clone and update begin
+        let mut new_tag = self.hayroll_tag().tag.clone();
+        new_tag["begin"] = serde_json::Value::Bool(new_begin);
 
         // Serialize full JSON compactly
         let json = serde_json::to_string(&new_tag).unwrap();
@@ -516,7 +533,7 @@ impl CodeRegion {
     pub fn syntax_element_vec(&self) -> Vec<SyntaxElement> {
         match self {
             CodeRegion::Expr(expr) => vec![expr.syntax().syntax_element().clone()],
-        CodeRegion::Stmts { parent, range } => {
+            CodeRegion::Stmts { parent, range } => {
                 parent
                     .statements()
                     .enumerate()
@@ -1056,7 +1073,8 @@ pub fn extract_hayroll_macro_invs_from_seeds(hayroll_seeds: &Vec<HayrollSeed>) -
     hayroll_macro_invs
 }
 
-pub fn extract_hayroll_seeds_from_syntax_roots(syntax_roots: &HashMap<FileId, SourceFile>) -> Vec<HayrollSeed> {
+// Returns a list of HayrollSeed and unmatched HayrollTag
+pub fn extract_hayroll_seeds_from_syntax_roots_impl(syntax_roots: &HashMap<FileId, SourceFile>) -> (Vec<HayrollSeed>, Vec<HayrollTag>) {
     let hayroll_tags: Vec<HayrollTag> = syntax_roots
         .iter()
         .flat_map(|(file_id, root)| {
@@ -1127,17 +1145,36 @@ pub fn extract_hayroll_seeds_from_syntax_roots(syntax_roots: &HashMap<FileId, So
         acc
     });
 
-    // Check that all Stmts seeds have both begin and end tags
-    for seed in &hayroll_seeds {
+    // Collect unmatched begin stmt tags
+    let unmatched_begin_tags: Vec<HayrollTag> = hayroll_seeds.iter().filter_map(|seed| {
         if let HayrollSeed::Stmts(tag_begin, tag_end) = seed {
-            if !tag_begin.begin()
-                || tag_end.begin()
-                || tag_begin.loc_begin() != tag_end.loc_begin()
-                || tag_begin.seed_type() != tag_end.seed_type() {
-                panic!("Unmatched begin/end tags for Stmts seed: {:?} {:?}", tag_begin, tag_end);
+            if tag_begin.begin() && !tag_end.begin() {
+                None
+            } else if tag_begin.begin() && tag_end.begin() {
+                Some(tag_begin.clone())
+            } else {
+                None
             }
+        } else {
+            None
         }
-    }
+    }).collect();
 
-    hayroll_seeds
+    (hayroll_seeds, unmatched_begin_tags)
+}
+
+pub fn extract_hayroll_seeds_from_syntax_roots(syntax_roots: &HashMap<FileId, SourceFile>) -> Vec<HayrollSeed> {
+    let (seeds, unmatched) = extract_hayroll_seeds_from_syntax_roots_impl(syntax_roots);
+    if !unmatched.is_empty() {
+        for tag in unmatched {
+            error!("Unmatched begin tag: {}", tag.loc_begin());
+        }
+        panic!("Unmatched begin tags found");
+    }
+    seeds
+}
+
+pub fn extract_unmatched_hayroll_tags_from_syntax_roots(syntax_roots: &HashMap<FileId, SourceFile>) -> Vec<HayrollTag> {
+    let (_seeds, unmatched) = extract_hayroll_seeds_from_syntax_roots_impl(syntax_roots);
+    unmatched
 }

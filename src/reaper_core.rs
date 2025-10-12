@@ -2,9 +2,12 @@ use std::{collections::HashMap, fs, path::Path};
 
 use anyhow::Result;
 use ide_db::base_db::SourceDatabase;
+use ide_db::source_change::TreeMutator;
 use load_cargo;
 use project_model::CargoConfig;
-use syntax::ast::{Item};
+use syntax::ast::{Item, ReturnExpr, Stmt};
+use syntax::syntax_editor::Position;
+use syntax::ted;
 use syntax::{
     ast::SourceFile,
     syntax_editor::Element,
@@ -27,6 +30,50 @@ pub fn run(workspace_path: &Path) -> Result<()> {
 
     let (mut db, vfs, _proc_macro) =
         load_cargo::load_workspace_at(workspace_path, &cargo_config, &load_cargo_config, &|_| {})?;
+
+    // ---- Zero Pass: add end tag for unmatched Hayroll tags ----
+    // For stmt ranges that include a return statement, the original end tag would be removed by C2Rust
+    // We need to add a new end tag after the return statement to ensure the Hayroll seed is complete
+    let syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&db);
+    let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
+    let hayroll_tags: Vec<HayrollTag> = extract_unmatched_hayroll_tags_from_syntax_roots(&syntax_roots);
+    for tag in hayroll_tags.iter() {
+        let file_id = tag.file_id();
+        let root = syntax_roots.get(&file_id).unwrap();
+        let mut editor = builder_set.make_editor(root.syntax());
+
+        // Temporarily put the tag into a HayrollSeed to reuse the logic
+        let seed = HayrollSeed::Stmts(tag.clone(), tag.clone());
+        let code_region = seed.get_raw_code_region(true);
+        let CodeRegion::Stmts { parent, range } = code_region else { unreachable!() };
+        let first_return = parent
+            .statements()
+            .enumerate()
+            .filter(|(i, _stmt)| *i >= *range.start())
+            .find(|(_i, stmt)| match stmt {
+                Stmt::ExprStmt(expr_stmt) => {
+                    expr_stmt.expr().map_or(false, |e| ReturnExpr::can_cast(e.syntax().kind()))
+                }
+                _ => false,
+            })
+            .map(|(_i, stmt)| stmt)
+            .unwrap();
+        let after_return_pos = Position::after(&first_return.syntax());
+        let end_literal_mut = tag.with_updated_begin(false).clone_for_update();
+        let begin_stmt = parent.statements().nth(*range.start()).unwrap();
+        let begin_literal = &tag.literal;
+        let tree_mutator = TreeMutator::new(begin_stmt.syntax());
+        let begin_stmt_mut = tree_mutator.make_mut(&begin_stmt);
+        let begin_literal_mut = tree_mutator.make_syntax_mut(begin_literal.syntax());
+        ted::replace(begin_literal_mut, end_literal_mut.syntax());
+        editor.insert(after_return_pos, begin_stmt_mut.syntax().syntax_element().clone());
+        builder_set.add_file_edits(file_id, editor);
+    }
+
+    // Finalize edits from the single global builder
+    let source_change = builder_set.finish();
+    // Apply edits to the in-memory DB via file_text inputs
+    apply_source_change(&mut db, &source_change);
 
     // ---- First Pass: handle macro invocations that can be converted to functions or macros ----
 
@@ -131,7 +178,6 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     // Apply conditional macros: attach cfg attributes or wrap expressions
     let teds = hayroll_conditional_macros.iter()
         .flat_map(|conditional_macro| {
-
         let new_teds = conditional_macro.attach_cfg_teds(&mut builder_set);
         new_teds
     }).collect::<Vec<Box<dyn FnOnce()>>>();
