@@ -7,21 +7,21 @@ jobs:
         shell: bash -l {0}
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
-      with:
-        fetch-depth: 1
-        show-progress: false
-    - name: Install shellcheck and checkbashisms
-      run: |
-        sudo apt-get update
-        sudo apt install -y shfmt shellcheck devscripts
-    - run: pwd
-    - run: ls -a
-    - run: ls -a ..
-    - run: echo "GITHUB_SHA=$GITHUB_SHA"
-    - run: git status
-    - run: git rev-parse HEAD
-# This shows the *same* SHA but a *different* diff than locally!
-    - run: git show
-    - name: Check style
-      run: make style-check
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          show-progress: false
+      - name: Install shellcheck and checkbashisms
+        run: |
+          sudo apt-get update
+          sudo apt install -y shfmt shellcheck devscripts
+      - run: pwd
+      - run: ls -a
+      - run: ls -a ..
+      - run: echo "GITHUB_SHA=$GITHUB_SHA"
+      - run: git status
+      - run: git rev-parse HEAD
+        # This shows the *same* SHA but a *different* diff than locally!
+      - run: git show
+      - name: Check style
+        run: make style-check
