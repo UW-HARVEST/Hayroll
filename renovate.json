@@ -6,5 +6,6 @@
     ":automergeRequireAllStatusChecks",
     "schedule:nonOfficeHours",
     ":disableDependencyDashboard"
-  ]
+  ],
+  "timezone": "America/Los_Angeles"
 }
