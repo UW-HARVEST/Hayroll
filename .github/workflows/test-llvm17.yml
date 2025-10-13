@@ -33,3 +33,11 @@ jobs:
         run: |
           cd ./build
           ctest || ctest --rerun-failed --output-on-failure
+      - name: Test LibmCS
+        run: |
+          # Build libmcs and generate compile_commands.json
+          pushd ../libmcs
+          make clean
+          bear -- make -j"$(nproc)"
+          popd
+          ./hayroll ../libmcs/compile_commands.json ./output/
