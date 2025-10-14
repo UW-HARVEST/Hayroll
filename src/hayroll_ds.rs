@@ -904,7 +904,7 @@ impl HasHayrollTag for HayrollConditionalMacro {
 }
 
 impl HayrollConditionalMacro {
-    // Attach #[cfg(c_defs = "premise")] to every element in the code region
+    // Attach #[cfg(premise)] to every element in the code region
     // Returns a list of ted-style delayed tasks to be executed later
     pub fn attach_cfg_teds(&self, builder: &mut SourceChangeBuilderSet) -> Vec<Box<dyn FnOnce()>> {
         let mut teds: Vec<Box<dyn FnOnce()>> = Vec::new();
@@ -930,7 +930,7 @@ impl HayrollConditionalMacro {
                         ast::ElseBranch::IfExpr(e) => e.to_string(),
                     };
                     let new_expr_text = format!(
-                        "{{ if cfg!(c_defs = \"{}\") {} else {} }}",
+                        "{{ if cfg!({}) {} else {} }}",
                         // No extra braces around then and else branches because they are already blocks
                         // But provide extra braces around the whole if-expression to help replacement
                         premise, then_text, else_text
@@ -951,7 +951,7 @@ impl HayrollConditionalMacro {
                 if let CodeRegion::Stmts { parent, range } = &region {
                     for (i, stmt) in parent.statements().enumerate() {
                         if !range.contains(&i) { continue; }
-                        let attr_text = format!("#[cfg(c_defs = \"{}\")]", premise);
+                        let attr_text = format!("#[cfg({})]", premise);
                         let attr = ast_from_text::<ast::Attr>(&attr_text).clone_for_update();
                         match &stmt {
                             ast::Stmt::LetStmt(let_stmt) => {
@@ -1023,7 +1023,7 @@ impl HayrollConditionalMacro {
                 let region_mut = region.make_mut_with_builder_set(builder);
                 if let CodeRegion::Decls(items_mut) = region_mut {
                     items_mut.iter().for_each(|item_mut| {
-                        let attr_text = format!("#[cfg(c_defs = \"{}\")]", premise);
+                        let attr_text = format!("#[cfg({})]", premise);
                         let attr = ast_from_text::<ast::Attr>(&attr_text).clone_for_update();
                         let item_mut_clone = item_mut.clone();
                         teds.push(Box::new(move || {

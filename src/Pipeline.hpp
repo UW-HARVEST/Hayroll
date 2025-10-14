@@ -224,7 +224,7 @@ public:
                             lineMaps.push_back(lineMap);
                             inverseLineMaps.push_back(inverseLineMap);
 
-                            std::vector<CodeRangeAnalysisTask> codeRangeAnalysisTasks = premiseTree->getCodeRangeAnalysisTasks(lineMap);
+                            auto [codeRangeAnalysisTasks, rustFeatureAtoms] = premiseTree->getCodeRangeAnalysisTasksAndRustFeatureAtoms(lineMap);
 
                             std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
                             cpp2cStrs.push_back(cpp2cStr);

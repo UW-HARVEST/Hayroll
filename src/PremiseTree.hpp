@@ -8,6 +8,9 @@
 #include <queue>
 #include <ranges>
 #include <algorithm>
+#include <string>
+#include <set>
+#include <tuple>
 
 #include <z3++.h>
 
@@ -282,13 +285,15 @@ struct PremiseTree
 
     // Generates code range analysis tasks for each descendant node.
     // The row and column number in the return value is that in the compilation unit file, i.e. line-mapped.
-    std::vector<CodeRangeAnalysisTask> getCodeRangeAnalysisTasks
+    // Also returns the set of atoms (defXXX) it contains for the complete premise of each node.
+    std::tuple<std::vector<CodeRangeAnalysisTask>, std::set<std::string>> getCodeRangeAnalysisTasksAndRustFeatureAtoms
     (
         const std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> & lineMap
     ) const
     {
         CPreproc lang = CPreproc();
         std::vector<CodeRangeAnalysisTask> tasks;
+        std::set<std::string> rustFeatureAtoms;
         for (const PremiseTree * premiseNode : getDescendantsPreOrder())
         {
             if (premiseNode == this) continue; // Skip the root node
@@ -361,6 +366,9 @@ struct PremiseTree
             int ifEndLine = lineNumbers.at(ifNode.endPoint().row + 1);
             int ifEndCol = static_cast<int>(ifNode.endPoint().column) + 1;
 
+            auto [rustCfgString, atoms] = premiseNode->rustFeatures();
+            rustFeatureAtoms.insert(atoms.begin(), atoms.end());
+
             CodeRangeAnalysisTask task =
             {
                 .beginLine = beginLine,
@@ -369,14 +377,145 @@ struct PremiseTree
                 .endCol = endCol,
                 .extraInfo =
                 {
-                    .premise = premiseNode->premise.to_string(),
+                    .premise = rustCfgString,
                     .ifGroupLnColBegin = std::format("{}:{}", ifBeginLine, ifBeginCol),
                     .ifGroupLnColEnd = std::format("{}:{}", ifEndLine, ifEndCol)
                 }
             };
             tasks.push_back(task);
         }
-        return tasks;
+        return {tasks, rustFeatureAtoms};
+    }
+
+    // Generate the Rust cfg string and the set of atoms (defXXX) it contains for the complete premise of this node.
+    std::tuple<std::string, std::set<std::string>> rustFeatures() const
+    {
+        return premiseToRustFeatures(premise);
+    }
+
+    // Convert a premise (a Z3 boolean expression) to a Rust cfg string and the set of atoms (defXXX) it contains.
+    // Throws if the premise contains non-boolean expressions or arithmetic expressions.
+    static std::tuple<std::string, std::set<std::string>> premiseToRustFeatures(const z3::expr & premise)
+    {
+        // Input: a Z3 boolean expression over atoms named defXXXX (boolean variables)
+        // Output: (rust_cfg_string, set_of_atom_names)
+        // Allowed connectives: and/or/not -> all/any/not in Rust cfg
+        // Atoms become: feature = "<name>"
+        // Tautology/Contradiction -> ("true"/"false", empty set)
+        // Any arithmetic or value variable (valXXX) -> throw
+
+        // Fast-path constants on the whole expression
+        if (z3CheckTautology(premise)) return {"true", {}};
+        if (z3CheckContradiction(premise)) return {"false", {}};
+
+        std::set<std::string> atoms;
+
+        std::function<std::string(const z3::expr &)> emit = [&](const z3::expr & e) -> std::string
+        {
+            // Simplify per-node constants conservatively
+            if (z3CheckTautology(e)) return "true";
+            if (z3CheckContradiction(e)) return "false";
+
+            if (!e.is_bool())
+            {
+                throw std::runtime_error(std::format("Non-boolean expression encountered in premiseToRustFeatures: {}", e.to_string()));
+            }
+
+            // Composite connectives we support
+            if (e.is_and())
+            {
+                std::vector<std::string> parts;
+                parts.reserve(e.num_args());
+                for (unsigned i = 0; i < e.num_args(); ++i)
+                {
+                    std::string s = emit(e.arg(i));
+                    if (s == "false")
+                    {
+                        // Short-circuit: and(false, ...) == false
+                        return "false";
+                    }
+                    if (s == "true")
+                    {
+                        // Skip neutral element
+                        continue;
+                    }
+                    parts.push_back(std::move(s));
+                }
+                if (parts.empty()) return "true"; // and() over nothing -> true
+                std::string out = "all(";
+                for (size_t i = 0; i < parts.size(); ++i)
+                {
+                    if (i) out += ", ";
+                    out += parts[i];
+                }
+                out += ")";
+                return out;
+            }
+            if (e.is_or())
+            {
+                std::vector<std::string> parts;
+                parts.reserve(e.num_args());
+                for (unsigned i = 0; i < e.num_args(); ++i)
+                {
+                    std::string s = emit(e.arg(i));
+                    if (s == "true")
+                    {
+                        // Short-circuit: or(true, ...) == true
+                        return "true";
+                    }
+                    if (s == "false")
+                    {
+                        // Skip neutral element
+                        continue;
+                    }
+                    parts.push_back(std::move(s));
+                }
+                if (parts.empty()) return "false"; // or() over nothing -> false
+                std::string out = "any(";
+                for (size_t i = 0; i < parts.size(); ++i)
+                {
+                    if (i) out += ", ";
+                    out += parts[i];
+                }
+                out += ")";
+                return out;
+            }
+            if (e.is_not())
+            {
+                assert(e.num_args() == 1);
+                std::string s = emit(e.arg(0));
+                if (s == "true") return "false";
+                if (s == "false") return "true";
+                return std::format("not({})", s);
+            }
+
+            // Leaf / other application
+            if (e.is_app() && e.num_args() == 0)
+            {
+                std::string name = e.decl().name().str();
+                if (name.rfind("val", 0) == 0)
+                {
+                    throw std::runtime_error(std::format("Found value variable in boolean premise (valXXX not allowed): {}", name));
+                }
+                if (name.rfind("def", 0) != 0)
+                {
+                    throw std::runtime_error(std::format("Unexpected atom name (expecting defXXX): {}", name));
+                }
+                atoms.insert(name);
+                return std::format("feature = \"{}\"", name);
+            }
+
+            // If we get here, it's some unsupported boolean operator or non-constant func.
+            throw std::runtime_error(std::format("Unsupported boolean operator in premiseToRustFeatures: {}", e.to_string()));
+        };
+
+        std::string cfg = emit(premise);
+        // If after emission the entire expression simplified to true/false, ensure atom set is empty
+        if (cfg == "true" || cfg == "false")
+        {
+            return {cfg, {}};
+        }
+        return {cfg, std::move(atoms)};
     }
 };
 
