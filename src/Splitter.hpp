@@ -80,11 +80,11 @@ public:
         SPDLOG_DEBUG("Generated {} DefineSet(s).", result.size());
         if (!uncovered.empty())
         {
-            SPDLOG_WARN("The following premise tree nodes could not be covered by any valid DefineSet:");
+            SPDLOG_DEBUG("The following premise tree nodes could not be covered by any valid DefineSet:");
             for (const PremiseTree * node : uncovered)
             {
-                SPDLOG_WARN(" - Node: {}", node->toString());
-                SPDLOG_WARN("   Premise: {}", node->getCompletePremise().to_string());
+                SPDLOG_DEBUG(" - Node: {}", node->toString());
+                SPDLOG_DEBUG("   Premise: {}", node->getCompletePremise().to_string());
             }
         }
 

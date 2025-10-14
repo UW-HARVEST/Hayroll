@@ -318,7 +318,7 @@ public:
                                 outputDir,
                                 projDir,
                                 reaperStr,
-                                std::format(".{}.rs", i),
+                                std::format(".{}.reaped.rs", i),
                                 "Hayroll Reaper output",
                                 command.file.string(),
                                 i

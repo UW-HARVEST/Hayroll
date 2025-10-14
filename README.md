@@ -142,22 +142,30 @@ structure.
 
 ### Output
 
-`./hayroll` overwrites the output directory. You will see several intermediate
-files for each original C file.
+`./hayroll` overwrites the output directory. Files are grouped per original C
+file. We use `.{split}.xxx` below to denote artifacts for each split (DefineSet).
 
-- `xxx.c`: The C source file.
-- `xxx.cu.c`: The C compilation unit source file. This is `xxx.c` with all
-  necessary `#include`s copy-pasted into a single file, which we call the
-  compilation unit file. A compilation unit file is standalone compilable.
-- `xxx.premise_tree.c`: Output by the Hayroll Pioneer symbolic executor from
-  executing `xxx.c`. For each line of code, it shows the compilation flag
-  combination required for the code to survive conditional compilation macros.
-- `xxx.cpp2c`: Maki's macro analysis result on `xxx.cu.c`.
-- `xxx.seeded.cu.c`: `xxx.cu.c` with Hayroll's macro info tags (seeds) inserted (seeded).
-- `xxx.seeded.rs`: `xxx.seeded.cu.c` translated to Rust by C2Rust, where C
-  macros were expanded and translated as-is, together with Hayroll's seeds.
-- `xxx.rs`: The final output, Rust code with previously expanded C macro
-  sections reverted into Rust functions or Rust macros.
+- `xxx.c`: A copy of the original C source file.
+- `xxx.premise_tree.raw.txt`: Raw premise tree from symbolic execution.
+- `xxx.premise_tree.txt`: Refined premise tree (human-friendly form).
+- `xxx.defset.txt`: The list of DefineSets (splits). The index here maps to
+  `.{split}.xxx` files below (split indices start at 0).
+
+Per split (for each `.{split}`):
+
+- `xxx.{split}.cu.c`: The compilation unit (all needed `#include`s inlined).
+- `xxx.{split}.cpp2c`: Maki's macro analysis on the compilation unit.
+- `xxx.{split}.cpp2c.ranges.json`: Complemented conditional range summary using
+  information across splits.
+- `xxx.{split}.seeded.cu.c`: The compilation unit with Hayroll's macro tags (seeds).
+- `xxx.{split}.seeded.rs`: `.{split}.seeded.cu.c` translated to Rust by c2rust
+  (expanded macros plus seeds).
+- `xxx.{split}.reaped.rs`: Hayroll Reaper's Rust output for this split (pre-merge).
+- `xxx.{split}.merged.rs`: Cumulative merge result up to this split (present for
+  splits after the first), useful for inspecting the merging process.
+
+- `xxx.rs`: The final merged Rust output across all splits. Same as the last
+  `.{split}.merged.rs`.
 
 ### Example of running Hayroll
 
