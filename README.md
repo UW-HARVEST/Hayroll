@@ -66,8 +66,8 @@ By contrast, the output of Hayroll is (the code comments highlight improvements)
 
 ```rust
 pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
-    #[cfg(feature = "__LIBMCS_FPU_DAZ")] // (WIP) conditional compilation is retained
-    { x *= __volatile_onef; }            // (WIP) conditional compilation is retained
+    #[cfg(feature = "defLIBMCS_FPU_DAZ")] // conditional compilation is retained
+    (x *= __volatile_onef);               // conditional compilation is retained
     let mut t: libc::c_float = 0.;
     let mut w: libc::c_float = 0.;
     let mut h: libc::c_float = 0.;
@@ -79,6 +79,7 @@ pub unsafe extern "C" fn sinhf(mut x: libc::c_float) -> libc::c_float {
         return x + x;
     }
     h = 0.5f32;
+    ...
 ```
 
 ## Installation
