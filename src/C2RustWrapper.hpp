@@ -62,6 +62,7 @@ public:
             C2RustExe.string(),
             "transpile",
             "--reorganize-definitions",
+            "--emit-build-files",
             compileCommandsPath.string(),
             "--output-dir", outputDirPath.string()
         );
@@ -72,6 +73,7 @@ public:
                 C2RustExe.string(),
                 "transpile",
                 "--reorganize-definitions",
+                "--emit-build-files",
                 compileCommandsPath.string(),
                 "--output-dir", outputDirPath.string()
             },
