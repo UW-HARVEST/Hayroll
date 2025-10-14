@@ -110,7 +110,7 @@ int main(const int argc, const char* argv[])
             SPDLOG_INFO("Project directory not given, defaulting to: {}", projDir.string());
         }
 
-        return Hayroll::Pipeline::run
+        return Pipeline::run
         (
             compileCommandsJsonPath,
             outputDir,
