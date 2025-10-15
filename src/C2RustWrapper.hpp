@@ -116,8 +116,83 @@ public:
         const std::set<std::string> & additionalFeatures = {}
     )
     {
-        // TBD
-        return {"", "", "", ""};
+        // Note: Simple version as requested: just dump all compile commands to a json file,
+        // call c2rust once with --emit-build-files, and then read the four files
+        // from the output directory root without any modification.
+
+        // Prepare a temporary directory to host compile_commands.json
+        TempDir compileCommandsDir;
+        std::filesystem::path compileCommandsDirPath = compileCommandsDir.getPath();
+        std::filesystem::path compileCommandsPath = compileCommandsDirPath / "compile_commands.json";
+
+        // Serialize compile commands directly to JSON
+        // Using the intrusive nlohmann::json converters defined in CompileCommand
+        nlohmann::json jsonCommands = CompileCommand::compileCommandsToJson(compileCommands);
+        saveStringToFile(jsonCommands.dump(4), compileCommandsPath);
+        SPDLOG_TRACE("Saved compile_commands.json to: {}\n content:\n{}",
+                     compileCommandsPath.string(), jsonCommands.dump(4));
+
+        // Prepare output directory
+        TempDir outputDir;
+        std::filesystem::path outputDirPath = outputDir.getPath();
+
+        SPDLOG_TRACE
+        (
+            "Issuing command: {} {} {} {} {} {} {}",
+            C2RustExe.string(),
+            "transpile",
+            "--reorganize-definitions",
+            "--emit-build-files",
+            compileCommandsPath.string(),
+            "--output-dir",
+            outputDirPath.string()
+        );
+
+        // Invoke c2rust
+        subprocess::Popen c2rustProc
+        (
+            {
+                C2RustExe.string(),
+                "transpile",
+                "--reorganize-definitions",
+                "--emit-build-files",
+                compileCommandsPath.string(),
+                "--output-dir", outputDirPath.string()
+            },
+            subprocess::output{subprocess::PIPE},
+            subprocess::error{subprocess::PIPE}
+        );
+
+        auto [out, err] = c2rustProc.communicate();
+        SPDLOG_TRACE("C2Rust stdout:\n{}", out.buf.data());
+        SPDLOG_TRACE("C2Rust stderr:\n{}", err.buf.data());
+
+        // Expected files at the output directory root (simple version)
+        std::filesystem::path buildRsPath = outputDirPath / "build.rs";
+        std::filesystem::path cargoTomlPath = outputDirPath / "Cargo.toml";
+        std::filesystem::path libRsPath = outputDirPath / "lib.rs";
+        std::filesystem::path rustToolchainTomlPath = outputDirPath / "rust-toolchain.toml";
+
+        // Verify existence and load contents
+        auto requireFile = [&](const std::filesystem::path & p) -> std::string
+        {
+            if (!std::filesystem::exists(p))
+            {
+                std::ostringstream oss;
+                oss << "C2Rust did not produce the expected output file: " << p.string()
+                    << "\nOutput:\n" << out.buf.data()
+                    << "\nError:\n" << err.buf.data();
+                throw std::runtime_error(oss.str());
+            }
+            return loadFileToString(p);
+        };
+
+        std::string buildRs = requireFile(buildRsPath);
+        std::string cargoToml = requireFile(cargoTomlPath);
+        std::string libRs = requireFile(libRsPath);
+        std::string rustToolchainToml = requireFile(rustToolchainTomlPath);
+
+        return {buildRs, cargoToml, libRs, rustToolchainToml};
     }
 };
 

@@ -50,7 +50,7 @@ public:
         const std::optional<std::size_t> defineSetIndex = std::nullopt
     )
     {
-        Hayroll::CompileCommand outCmd = base.withUpdatedFilePathPrefix(outputDir, projDir);
+        Hayroll::CompileCommand outCmd = base.withUpdatedFilePathPrefix(outputDir / "src", projDir);
         if (newExt)
         {
             outCmd = outCmd.withUpdatedFileExtension(*newExt);
@@ -168,208 +168,208 @@ public:
 
                     // Splitter
                     std::vector<DefineSet> defineSets = Splitter::run(premiseTree, command);
+                    saveOutput
+                    (
+                        command,
+                        outputDir,
+                        projDir,
+                        DefineSet::defineSetsToString(defineSets),
+                        ".defset.txt",
+                        "DefineSets summary",
+                        command.file.string(),
+                        std::nullopt
+                    );
+
+                    std::vector<CompileCommand> commandsWithDefSets;
+                    for (std::size_t i = 0; i < defineSets.size(); ++i)
+                    {
+                        CompileCommand commandWithDefineSet = command.withUpdatedDefineSet(defineSets[i]);
+                        commandsWithDefSets.push_back(commandWithDefineSet);
+                    }
+
+                    // Run rewrite-includes + LineMatcher + CodeRangeAnalysisTasks generation + Maki cpp2c on each DefineSet
+                    std::vector<std::string> cuStrs;
+                    std::vector<std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>>> lineMaps;
+                    std::vector<std::vector<std::pair<Hayroll::IncludeTreePtr, int>>> inverseLineMaps;
+                    std::vector<std::string> cpp2cStrs;
+                    std::vector<std::vector<Hayroll::MakiInvocationSummary>> cpp2cInvocations;
+                    std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRanges;
+                    for (std::size_t i = 0; i < defineSets.size(); ++i)
+                    {
+                        const DefineSet & defSet = defineSets[i];
+                        CompileCommand commandWithDefineSet = commandsWithDefSets[i];
+
+                        std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(commandWithDefineSet);
+                        cuStrs.push_back(cuStr);
+                        // Save to filename.{i}.cu.c
+                        saveOutput
+                        (
+                            commandWithDefineSet,
+                            outputDir,
+                            projDir,
+                            cuStr,
+                            std::format(".{}.cu.c", i),
+                            "Compilation unit file",
+                            command.file.string(),
+                            i
+                        );
+
+                        const auto [lineMap, inverseLineMap] = LineMatcher::run
+                        (
+                            cuStr,
+                            executor.includeTree,
+                            command.getIncludePaths()
+                        );
+                        lineMaps.push_back(lineMap);
+                        inverseLineMaps.push_back(inverseLineMap);
+
+                        auto [codeRangeAnalysisTasks, rustFeatureAtoms] = premiseTree->getCodeRangeAnalysisTasksAndRustFeatureAtoms(lineMap);
+
+                        std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
+                        cpp2cStrs.push_back(cpp2cStr);
+                        // Save to filename.{i}.cpp2c
+                        saveOutput
+                        (
+                            commandWithDefineSet,
+                            outputDir,
+                            projDir,
+                            cpp2cStr,
+                            std::format(".{}.cpp2c", i),
+                            "Maki cpp2c output",
+                            command.file.string(),
+                            i
+                        );
+
+                        auto [invocations, ranges] = parseCpp2cSummary(cpp2cStr);
+                        cpp2cInvocations.push_back(invocations);
+                        cpp2cRanges.push_back(ranges);
+                    }
+
+                    // Compliment the ranges using each others' information
+                    std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRangesCompleted
+                        = Hayroll::MakiRangeSummary::complementRangeSummaries(cpp2cRanges, inverseLineMaps);
+                    // Save complemented ranges
+                    for (std::size_t i = 0; i < defineSets.size(); ++i)
                     {
                         saveOutput
                         (
                             command,
                             outputDir,
                             projDir,
-                            DefineSet::defineSetsToString(defineSets),
-                            ".defset.txt",
-                            "DefineSets summary",
+                            json(cpp2cRangesCompleted[i]).dump(4),
+                            std::format(".{}.cpp2c.ranges.json", i),
+                            "Complemented Maki range summary",
                             command.file.string(),
-                            std::nullopt
+                            i
                         );
+                    }
 
-                        std::vector<CompileCommand> commandsWithDefSets;
-                        for (std::size_t i = 0; i < defineSets.size(); ++i)
-                        {
-                            CompileCommand commandWithDefineSet = command.withUpdatedDefineSet(defineSets[i]);
-                            commandsWithDefSets.push_back(commandWithDefineSet);
-                        }
-
-                        // Run rewrite-includes + LineMatcher + CodeRangeAnalysisTasks generation + Maki cpp2c on each DefineSet
-                        std::vector<std::string> cuStrs;
-                        std::vector<std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>>> lineMaps;
-                        std::vector<std::vector<std::pair<Hayroll::IncludeTreePtr, int>>> inverseLineMaps;
-                        std::vector<std::string> cpp2cStrs;
-                        std::vector<std::vector<Hayroll::MakiInvocationSummary>> cpp2cInvocations;
-                        std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRanges;
-                        for (std::size_t i = 0; i < defineSets.size(); ++i)
-                        {
-                            const DefineSet & defSet = defineSets[i];
-                            CompileCommand commandWithDefineSet = commandsWithDefSets[i];
-
-                            std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(commandWithDefineSet);
-                            cuStrs.push_back(cuStr);
-                            // Save to filename.{i}.cu.c
-                            saveOutput
-                            (
-                                commandWithDefineSet,
-                                outputDir,
-                                projDir,
-                                cuStr,
-                                std::format(".{}.cu.c", i),
-                                "Compilation unit file",
-                                command.file.string(),
-                                i
-                            );
-
-                            const auto [lineMap, inverseLineMap] = LineMatcher::run
-                            (
-                                cuStr,
-                                executor.includeTree,
-                                command.getIncludePaths()
-                            );
-                            lineMaps.push_back(lineMap);
-                            inverseLineMaps.push_back(inverseLineMap);
-
-                            auto [codeRangeAnalysisTasks, rustFeatureAtoms] = premiseTree->getCodeRangeAnalysisTasksAndRustFeatureAtoms(lineMap);
-
-                            std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
-                            cpp2cStrs.push_back(cpp2cStr);
-                            // Save to filename.{i}.cpp2c
-                            saveOutput
-                            (
-                                commandWithDefineSet,
-                                outputDir,
-                                projDir,
-                                cpp2cStr,
-                                std::format(".{}.cpp2c", i),
-                                "Maki cpp2c output",
-                                command.file.string(),
-                                i
-                            );
-
-                            auto [invocations, ranges] = parseCpp2cSummary(cpp2cStr);
-                            cpp2cInvocations.push_back(invocations);
-                            cpp2cRanges.push_back(ranges);
-                        }
-
-                        // Compliment the ranges using each others' information
-                        std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRangesCompleted
-                            = Hayroll::MakiRangeSummary::complementRangeSummaries(cpp2cRanges, inverseLineMaps);
-                        // Save complemented ranges
-                        for (std::size_t i = 0; i < defineSets.size(); ++i)
-                        {
-                            saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                json(cpp2cRangesCompleted[i]).dump(4),
-                                std::format(".{}.cpp2c.ranges.json", i),
-                                "Complemented Maki range summary",
-                                command.file.string(),
-                                i
-                            );
-                        }
-
-                        std::vector<std::string> cuSeededStrs;
-                        std::vector<std::string> c2rustStrs;
-                        std::vector<std::string> reaperStrs;
-                        for (std::size_t i = 0; i < defineSets.size(); ++i)
-                        {
-                            // Hayroll Seeder
-                            std::string cuSeededStr = Seeder::run
-                            (
-                                cpp2cInvocations[i],
-                                cpp2cRangesCompleted[i],
-                                cuStrs[i],
-                                lineMaps[i],
-                                inverseLineMaps[i]
-                            );
-                            cuSeededStrs.push_back(cuSeededStr);
-                            // Save to filename.{i}.seeded.cu.c
-                            saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                cuSeededStr,
-                                std::format(".{}.seeded.cu.c", i),
-                                "Hayroll Seeded compilation unit",
-                                command.file.string(),
-                                i
-                            );
-
-                            // c2rust -> .seeded.rs
-                            std::string c2rustStr = C2RustWrapper::transpile(cuSeededStr, commandsWithDefSets[i]);
-                            c2rustStrs.push_back(c2rustStr);
-                            // Save to filename.{i}.seeded.rs
-                            std::filesystem::path seededRsPath = saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                c2rustStr,
-                                std::format(".{}.seeded.rs", i),
-                                "C2Rust output",
-                                command.file.string(),
-                                i
-                            );
-
-                            // Reaper -> .rs (takes Rust content, not a path)
-                            std::string reaperStr = ReaperWrapper::runReaper(c2rustStr);
-                            reaperStrs.push_back(reaperStr);
-                            saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                reaperStr,
-                                std::format(".{}.reaped.rs", i),
-                                "Hayroll Reaper output",
-                                command.file.string(),
-                                i
-                            );
-                        }
-
-                        // If multiple DefineSets, run Merger accumulatively
-                        std::vector<std::string> mergedRustStrs;
-                        mergedRustStrs.push_back(reaperStrs[0]); // The first one is not merged
-                        for (std::size_t i = 1; i < defineSets.size(); ++i)
-                        {
-                            std::string merged = MergerWrapper::runMerger(mergedRustStrs[i - 1], reaperStrs[i]);
-                            mergedRustStrs.push_back(merged);
-                            saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                merged,
-                                std::format(".{}.merged.rs", i),
-                                "Hayroll Merger output",
-                                command.file.string(),
-                                i
-                            );
-                        }
-
-                        std::string finalRustStr = mergedRustStrs.back();
+                    std::vector<std::string> cuSeededStrs;
+                    std::vector<std::string> c2rustStrs;
+                    std::vector<std::string> reapedStrs;
+                    for (std::size_t i = 0; i < defineSets.size(); ++i)
+                    {
+                        // Hayroll Seeder
+                        std::string cuSeededStr = Seeder::run
+                        (
+                            cpp2cInvocations[i],
+                            cpp2cRangesCompleted[i],
+                            cuStrs[i],
+                            lineMaps[i],
+                            inverseLineMaps[i]
+                        );
+                        cuSeededStrs.push_back(cuSeededStr);
+                        // Save to filename.{i}.seeded.cu.c
                         saveOutput
                         (
                             command,
                             outputDir,
                             projDir,
-                            finalRustStr,
-                            ".rs",
-                            "Hayroll final output",
+                            cuSeededStr,
+                            std::format(".{}.seeded.cu.c", i),
+                            "Hayroll Seeded compilation unit",
                             command.file.string(),
-                            std::nullopt
+                            i
+                        );
+
+                        // c2rust -> .seeded.rs
+                        std::string c2rustStr = C2RustWrapper::transpile(cuSeededStr, commandsWithDefSets[i]);
+                        c2rustStrs.push_back(c2rustStr);
+                        // Save to filename.{i}.seeded.rs
+                        std::filesystem::path seededRsPath = saveOutput
+                        (
+                            command,
+                            outputDir,
+                            projDir,
+                            c2rustStr,
+                            std::format(".{}.seeded.rs", i),
+                            "C2Rust output",
+                            command.file.string(),
+                            i
+                        );
+
+                        // Reaper -> .rs (takes Rust content, not a path)
+                        std::string reaperStr = ReaperWrapper::runReaper(c2rustStr);
+                        reapedStrs.push_back(reaperStr);
+                        saveOutput
+                        (
+                            command,
+                            outputDir,
+                            projDir,
+                            reaperStr,
+                            std::format(".{}.reaped.rs", i),
+                            "Hayroll Reaper output",
+                            command.file.string(),
+                            i
                         );
                     }
+
+                    // If multiple DefineSets, run Merger accumulatively
+                    std::vector<std::string> mergedRustStrs;
+                    mergedRustStrs.push_back(reapedStrs[0]); // The first one is not merged
+                    for (std::size_t i = 1; i < defineSets.size(); ++i)
+                    {
+                        std::string merged = MergerWrapper::runMerger(mergedRustStrs[i - 1], reapedStrs[i]);
+                        mergedRustStrs.push_back(merged);
+                        saveOutput
+                        (
+                            command,
+                            outputDir,
+                            projDir,
+                            merged,
+                            std::format(".{}.merged.rs", i),
+                            "Hayroll Merger output",
+                            command.file.string(),
+                            i
+                        );
+                    }
+
+                    std::string finalRustStr = mergedRustStrs.back();
+                    saveOutput
+                    (
+                        command,
+                        outputDir,
+                        projDir,
+                        finalRustStr,
+                        ".rs",
+                        "Hayroll final output",
+                        command.file.string(),
+                        std::nullopt
+                    );
+
+                    SPDLOG_INFO("Task {}/{} {} completed", taskIdx + 1, numTasks, command.file.string());
                 }
                 catch (const std::exception & e)
                 {
                     std::lock_guard<std::mutex> lock(failedMutex);
                     failedTasks.emplace_back(command.file, e.what());
-                    SPDLOG_ERROR("Task {}/{} {} failed: {}", taskIdx, numTasks, command.file.string(), e.what());
+                    SPDLOG_ERROR("Task {}/{} {} failed: {}", taskIdx + 1, numTasks, command.file.string(), e.what());
                 }
                 catch (...)
                 {
                     std::lock_guard<std::mutex> lock(failedMutex);
                     failedTasks.emplace_back(command.file, "unknown error");
-                    SPDLOG_ERROR("Task {}/{} {} failed: unknown error", taskIdx, numTasks, command.file.string());
+                    SPDLOG_ERROR("Task {}/{} {} failed: unknown error", taskIdx + 1, numTasks, command.file.string());
                 }
             }
         };
@@ -384,6 +384,19 @@ public:
         {
             th.join();
         }
+
+        // Build files
+        auto [buildRs, cargoToml, libRs, rustToolchainToml] = C2RustWrapper::generateBuildFiles(compileCommands);
+        auto saveBuildFile = [&](const std::string & content, const std::string & fileName)
+        {
+            std::filesystem::path outPath = outputDir / fileName;
+            Hayroll::saveStringToFile(content, outPath);
+            SPDLOG_INFO("Build file {} saved to: {}", fileName, outPath.string());
+        };
+        saveBuildFile(buildRs, "build.rs");
+        saveBuildFile(cargoToml, "Cargo.toml");
+        saveBuildFile(libRs, "lib.rs");
+        saveBuildFile(rustToolchainToml, "rust-toolchain.toml");
 
         // Print final results
         if (!failedTasks.empty())

@@ -13,7 +13,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 # You may also use clang, but make sure you link to libstdc++ 3.4.32 or above
 
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -gdwarf-2")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -gdwarf-2 -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
 # Common config
