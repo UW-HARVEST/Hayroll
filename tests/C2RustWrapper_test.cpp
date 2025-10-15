@@ -55,9 +55,10 @@ int main(int argc, char **argv)
 
     std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
     std::string cuStrNoLm = LinemarkerEraser::run(cuStr);
-    std::string result = C2RustWrapper::transpile(cuStrNoLm, command);
+    auto [rustCode, cargoToml] = C2RustWrapper::transpile(cuStrNoLm, command);
 
-    std::cout << "C2Rust output:\n" << result << std::endl;
+    std::cout << "C2Rust output:\n" << rustCode << std::endl;
+    std::cout << "Cargo.toml content:\n" << cargoToml << std::endl;
 
     return 0;
 }

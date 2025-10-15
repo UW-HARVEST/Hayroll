@@ -103,7 +103,7 @@ private:
         try
         {
             std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(updatedCommand);
-            std::string rsStr = C2RustWrapper::transpile(cuStr, updatedCommand);
+            auto [rsStr, cargoToml] = C2RustWrapper::transpile(cuStr, updatedCommand);
         }
         catch (const std::exception & e)
         {

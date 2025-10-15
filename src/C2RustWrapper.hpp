@@ -10,6 +10,7 @@
 #include <spdlog/spdlog.h>
 #include "subprocess.hpp"
 #include "json.hpp"
+#include "toml.hpp"
 
 #include "Util.hpp"
 #include "TempDir.hpp"
@@ -23,7 +24,9 @@ namespace Hayroll
 class C2RustWrapper
 {
 public:
-    static std::string transpile
+    // Call C2Rust to transpile a single seeded CU string
+    // Return the transpiled Rust string and the corresponding Cargo.toml content
+    static std::tuple<std::string, std::string> transpile
     (
         std::string_view seededCuStr,
         const CompileCommand & compileCommand
@@ -103,7 +106,37 @@ public:
             throw std::runtime_error(oss.str());
         }
 
-        return loadFileToString(rustFilePath);
+        std::string rustCode = loadFileToString(rustFilePath);
+        std::string cargoToml = loadFileToString(outputDirPath / "Cargo.toml");
+        return {rustCode, cargoToml};
+    }
+
+    static std::string mergeCargoTomls(const std::vector<std::string> & cargoTomls)
+    {
+        if (cargoTomls.empty()) return "";
+
+        // Parse the first Cargo.toml as the base
+        toml::ordered_value baseToml = toml::parse_str<toml::ordered_type_config>(cargoTomls[0]);
+
+        for (size_t i = 1; i < cargoTomls.size(); ++i)
+        {
+            toml::ordered_value nextToml = toml::parse_str<toml::ordered_type_config>(cargoTomls[i]);
+
+            // Merge [dependencies]
+            if (nextToml.contains("dependencies"))
+            {
+                if (!baseToml.contains("dependencies"))
+                {
+                    baseToml["dependencies"] = toml::table{};
+                }
+                for (const auto& [key, value] : nextToml["dependencies"].as_table())
+                {
+                    baseToml["dependencies"][key] = value;
+                }
+            }
+        }
+
+        return toml::format(baseToml);
     }
 
     // Call C2Rust with --emit-build-files to generate build files

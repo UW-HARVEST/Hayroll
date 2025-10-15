@@ -110,6 +110,10 @@ public:
         std::vector<std::pair<std::filesystem::path, std::string>> failedTasks; // Failed file -> error
         std::mutex failedMutex;
 
+        // Collect Cargo.toml from all subtasks and splits
+        std::vector<std::string> allCargoTomls;
+        std::mutex cargoTomlsMutex;
+
         std::atomic<std::size_t> nextIdx{0};
 
         auto worker = [&]()
@@ -266,6 +270,7 @@ public:
 
                     std::vector<std::string> cuSeededStrs;
                     std::vector<std::string> c2rustStrs;
+                    std::vector<std::string> cargoTomls;
                     std::vector<std::string> reapedStrs;
                     for (std::size_t i = 0; i < defineSets.size(); ++i)
                     {
@@ -293,10 +298,11 @@ public:
                         );
 
                         // c2rust -> .seeded.rs
-                        std::string c2rustStr = C2RustWrapper::transpile(cuSeededStr, commandsWithDefSets[i]);
+                        auto [c2rustStr, cargoToml] = C2RustWrapper::transpile(cuSeededStr, commandsWithDefSets[i]);
                         c2rustStrs.push_back(c2rustStr);
+                        cargoTomls.push_back(cargoToml);
                         // Save to filename.{i}.seeded.rs
-                        std::filesystem::path seededRsPath = saveOutput
+                        saveOutput
                         (
                             command,
                             outputDir,
@@ -304,6 +310,18 @@ public:
                             c2rustStr,
                             std::format(".{}.seeded.rs", i),
                             "C2Rust output",
+                            command.file.string(),
+                            i
+                        );
+                        // Also save Cargo.toml
+                        saveOutput
+                        (
+                            command,
+                            outputDir,
+                            projDir,
+                            cargoToml,
+                            std::format(".{}.Cargo.toml", i),
+                            "C2Rust Cargo.toml",
                             command.file.string(),
                             i
                         );
@@ -322,6 +340,12 @@ public:
                             command.file.string(),
                             i
                         );
+                    }
+
+                    // Append this task's Cargo.toml list to the global collection (thread-safe)
+                    {
+                        std::lock_guard<std::mutex> lk(cargoTomlsMutex);
+                        allCargoTomls.insert(allCargoTomls.end(), cargoTomls.begin(), cargoTomls.end());
                     }
 
                     // If multiple DefineSets, run Merger accumulatively
@@ -385,6 +409,9 @@ public:
             th.join();
         }
 
+        SPDLOG_INFO("Collected {} Cargo.toml snippet(s) from subtasks", allCargoTomls.size());
+        std::string mergedCargoToml = C2RustWrapper::mergeCargoTomls(allCargoTomls);
+
         // Build files
         auto [buildRs, cargoToml, libRs, rustToolchainToml] = C2RustWrapper::generateBuildFiles(compileCommands);
         auto saveBuildFile = [&](const std::string & content, const std::string & fileName)
@@ -394,7 +421,7 @@ public:
             SPDLOG_INFO("Build file {} saved to: {}", fileName, outPath.string());
         };
         saveBuildFile(buildRs, "build.rs");
-        saveBuildFile(cargoToml, "Cargo.toml");
+        saveBuildFile(mergedCargoToml, "Cargo.toml");
         saveBuildFile(libRs, "lib.rs");
         saveBuildFile(rustToolchainToml, "rust-toolchain.toml");
 
