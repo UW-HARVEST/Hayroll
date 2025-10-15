@@ -55,7 +55,7 @@ int main(int argc, char **argv)
 
     std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(command);
     std::string cuStrNoLm = LinemarkerEraser::run(cuStr);
-    std::string result = C2RustWrapper::runC2Rust(cuStrNoLm, command);
+    std::string result = C2RustWrapper::transpile(cuStrNoLm, command);
 
     std::cout << "C2Rust output:\n" << result << std::endl;
 

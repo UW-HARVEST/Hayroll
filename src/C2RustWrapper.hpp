@@ -3,6 +3,9 @@
 
 #include <string>
 #include <filesystem>
+#include <set>
+#include <sstream>
+#include <tuple>
 
 #include <spdlog/spdlog.h>
 #include "subprocess.hpp"
@@ -20,7 +23,7 @@ namespace Hayroll
 class C2RustWrapper
 {
 public:
-    static std::string runC2Rust
+    static std::string transpile
     (
         std::string_view seededCuStr,
         const CompileCommand & compileCommand
@@ -101,6 +104,20 @@ public:
         }
 
         return loadFileToString(rustFilePath);
+    }
+
+    // Call C2Rust with --emit-build-files to generate build files
+    // Modify lib.rs so it corresponds to Hayroll's output structure
+    // Modify Cargo.toml so it contains additional features
+    // build.rs, Cargo.toml, lib.rs, rust-toolchain.toml
+    static std::tuple<std::string, std::string, std::string, std::string> generateBuildFiles
+    (
+        const std::vector<CompileCommand> & compileCommands,
+        const std::set<std::string> & additionalFeatures = {}
+    )
+    {
+        // TBD
+        return {"", "", "", ""};
     }
 };
 

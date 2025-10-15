@@ -294,7 +294,7 @@ public:
                             );
 
                             // c2rust -> .seeded.rs
-                            std::string c2rustStr = C2RustWrapper::runC2Rust(cuSeededStr, commandsWithDefSets[i]);
+                            std::string c2rustStr = C2RustWrapper::transpile(cuSeededStr, commandsWithDefSets[i]);
                             c2rustStrs.push_back(c2rustStr);
                             // Save to filename.{i}.seeded.rs
                             std::filesystem::path seededRsPath = saveOutput
