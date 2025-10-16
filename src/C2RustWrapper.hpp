@@ -140,6 +140,37 @@ public:
         return toml::format(baseToml);
     }
 
+    static std::string addFeaturesToCargoToml
+    (
+        const std::string & cargoToml,
+        const std::set<std::string> & rustFeatureAtoms
+    )
+    {
+        if (rustFeatureAtoms.empty()) return cargoToml;
+
+        toml::ordered_value tomlVal = toml::parse_str<toml::ordered_type_config>(cargoToml);
+
+        // Add [features] section if not present
+        if (!tomlVal.contains("features"))
+        {
+            tomlVal["features"] = toml::table{};
+        }
+
+        // Ensure "default" feature exists but remains empty
+        tomlVal["features"]["default"] = toml::array{};
+
+        // Add each feature atom as its own feature entry if not already present
+        for (const auto & atom : rustFeatureAtoms)
+        {
+            if (!tomlVal["features"].contains(atom))
+            {
+                tomlVal["features"][atom] = toml::array{};
+            }
+        }
+
+        return toml::format(tomlVal);
+    }
+
     static std::string genRustToolchainToml()
     {
         const std::string rustToolchainToml =

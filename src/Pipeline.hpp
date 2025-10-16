@@ -113,7 +113,8 @@ public:
 
         // Collect Cargo.toml from all subtasks and splits
         std::vector<std::string> allCargoTomls;
-        std::mutex cargoTomlsMutex;
+        std::set<std::string> allRustFeatureAtoms;
+        std::mutex collectionMutex;
 
         std::atomic<std::size_t> nextIdx{0};
 
@@ -199,6 +200,7 @@ public:
                     std::vector<std::string> cpp2cStrs;
                     std::vector<std::vector<Hayroll::MakiInvocationSummary>> cpp2cInvocations;
                     std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRanges;
+                    std::set<std::string> rustFeatureAtoms;
                     for (std::size_t i = 0; i < defineSets.size(); ++i)
                     {
                         const DefineSet & defSet = defineSets[i];
@@ -228,7 +230,8 @@ public:
                         lineMaps.push_back(lineMap);
                         inverseLineMaps.push_back(inverseLineMap);
 
-                        auto [codeRangeAnalysisTasks, rustFeatureAtoms] = premiseTree->getCodeRangeAnalysisTasksAndRustFeatureAtoms(lineMap);
+                        auto [codeRangeAnalysisTasks, defSetRustFeatureAtoms] = premiseTree->getCodeRangeAnalysisTasksAndRustFeatureAtoms(lineMap);
+                        rustFeatureAtoms.insert(defSetRustFeatureAtoms.begin(), defSetRustFeatureAtoms.end());
 
                         std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
                         cpp2cStrs.push_back(cpp2cStr);
@@ -345,8 +348,9 @@ public:
 
                     // Append this task's Cargo.toml list to the global collection (thread-safe)
                     {
-                        std::lock_guard<std::mutex> lk(cargoTomlsMutex);
+                        std::lock_guard<std::mutex> lk(collectionMutex);
                         allCargoTomls.insert(allCargoTomls.end(), cargoTomls.begin(), cargoTomls.end());
+                        allRustFeatureAtoms.insert(rustFeatureAtoms.begin(), rustFeatureAtoms.end());
                     }
 
                     // If multiple DefineSets, run Merger accumulatively
@@ -416,6 +420,7 @@ public:
         // Build files
         std::string buildRs = C2RustWrapper::genBuildRs();
         std::string mergedCargoToml = C2RustWrapper::mergeCargoTomls(allCargoTomls);
+        std::string cargoTomlWithFeatures = C2RustWrapper::addFeaturesToCargoToml(mergedCargoToml, allRustFeatureAtoms);
         std::string libRs = C2RustWrapper::genLibRs(projDir, compileCommands);
         std::string rustToolchainToml = C2RustWrapper::genRustToolchainToml();
         auto saveBuildFile = [&](const std::string & content, const std::string & fileName)
@@ -425,7 +430,7 @@ public:
             SPDLOG_INFO("Build file {} saved to: {}", fileName, outPath.string());
         };
         saveBuildFile(buildRs, "build.rs");
-        saveBuildFile(mergedCargoToml, "Cargo.toml");
+        saveBuildFile(cargoTomlWithFeatures, "Cargo.toml");
         saveBuildFile(libRs, "lib.rs");
         saveBuildFile(rustToolchainToml, "rust-toolchain.toml");
 
