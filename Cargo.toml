@@ -29,3 +29,7 @@ path = "src/reaper.rs"
 [[bin]]
 name = "merger"
 path = "src/merger.rs"
+
+[[bin]]
+name = "cleaner"
+path = "src/cleaner.rs"

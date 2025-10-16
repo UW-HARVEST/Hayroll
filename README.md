@@ -164,8 +164,9 @@ Per split (for each `.{split}`):
 - `xxx.{split}.merged.rs`: Cumulative merge result up to this split (present for
   splits after the first), useful for inspecting the merging process.
 
-- `xxx.rs`: The final merged Rust output across all splits. Same as the last
-  `.{split}.merged.rs`.
+- `xxx.rs`: The final merged Rust output across all splits, after running the
+  Hayroll Cleaner to strip any leftover seeds or scaffolding. This is the cleaned
+  form of the last `.{split}.merged.rs`.
 
 ### Example of running Hayroll
 

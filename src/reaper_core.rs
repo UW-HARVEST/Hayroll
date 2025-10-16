@@ -211,7 +211,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
 
         // Remove Hayroll tag items (detected by embedded JSON with {"hayroll": true})
         if item_is_hayroll_tag(&item) {
-            editor.delete(item.syntax().syntax_element().clone());
+            editor.delete(item.syntax());
             builder_set.add_file_edits(file_id, editor);
             continue; // Skip further processing for this item
         }

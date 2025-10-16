@@ -78,6 +78,7 @@ output*/
 /analyzer
 /reaper
 /merger
+/cleaner
 /remove-comments
 /remove-non-preprocessor
 /macro-skeleton

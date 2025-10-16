@@ -29,6 +29,7 @@
 #include "C2RustWrapper.hpp"
 #include "ReaperWrapper.hpp"
 #include "MergerWrapper.hpp"
+#include "CleanerWrapper.hpp"
 
 namespace Hayroll
 {
@@ -369,6 +370,7 @@ public:
                     }
 
                     std::string finalRustStr = mergedRustStrs.back();
+                    finalRustStr = CleanerWrapper::runCleaner(finalRustStr);
                     saveOutput
                     (
                         command,
