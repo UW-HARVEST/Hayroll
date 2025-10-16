@@ -27,9 +27,7 @@
 #include "LineMatcher.hpp"
 #include "Seeder.hpp"
 #include "C2RustWrapper.hpp"
-#include "ReaperWrapper.hpp"
-#include "MergerWrapper.hpp"
-#include "CleanerWrapper.hpp"
+#include "RustRefactorWrapper.hpp"
 
 namespace Hayroll
 {
@@ -331,7 +329,7 @@ public:
                         );
 
                         // Reaper -> .rs (takes Rust content, not a path)
-                        std::string reaperStr = ReaperWrapper::runReaper(c2rustStr);
+                        std::string reaperStr = RustRefactorWrapper::runReaper(c2rustStr);
                         reapedStrs.push_back(reaperStr);
                         saveOutput
                         (
@@ -358,7 +356,7 @@ public:
                     mergedRustStrs.push_back(reapedStrs[0]); // The first one is not merged
                     for (std::size_t i = 1; i < defineSets.size(); ++i)
                     {
-                        std::string merged = MergerWrapper::runMerger(mergedRustStrs[i - 1], reapedStrs[i]);
+                        std::string merged = RustRefactorWrapper::runMerger(mergedRustStrs[i - 1], reapedStrs[i]);
                         mergedRustStrs.push_back(merged);
                         saveOutput
                         (
@@ -374,7 +372,7 @@ public:
                     }
 
                     std::string finalRustStr = mergedRustStrs.back();
-                    finalRustStr = CleanerWrapper::runCleaner(finalRustStr);
+                    finalRustStr = RustRefactorWrapper::runCleaner(finalRustStr);
                     saveOutput
                     (
                         command,

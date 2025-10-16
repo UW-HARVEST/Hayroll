@@ -5,7 +5,7 @@
 #include "json.hpp"
 
 #include "Util.hpp"
-#include "ReaperWrapper.hpp"
+#include "RustRefactorWrapper.hpp"
 
 int main(int argc, char **argv)
 {
@@ -239,7 +239,7 @@ pub static mut HAYROLL_TAG_FOR_7241_1_7248_7_0609d535: *const libc::c_char = b"{
 
 )";
 
-    std::string rustStr = ReaperWrapper::runReaper(seededRustStr);
+    std::string rustStr = RustRefactorWrapper::runReaper(seededRustStr);
     if (rustStr == seededRustStr)
     {
         std::cerr << "Reaper did not modify the input Rust code." << std::endl;
