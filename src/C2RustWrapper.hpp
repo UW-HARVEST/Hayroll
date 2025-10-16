@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <set>
 #include <sstream>
+#include <map>
 #include <tuple>
 
 #include <spdlog/spdlog.h>
@@ -139,93 +140,136 @@ public:
         return toml::format(baseToml);
     }
 
-    // Call C2Rust with --emit-build-files to generate build files
-    // Modify lib.rs so it corresponds to Hayroll's output structure
-    // Modify Cargo.toml so it contains additional features
-    // build.rs, Cargo.toml, lib.rs, rust-toolchain.toml
-    static std::tuple<std::string, std::string, std::string, std::string> generateBuildFiles
+    static std::string genRustToolchainToml()
+    {
+        const std::string rustToolchainToml =
+R"(
+[toolchain]
+channel = "nightly-2022-08-08"
+components = ["rustfmt-preview", "rustc-dev", "rust-src", "miri", "rust-analyzer"]
+)";
+        return rustToolchainToml;
+    }
+    
+    static std::string genBuildRs()
+    {
+        const std::string buildRs =
+R"(
+#[cfg(all(unix, not(target_os = "macos")))]
+fn main() {
+    // add unix dependencies below
+    // println!("cargo:rustc-flags=-l readline");
+}
+
+#[cfg(target_os = "macos")]
+fn main() {
+    // add macos dependencies below
+    // println!("cargo:rustc-flags=-l edit");
+}
+)";
+        return buildRs;
+    }
+
+    static std::string genLibRs
     (
-        const std::vector<CompileCommand> & compileCommands,
-        const std::set<std::string> & additionalFeatures = {}
+        const std::filesystem::path & projDir,
+        const std::vector<CompileCommand> & compileCommands
     )
     {
-        // Note: Simple version as requested: just dump all compile commands to a json file,
-        // call c2rust once with --emit-build-files, and then read the four files
-        // from the output directory root without any modification.
+        // Header copied as-is
+        const char * header =
+R"(
+#![allow(dead_code)]
+#![allow(mutable_transmutes)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
+#![allow(unused_assignments)]
+#![allow(unused_mut)]
+#![feature(register_tool)]
+#![register_tool(c2rust)]
+#![feature(label_break_value)]
+)";
 
-        // Prepare a temporary directory to host compile_commands.json
-        TempDir compileCommandsDir;
-        std::filesystem::path compileCommandsDirPath = compileCommandsDir.getPath();
-        std::filesystem::path compileCommandsPath = compileCommandsDirPath / "compile_commands.json";
-
-        // Serialize compile commands directly to JSON
-        // Using the intrusive nlohmann::json converters defined in CompileCommand
-        nlohmann::json jsonCommands = CompileCommand::compileCommandsToJson(compileCommands);
-        saveStringToFile(jsonCommands.dump(4), compileCommandsPath);
-        SPDLOG_TRACE("Saved compile_commands.json to: {}\n content:\n{}",
-                     compileCommandsPath.string(), jsonCommands.dump(4));
-
-        // Prepare output directory
-        TempDir outputDir;
-        std::filesystem::path outputDirPath = outputDir.getPath();
-
-        SPDLOG_TRACE
-        (
-            "Issuing command: {} {} {} {} {} {} {}",
-            C2RustExe.string(),
-            "transpile",
-            "--reorganize-definitions",
-            "--emit-build-files",
-            compileCommandsPath.string(),
-            "--output-dir",
-            outputDirPath.string()
-        );
-
-        // Invoke c2rust
-        subprocess::Popen c2rustProc
-        (
-            {
-                C2RustExe.string(),
-                "transpile",
-                "--reorganize-definitions",
-                "--emit-build-files",
-                compileCommandsPath.string(),
-                "--output-dir", outputDirPath.string()
-            },
-            subprocess::output{subprocess::PIPE},
-            subprocess::error{subprocess::PIPE}
-        );
-
-        auto [out, err] = c2rustProc.communicate();
-        SPDLOG_TRACE("C2Rust stdout:\n{}", out.buf.data());
-        SPDLOG_TRACE("C2Rust stderr:\n{}", err.buf.data());
-
-        // Expected files at the output directory root (simple version)
-        std::filesystem::path buildRsPath = outputDirPath / "build.rs";
-        std::filesystem::path cargoTomlPath = outputDirPath / "Cargo.toml";
-        std::filesystem::path libRsPath = outputDirPath / "lib.rs";
-        std::filesystem::path rustToolchainTomlPath = outputDirPath / "rust-toolchain.toml";
-
-        // Verify existence and load contents
-        auto requireFile = [&](const std::filesystem::path & p) -> std::string
+        // Build a directory tree from relative paths of input files
+        struct Node
         {
-            if (!std::filesystem::exists(p))
-            {
-                std::ostringstream oss;
-                oss << "C2Rust did not produce the expected output file: " << p.string()
-                    << "\nOutput:\n" << out.buf.data()
-                    << "\nError:\n" << err.buf.data();
-                throw std::runtime_error(oss.str());
-            }
-            return loadFileToString(p);
+            std::map<std::string, Node> dirs;   // sorted keys
+            std::set<std::string> files;        // leaf module names (sorted)
         };
 
-        std::string buildRs = requireFile(buildRsPath);
-        std::string cargoToml = requireFile(cargoTomlPath);
-        std::string libRs = requireFile(libRsPath);
-        std::string rustToolchainToml = requireFile(rustToolchainTomlPath);
+        Node root; // represents the content under src/
 
-        return {buildRs, cargoToml, libRs, rustToolchainToml};
+        // Deduplicate by normalized relative path (directory + stem)
+        std::set<std::filesystem::path> uniqueRelPaths;
+
+        for (const auto & cmd : compileCommands)
+        {
+            std::filesystem::path rel;
+            try
+            {
+                rel = std::filesystem::relative(cmd.file, projDir);
+            }
+            catch (...)
+            {
+                // If relative fails (different roots), fall back to filename only
+                rel = cmd.file.filename();
+            }
+
+            // Normalize path (remove extension)
+            std::filesystem::path relNoExt = rel;
+            relNoExt.replace_extension("");
+            uniqueRelPaths.insert(relNoExt);
+        }
+
+        for (const auto & relNoExt : uniqueRelPaths)
+        {
+            Node * cur = &root;
+            // Walk components; all but the last are directories; last is the module (file stem)
+            std::vector<std::string> comps;
+            for (const auto & part : relNoExt)
+            {
+                comps.push_back(part.string());
+            }
+            if (comps.empty()) continue;
+            for (size_t i = 0; i < comps.size() - 1; ++i)
+            {
+                std::string dir = comps[i];
+                cur = &cur->dirs[dir];
+            }
+            std::string stem = comps.back();
+            cur->files.insert(stem);
+        }
+
+        // Emit nested modules under top-level src
+        std::ostringstream oss;
+        oss << header;
+        oss << "pub mod src {\n";
+
+        std::function<void(const Node&, int, const std::string&)> emit = [&](const Node & node, int depth, const std::string & modName)
+        {
+            auto indent = [&](int d){ return std::string(static_cast<size_t>(d) * 4, ' '); };
+
+            // First emit subdirectories as nested modules
+            for (const auto & kv : node.dirs)
+            {
+                const std::string & name = kv.first;
+                const Node & child = kv.second;
+                oss << indent(depth) << "pub mod " << name << " {\n";
+                emit(child, depth + 1, name);
+                oss << indent(depth) << "} // mod " << name << "\n";
+            }
+            // Then emit leaf files as modules
+            for (const auto & fileStem : node.files)
+            {
+                oss << indent(depth) << "pub mod " << fileStem << ";\n";
+            }
+        };
+
+        emit(root, 1, "src");
+        oss << "} // mod src\n";
+
+        return oss.str();
     }
 };
 

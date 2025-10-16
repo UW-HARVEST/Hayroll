@@ -410,10 +410,12 @@ public:
         }
 
         SPDLOG_INFO("Collected {} Cargo.toml snippet(s) from subtasks", allCargoTomls.size());
-        std::string mergedCargoToml = C2RustWrapper::mergeCargoTomls(allCargoTomls);
-
+        
         // Build files
-        auto [buildRs, cargoToml, libRs, rustToolchainToml] = C2RustWrapper::generateBuildFiles(compileCommands);
+        std::string buildRs = C2RustWrapper::genBuildRs();
+        std::string mergedCargoToml = C2RustWrapper::mergeCargoTomls(allCargoTomls);
+        std::string libRs = C2RustWrapper::genLibRs(projDir, compileCommands);
+        std::string rustToolchainToml = C2RustWrapper::genRustToolchainToml();
         auto saveBuildFile = [&](const std::string & content, const std::string & fileName)
         {
             std::filesystem::path outPath = outputDir / fileName;
