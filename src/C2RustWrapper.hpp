@@ -220,6 +220,7 @@ R"(
 #![feature(register_tool)]
 #![register_tool(c2rust)]
 #![feature(label_break_value)]
+#![feature(extern_types)]
 )";
 
         // Build a directory tree from relative paths of input files
