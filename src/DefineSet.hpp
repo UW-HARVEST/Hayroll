@@ -21,7 +21,7 @@ struct DefineSet
 {
     std::unordered_map<std::string, std::optional<int>> defines;
 
-    DefineSet() = delete;
+    DefineSet() = default;
 
     DefineSet(const z3::model & model)
     {

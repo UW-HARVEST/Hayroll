@@ -77,6 +77,12 @@ public:
             }
         }
 
+        // Put an empty DefineSet if no valid DefineSet could be generated.
+        if (result.empty())
+        {
+            result.push_back(DefineSet());
+        }
+
         SPDLOG_DEBUG("Generated {} DefineSet(s).", result.size());
         if (!uncovered.empty())
         {
