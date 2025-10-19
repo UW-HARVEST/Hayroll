@@ -602,6 +602,48 @@ impl HasHayrollTag for HayrollMacroInv {
 }
 
 impl HayrollMacroInv {
+    pub fn signature(&self) -> String {
+        if self.seed.is_decl() || self.seed.is_decls() {
+            return String::new();
+        }
+
+        let sanitize = |raw: &str| -> String {
+            let trimmed = raw.rsplit("::").next().unwrap_or(raw);
+            trimmed
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect()
+        };
+
+        let mut parts: Vec<String> = Vec::new();
+
+        if self.seed.is_expr() {
+            parts.push(sanitize(&self.seed.base_type().unwrap().to_string()));
+        }
+
+        for (_, arg_regions) in &self.args {
+            if arg_regions.iter().any(|seed| seed.is_stmt()) {
+                parts.push("stmt".to_string());
+                continue;
+            }
+
+            let first_seed = arg_regions.first().unwrap();
+            parts.push(sanitize(&first_seed.base_type().unwrap().to_string()));
+        }
+
+        parts.join("_")
+    }
+
+    pub fn name_with_signature(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        parts.push(self.name());
+        let signature = self.signature();
+        if !signature.is_empty() {
+            parts.push(signature);
+        }
+        parts.join("_")
+    }
+
     // Replace the args tagged code regions into $argName, for generating macro definition
     // Returns immutable CodeRegion
     pub fn replace_arg_regions_into(
@@ -638,7 +680,7 @@ impl HayrollMacroInv {
     }
 
     pub fn macro_rules(&self) -> ast::MacroRules {
-        let macro_name = self.name();
+        let macro_name = self.name_with_signature();
         // arg format: ($x:expr) or ($x:stmt)
         let macro_args = self
             .args
@@ -678,7 +720,7 @@ impl HayrollMacroInv {
     }
 
     pub fn macro_call(&self) -> ast::MacroCall {
-        let macro_name = self.name();
+        let macro_name = self.name_with_signature();
         let args_spelling: String = self
             .args
             .iter()
@@ -707,7 +749,7 @@ impl HayrollMacroInv {
             .zip(args_require_lvalue.iter())
             .filter_map(|((arg_name, arg_regions), requires_lvalue)| {
                 if arg_regions.is_empty() {
-                    warn!(macro_name = %self.name(), arg = %arg_name, "argument is never used in macro");
+                    warn!(macro_name = %self.name_with_signature(), arg = %arg_name, "argument is never used in macro");
                     None
                 } else {
                     let t = if *requires_lvalue {
@@ -726,19 +768,19 @@ impl HayrollMacroInv {
             let name_node = name_token.parent().unwrap().clone_for_update();
             vec![syntax::NodeOrToken::Node(name_node)]
         });
-        let fn_ = format!("unsafe fn {}({}){} {{\n    {}\n}}", self.seed.name(), arg_with_types, return_type, fn_body);
+        let fn_ = format!("unsafe fn {}({}){} {{\n    {}\n}}", self.name_with_signature(), arg_with_types, return_type, fn_body);
         ast_from_text::<ast::Fn>(&fn_).clone_for_update()
     }
 
     pub fn call_expr(&self, args_require_lvalue: &Vec<bool>) -> ast::Expr {
-        let fn_name = self.name();
+        let fn_name = self.name_with_signature();
         let args_spelling: String = self
             .args
             .iter()
             .zip(args_require_lvalue.iter())
             .filter_map(|((_, arg_regions), requires_lvalue)| {
                 if arg_regions.is_empty() {
-                    warn!(macro_name = %self.name(), "an argument is never used in macro");
+                    warn!(macro_name = %self.name_with_signature(), "an argument is never used in macro");
                     None
                 } else {
                     let arg_code_region = arg_regions[0].get_raw_code_region(!requires_lvalue).peel_tag();
@@ -871,7 +913,7 @@ impl HayrollMacroCluster {
 
 // HayrollMacroDB is a database of HayrollMacroInv collected from the source code
 pub struct HayrollMacroDB {
-    pub map: std::collections::HashMap<String, HayrollMacroCluster>, // definition location -> invocations
+    pub map: std::collections::HashMap<(String, String), HayrollMacroCluster>, // (refLoc, signature) -> cluster
 }
 
 impl HayrollMacroDB {
@@ -883,10 +925,12 @@ impl HayrollMacroDB {
         let mut db = HayrollMacroDB::new();
         for mac in hayroll_macros.iter() {
             let loc_decl = mac.loc_ref_begin();
-            if !db.map.contains_key(&loc_decl) {
-                db.map.insert(loc_decl.clone(), HayrollMacroCluster { invocations: Vec::new() });
+            let signature = mac.signature();
+            let key = (loc_decl, signature);
+            if !db.map.contains_key(&key) {
+                db.map.insert(key.clone(), HayrollMacroCluster { invocations: Vec::new() });
             }
-            db.map.get_mut(&loc_decl).unwrap().invocations.push(mac.clone());
+            db.map.get_mut(&key).unwrap().invocations.push(mac.clone());
         }
         db
     }
