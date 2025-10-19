@@ -29,7 +29,7 @@ int main(const int argc, const char* argv[])
         CLI::App app
         {
             "Hayroll pipeline (supports C2Rust compatibility mode with the 'transpile' subcommand)\n"
-            "Patterns:\n 1) hayroll <compile_commands.json> <output_dir> [opts]\n 2) hayroll transpile <input_folder> -o <output_dir> [opts]"
+            "Patterns:\n 1) hayroll <compile_commands.json> <output_dir> [opts]\n 2) hayroll transpile <compile_commands.json> -o <output_dir> [opts]"
         };
         app.set_help_flag("-h,--help", "Show help");
 
@@ -48,11 +48,11 @@ int main(const int argc, const char* argv[])
         app.add_option("output_dir", outputDir, "Output directory");
 
         // Subcommand: transpile
-        std::filesystem::path transpileInputFolder;
-        CLI::App * subTranspile = app.add_subcommand("transpile", "C2Rust compatibility mode (expects <input_folder> and -o)");
-        subTranspile->add_option("input_folder", transpileInputFolder, "Input folder containing compile_commands.json")
+        std::filesystem::path transpileCompileCommands;
+        CLI::App * subTranspile = app.add_subcommand("transpile", "C2Rust compatibility mode (expects <compile_commands.json> and -o)");
+        subTranspile->add_option("compile_commands", transpileCompileCommands, "Path to compile_commands.json")
             ->required()
-            ->check(CLI::ExistingDirectory);
+            ->check(CLI::ExistingFile);
         subTranspile->add_option("-o,--output-dir", outputDir,
             "Output directory")
             ->required();
@@ -70,8 +70,7 @@ int main(const int argc, const char* argv[])
 
         if (subTranspile->parsed())
         {
-            std::filesystem::path inputFolder = transpileInputFolder;
-            compileCommandsJsonPath = inputFolder / "compile_commands.json";
+            compileCommandsJsonPath = transpileCompileCommands;
         }
         else
         {
