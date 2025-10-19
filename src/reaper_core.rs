@@ -110,7 +110,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
 
             // Replace the macro expansions with the function calls
             for inv in cluster.invocations.iter() {
-                let code_region = inv.seed.get_raw_code_region(false); // A C function always returns an rvalue
+                let code_region = inv.seed.get_raw_code_region(true);
                 let region_element_range = code_region.syntax_element_range();
                 let fn_call_node = inv.call_expr_or_stmt_mut(&arg_requires_lvalue).syntax_element();
                 editor.replace_all(region_element_range, vec![fn_call_node]);
@@ -124,7 +124,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
 
             // Replace the macro invocations with the macro calls
             for inv in cluster.invocations.iter() {
-                let code_region = inv.seed.get_raw_code_region(true); // macro invocation may be lvalue or rvalue
+                let code_region = inv.seed.get_raw_code_region(true);
                 let macro_call_node = inv.macro_call().syntax().syntax_element();
 
                 match code_region {
