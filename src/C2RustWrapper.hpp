@@ -137,6 +137,20 @@ public:
             }
         }
 
+        // Normalize package/lib metadata for downstream build stability.
+        if (!baseToml.contains("package"))
+        {
+            baseToml["package"] = toml::table{};
+        }
+        baseToml["package"]["name"] = "hayroll_out";
+        baseToml["package"]["authors"] = toml::array{std::string{"Hayroll"}};
+
+        if (!baseToml.contains("lib"))
+        {
+            baseToml["lib"] = toml::table{};
+        }
+        baseToml["lib"]["name"] = "hayroll_out";
+
         return toml::format(baseToml);
     }
 
