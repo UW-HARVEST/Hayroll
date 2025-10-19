@@ -187,7 +187,7 @@ public:
                     std::vector<CompileCommand> commandsWithDefSets;
                     for (std::size_t i = 0; i < defineSets.size(); ++i)
                     {
-                        CompileCommand commandWithDefineSet = command.withUpdatedDefineSet(defineSets[i]);
+                        CompileCommand commandWithDefineSet = command.withCleanup().withUpdatedDefineSet(defineSets[i]);
                         commandsWithDefSets.push_back(commandWithDefineSet);
                     }
 

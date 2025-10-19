@@ -151,6 +151,17 @@ struct CompileCommand
         return withDeletedDefines().withAddedDefineSet(defineSet);
     }
 
+    // Keep only the first and last arguments.
+    CompileCommand withCleanup() const
+    {
+        CompileCommand updatedCommand = *this;
+        if (updatedCommand.arguments.size() > 2)
+        {
+            updatedCommand.arguments.erase(updatedCommand.arguments.begin() + 1, updatedCommand.arguments.end() - 1);
+        }
+        return updatedCommand;
+    }
+
     static std::vector<CompileCommand> fromCompileCommandsJson(const nlohmann::json & json)
     {
         if (!json.is_array())
