@@ -386,47 +386,6 @@ struct MakiInvocationSummary
     {
         return mustUseMetaprogrammingToTransform();
     }
-
-    // HAYROLL original concept
-    // Whether the function can be turned into a Rust function
-    bool canBeRustFn() const
-    {
-        return 
-            !(
-                // Syntactic
-                !isAligned()
-
-                // Scoping
-                || !IsHygienic
-                // || IsInvokedWhereModifiableValueRequired // HAYROLL can handle lvalues
-                // || IsInvokedWhereAddressableValueRequired // HAYROLL can handle lvalues
-                // || IsAnyArgumentExpandedWhereModifiableValueRequired // HAYROLL can handle lvalues
-                // || IsAnyArgumentExpandedWhereAddressableValueRequired // HAYROLL can handle lvalues
-                // || DoesBodyReferenceMacroDefinedAfterMacro // Don't worry about nested macros for now
-                // || DoesBodyReferenceDeclDeclaredAfterMacro // Any local decls would trigger this. It's fine as long as it's hygienic.
-                || DoesSubexpressionExpandedFromBodyHaveLocalType
-                // || DoesSubexpressionExpandedFromBodyHaveTypeDefinedAfterMacro // Don't worry about declaration sequences in Rust. We can put the function at the end. 
-                // || IsAnyArgumentTypeDefinedAfterMacro // Don't worry about declaration sequences in Rust. We can put the function at the end. 
-                || IsAnyArgumentTypeLocalType
-
-                // Typing
-                || IsExpansionTypeAnonymous
-                || IsAnyArgumentTypeAnonymous
-                // || DoesSubexpressionExpandedFromBodyHaveLocalType // Repetition
-                // || IsAnyArgumentTypeDefinedAfterMacro // Repetition
-                // || DoesSubexpressionExpandedFromBodyHaveTypeDefinedAfterMacro  // Repetition
-                || IsAnyArgumentTypeVoid
-                || (IsObjectLike && IsExpansionTypeVoid)
-                // || IsAnyArgumentTypeLocalType // Repetition
-
-                // Calling convention
-                || DoesAnyArgumentHaveSideEffects
-                || IsAnyArgumentConditionallyEvaluated
-
-                // Language specific
-                || mustUseMetaprogrammingToTransform()
-            );
-    }
 };
 
 struct MakiRangeSummary

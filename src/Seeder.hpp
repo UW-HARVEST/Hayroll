@@ -425,7 +425,8 @@ public:
 
                 // Calling convention
                 || inv.DoesAnyArgumentHaveSideEffects
-                || inv.IsAnyArgumentConditionallyEvaluated
+                // || inv.IsAnyArgumentConditionallyEvaluated // Repetition
+                || inv.mustAlterCallSiteToTransform()
 
                 // Language specific
                 || inv.mustUseMetaprogrammingToTransform()
