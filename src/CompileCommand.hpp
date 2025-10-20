@@ -152,6 +152,56 @@ struct CompileCommand
         return withDeletedDefines().withAddedDefineSet(defineSet);
     }
 
+    CompileCommand withSanitizedFilename() const
+    {
+        CompileCommand updatedCommand = *this;
+
+        auto sanitize = [](const std::string & name)
+        {
+            std::string sanitized;
+            sanitized.reserve(name.size());
+            bool lastWasUnderscore = false;
+            for (char ch : name)
+            {
+                bool allow = (std::isalnum(static_cast<unsigned char>(ch)) || ch == '_');
+                if (allow)
+                {
+                    sanitized.push_back(ch);
+                    lastWasUnderscore = (ch == '_');
+                }
+                else if (!lastWasUnderscore)
+                {
+                    sanitized.push_back('_');
+                    lastWasUnderscore = true;
+                }
+            }
+            while (!sanitized.empty() && sanitized.back() == '_')
+            {
+                sanitized.pop_back();
+            }
+            if (sanitized.empty())
+            {
+                sanitized = "file";
+            }
+            return sanitized;
+        };
+
+        std::filesystem::path original = updatedCommand.file.filename();
+        std::string stem = original.stem().string();
+        std::string extension = original.has_extension() ? original.extension().string() : std::string();
+
+        std::string sanitizedStem = sanitize(stem);
+        if (sanitizedStem.empty())
+        {
+            sanitizedStem = "file";
+        }
+
+        std::string sanitizedFilename = extension.empty() ? sanitizedStem : sanitizedStem + extension;
+        std::filesystem::path updatedFile = updatedCommand.file.parent_path() / sanitizedFilename;
+
+        return updatedCommand.withUpdatedFile(updatedFile);
+    }
+
     CompileCommand withCleanup() const
     {
         CompileCommand updatedCommand = *this;

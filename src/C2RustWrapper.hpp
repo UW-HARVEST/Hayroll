@@ -250,17 +250,18 @@ R"(
         // Deduplicate by normalized relative path (directory + stem)
         std::set<std::filesystem::path> uniqueRelPaths;
 
-        for (const auto & cmd : compileCommands)
+        for (const CompileCommand & cmd : compileCommands)
         {
+            CompileCommand sanitizedCmd = cmd.withSanitizedFilename();
             std::filesystem::path rel;
             try
             {
-                rel = std::filesystem::relative(cmd.file, projDir);
+                rel = std::filesystem::relative(sanitizedCmd.file, projDir);
             }
             catch (...)
             {
                 // If relative fails (different roots), fall back to filename only
-                rel = cmd.file.filename();
+                rel = sanitizedCmd.file.filename();
             }
 
             // Normalize path (remove extension)
