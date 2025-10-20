@@ -5,13 +5,13 @@ use ide_db::base_db::SourceDatabase;
 use ide_db::source_change::TreeMutator;
 use load_cargo;
 use project_model::CargoConfig;
-use syntax::ast::{Item, ReturnExpr, Stmt};
+use syntax::ast::{ElseBranch, IfExpr, Item, ReturnExpr, Stmt};
 use syntax::syntax_editor::Position;
 use syntax::ted;
 use syntax::{
     ast::SourceFile,
     syntax_editor::Element,
-    AstNode,
+    AstNode, SyntaxElement,
 };
 use tracing::{debug, info, warn};
 use vfs::FileId;
@@ -115,8 +115,13 @@ pub fn run(workspace_path: &Path) -> Result<()> {
             for inv in cluster.invocations.iter() {
                 let code_region = inv.seed.get_raw_code_region(true);
                 let region_element_range = code_region.syntax_element_range();
-                let fn_call_node = inv.call_expr_or_stmt_mut(&arg_requires_lvalue).syntax_element();
-                editor.replace_all(region_element_range, vec![fn_call_node]);
+                let fn_call_elem = inv.call_expr_or_stmt_mut(&arg_requires_lvalue).syntax_element();
+                let expr_opt = match &code_region {
+                    CodeRegion::Expr(expr) => Some(expr.clone()),
+                    _ => None,
+                };
+                let replacement = maybe_wrap_else_branch(expr_opt, fn_call_elem.clone());
+                editor.replace_all(region_element_range, vec![replacement]);
             }
         } else if cluster.invs_internally_structurally_compatible() {
             // Not type-compatible, but can still be reconstructed as a Rust macro
@@ -130,8 +135,13 @@ pub fn run(workspace_path: &Path) -> Result<()> {
                 let code_region = inv.seed.get_raw_code_region(true);
                 let macro_call_node = inv.macro_call().syntax().syntax_element();
 
-                match code_region {
-                    CodeRegion::Expr(_) | CodeRegion::Stmts { .. } => {
+                match &code_region {
+                    CodeRegion::Expr(expr) => {
+                        let region_element_range = code_region.syntax_element_range();
+                        let replacement = maybe_wrap_else_branch(Some(expr.clone()), macro_call_node.clone());
+                        editor.replace_all(region_element_range, vec![replacement]);
+                    }
+                    CodeRegion::Stmts { .. } => {
                         let region_element_range = code_region.syntax_element_range();
                         editor.replace_all(region_element_range, vec![macro_call_node]);
                     }
@@ -248,4 +258,31 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn maybe_wrap_else_branch(expr_opt: Option<syntax::ast::Expr>, element: SyntaxElement) -> SyntaxElement {
+    let Some(expr) = expr_opt else {
+        return element;
+    };
+
+    let Some(if_expr) = IfExpr::cast(expr.syntax().clone()) else {
+        return element;
+    };
+
+    let Some(parent_node) = if_expr.syntax().parent() else {
+        return element;
+    };
+
+    let Some(parent_if_expr) = IfExpr::cast(parent_node) else {
+        return element;
+    };
+
+    match parent_if_expr.else_branch() {
+        Some(ElseBranch::IfExpr(else_if)) if else_if.syntax() == if_expr.syntax() => {
+            let macro_text = element.to_string();
+            let wrapped = expr_from_text(&format!("{{ {} }}", macro_text)).clone_for_update();
+            wrapped.syntax().syntax_element()
+        }
+        _ => element,
+    }
 }
