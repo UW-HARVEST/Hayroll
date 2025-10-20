@@ -46,9 +46,16 @@ public:
         std::string fullSrc = std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         file.close();
         
-        TSTree tree = parser.parseString(std::move(fullSrc));
-        bank[pathCanonical] = std::move(tree);
-
+        try
+        {
+            TSTree tree = parser.parseString(std::move(fullSrc));
+            bank[pathCanonical] = std::move(tree);
+        }
+        catch (const std::exception & e)
+        {
+            SPDLOG_ERROR("Failed to parse file: {}", path.string());
+        }
+        
         return bank.at(pathCanonical);
     }
 
