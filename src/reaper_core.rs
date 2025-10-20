@@ -57,7 +57,10 @@ pub fn run(workspace_path: &Path) -> Result<()> {
                 _ => false,
             })
             .map(|(_i, stmt)| stmt)
-            .unwrap();
+            .expect(format!(
+                "Expected to find a return statement for Hayroll tag: {}",
+                tag.tag
+            ).as_str());
         let after_return_pos = Position::after(&first_return.syntax());
         let end_literal_mut = tag.with_updated_begin(false).clone_for_update();
         let begin_stmt = parent.statements().nth(*range.start()).unwrap();

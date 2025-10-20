@@ -697,7 +697,7 @@ public:
                 pathBegin.string(),
                 lineBegin, colBegin, lineEnd, colEnd
             );
-            invocation.Spelling = srcEditor.get(lineBegin, colBegin, colEnd - colBegin);
+            invocation.Spelling = srcEditor.get(lineBegin, colBegin, lineEnd, colEnd);
 
             for (MakiArgSummary & arg : invocation.Args)
             {
@@ -710,7 +710,7 @@ public:
                     argPathBegin.string(),
                     argLineBegin, argColBegin, argLineEnd, argColEnd
                 );
-                arg.Spelling = srcEditor.get(argLineBegin, argColBegin, argColEnd - argColBegin);
+                arg.Spelling = srcEditor.get(argLineBegin, argColBegin, argLineEnd, argColEnd);
                 arg.InvocationLocation = invocation.InvocationLocation;
             }
         }
@@ -727,7 +727,7 @@ public:
                 pathBegin.string(),
                 lineBegin, colBegin, lineEnd, colEnd
             );
-            range.Spelling = srcEditor.get(lineBegin, colBegin, colEnd - colBegin);
+            range.Spelling = srcEditor.get(lineBegin, colBegin, lineEnd, colEnd);
         }
 
         // Collect instrumentation tasks

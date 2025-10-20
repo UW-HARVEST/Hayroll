@@ -5,6 +5,8 @@
 #ifndef HAYROLL_TEXTEDITOR_HPP
 #define HAYROLL_TEXTEDITOR_HPP
 
+#include <format>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <ranges>
@@ -127,32 +129,74 @@ public:
         );
     }
 
-    std::string get(std::size_t ln, std::size_t col, std::size_t length) const
+    std::string get(std::size_t ln, std::size_t col, std::size_t lnEnd, std::size_t colEnd) const
     {
-        if (ln >= lines.size())
+        auto checkLine = [this](std::size_t line)
         {
-            throw std::out_of_range(std::format
+            if (line == 0 || line >= lines.size())
+            {
+                throw std::out_of_range(std::format("Line out of range: target line {}, limit {}", line, lines.size()));
+            }
+        };
+
+        auto checkColumn = [this](std::size_t line, std::size_t column, bool allowPastEnd)
+        {
+            std::size_t limit = lines[line].size();
+            if (allowPastEnd) ++limit; // Allow selecting the position right after the last character
+            if (column == 0 || column > limit)
+            {
+                throw std::out_of_range
+                (
+                    std::format
+                    (
+                        "Column out of range: target {}:{}, limit {}",
+                        line, column, limit
+                    )
+                );
+            }
+        };
+
+        checkLine(ln);
+        checkLine(lnEnd);
+        if (ln > lnEnd || (ln == lnEnd && col > colEnd))
+        {
+            throw std::out_of_range
             (
-                "Line out of range: target {}:{}, limit {}",
-                ln, col, lines.size()
-            ));
+                std::format
+                (
+                    "Invalid range: {}:{} to {}:{}",
+                    ln, col, lnEnd, colEnd
+                )
+            );
         }
-        if (col == 0 || col > lines[ln].size())
+
+        checkColumn(ln, col, true);
+        checkColumn(lnEnd, colEnd, true);
+
+        auto clampIndex = [](std::size_t column){ return column > 0 ? column - 1 : 0; };
+
+        if (ln == lnEnd)
         {
-            throw std::out_of_range(std::format
-            (
-                "Column out of range: target {}:{}, limit {}",
-                ln, col, lines[ln].size()
-            ));
+            std::size_t startIndex = std::min(clampIndex(col), lines[ln].size());
+            std::size_t endIndex = std::min(clampIndex(colEnd), lines[ln].size());
+            if (endIndex < startIndex) endIndex = startIndex;
+            return lines[ln].substr(startIndex, endIndex - startIndex);
         }
-        
-        std::size_t start = col - 1; // Convert to 0-based index
-        std::size_t end = start + length;
-        if (end > lines[ln].size())
+
+        std::string result;
+        std::size_t startIndex = std::min(clampIndex(col), lines[ln].size());
+        result.append(lines[ln].substr(startIndex));
+        result.push_back('\n');
+
+        for (std::size_t line = ln + 1; line < lnEnd; ++line)
         {
-            end = lines[ln].size();
+            result.append(lines[line]);
+            result.push_back('\n');
         }
-        return lines[ln].substr(start, end - start);
+
+        std::size_t endIndex = std::min(clampIndex(colEnd), lines[lnEnd].size());
+        result.append(lines[lnEnd].substr(0, endIndex));
+        return result;
     }
 
     std::string commit()
