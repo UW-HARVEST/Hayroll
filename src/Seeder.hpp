@@ -545,6 +545,7 @@ public:
             || invocation.InvocationLocationEnd.empty()
             || invocation.mustUseMetaprogrammingToTransform()
             || !invocation.IsHygienic
+            || invocation.IsInvokedWhereICERequired
         )
         {
             return true;
