@@ -280,7 +280,10 @@ impl HayrollSeed {
                     .syntax()
                     .descendants()
                     .find_map(|element| ast::PtrType::cast(element))
-                    .unwrap();
+                    .expect(&format!(
+                        "Expected to find a PtrType in else branch for Hayroll tag: {}",
+                        seed.tag
+                    ));
                 if self.is_lvalue() {
                     Some(syntax::ast::Type::PtrType(ptr_type))
                 } else {

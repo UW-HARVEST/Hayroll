@@ -542,6 +542,7 @@ public:
             // || invocation.ReturnType.empty() // Decl and Decls may not have a return type
             || invocation.InvocationLocation.empty()
             || invocation.InvocationLocationEnd.empty()
+            || invocation.mustUseMetaprogrammingToTransform()
         )
         {
             return true;
