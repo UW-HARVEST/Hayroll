@@ -9,6 +9,9 @@
 #include <map>
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <limits>
+#include <format>
 
 #include <z3++.h>
 
@@ -897,8 +900,8 @@ private:
             }
         }
 
-        std::string digits;
-        digits.reserve(literal.size() - pos);
+        std::string cleanedDigits;
+        cleanedDigits.reserve(literal.size() - pos);
         for (; pos < literal.size(); ++pos)
         {
             char c = literal[pos];
@@ -914,7 +917,7 @@ private:
             int digit = digitValueForBase(c, base);
             if (digit >= 0)
             {
-                digits.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+                cleanedDigits.push_back(c);
             }
             else
             {
@@ -922,65 +925,51 @@ private:
             }
         }
 
-        if (digits.empty())
+        if (cleanedDigits.empty())
         {
             throw std::runtime_error(std::string("Failed to parse number literal: ") + std::string(literal));
         }
 
-        for (; pos < literal.size(); ++pos)
+        std::string_view suffix = literal.substr(pos);
+        for (char c : suffix)
         {
-            char c = literal[pos];
             if (!isIntegerSuffixChar(c))
             {
                 throw std::runtime_error(std::string("Unexpected suffix in number literal: ") + std::string(literal));
             }
         }
 
-        std::vector<int> decimalDigits{0};
-        for (char c : digits)
-        {
-            int digitValue;
-            if (c >= '0' && c <= '9')
-            {
-                digitValue = c - '0';
-            }
-            else
-            {
-                digitValue = 10 + (static_cast<int>(c) - 'A');
-            }
+        const std::uint64_t positiveLimit = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+        const std::uint64_t negativeLimit = std::uint64_t{1} << 63; // abs(INT64_MIN)
+        const std::uint64_t limit = negative ? negativeLimit : positiveLimit;
 
-            int carry = digitValue;
-            for (std::size_t i = 0; i < decimalDigits.size(); ++i)
+        std::uint64_t value = 0;
+        for (char c : cleanedDigits)
+        {
+            int digit = digitValueForBase(c, base);
+            const std::uint64_t maxBeforeMul = (limit - static_cast<std::uint64_t>(digit)) / static_cast<std::uint64_t>(base);
+            if (value > maxBeforeMul)
             {
-                int temp = decimalDigits[i] * base + carry;
-                decimalDigits[i] = temp % 10;
-                carry = temp / 10;
+                throw std::runtime_error(std::string("Integer literal exceeds 64-bit range: ") + std::string(literal));
             }
-            while (carry > 0)
-            {
-                decimalDigits.push_back(carry % 10);
-                carry /= 10;
-            }
+            value = value * static_cast<std::uint64_t>(base) + static_cast<std::uint64_t>(digit);
         }
 
-        while (decimalDigits.size() > 1 && decimalDigits.back() == 0)
+        if (value == 0)
         {
-            decimalDigits.pop_back();
+            return "0";
         }
 
-        std::string decimalString;
-        decimalString.reserve(decimalDigits.size() + (negative ? 1 : 0));
-        for (auto it = decimalDigits.rbegin(); it != decimalDigits.rend(); ++it)
+        if (negative)
         {
-            decimalString.push_back(static_cast<char>('0' + *it));
+            if (value == negativeLimit)
+            {
+                return std::format("{}", std::numeric_limits<std::int64_t>::min());
+            }
+            return std::format("-{}", value);
         }
 
-        if (negative && decimalString != "0")
-        {
-            decimalString.insert(decimalString.begin(), '-');
-        }
-
-        return decimalString;
+        return std::format("{}", value);
     }
 };
 
