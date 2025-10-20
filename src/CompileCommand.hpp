@@ -1,6 +1,7 @@
 #ifndef HAYROLL_COMPILECOMMAND_HPP
 #define HAYROLL_COMPILECOMMAND_HPP
 
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -151,14 +152,14 @@ struct CompileCommand
         return withDeletedDefines().withAddedDefineSet(defineSet);
     }
 
-    // Keep only the first and last arguments.
     CompileCommand withCleanup() const
     {
         CompileCommand updatedCommand = *this;
-        if (updatedCommand.arguments.size() > 2)
+        auto isWerrorFlag = [](const std::string & arg)
         {
-            updatedCommand.arguments.erase(updatedCommand.arguments.begin() + 1, updatedCommand.arguments.end() - 1);
-        }
+            return arg == "-Werror" || arg.starts_with("-Werror=");
+        };
+        std::erase_if(updatedCommand.arguments, isWerrorFlag);
         return updatedCommand;
     }
 
