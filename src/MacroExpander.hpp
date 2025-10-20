@@ -8,6 +8,7 @@
 #include <ranges>
 #include <map>
 #include <algorithm>
+#include <cctype>
 
 #include <z3++.h>
 
@@ -573,9 +574,9 @@ public:
         }
         else if (node.isSymbol(lang.number_literal_s))
         {
-            // Number literal, just return its value
             std::string spelling = node.text();
-            z3::expr val = ctx->int_val(spelling.c_str());
+            std::string numberString = parseIntegerLiteralToDecimal(spelling);
+            z3::expr val = ctx->int_val(numberString.c_str());
             return val;
         }
         else if (node.isSymbol(lang.char_literal_s))
@@ -825,6 +826,162 @@ private:
     const int BIT_WIDTH = 32;
     z3::expr constExpr0;
     z3::expr constExpr1;
+
+    static bool isIntegerSuffixChar(char c)
+    {
+        switch (c)
+        {
+            case 'u':
+            case 'U':
+            case 'l':
+            case 'L':
+            case 'w':
+            case 'W':
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static int digitValueForBase(char c, int base)
+    {
+        if (c >= '0' && c <= '9')
+        {
+            int val = c - '0';
+            if (val < base) return val;
+        }
+        if (base > 10)
+        {
+            char lower = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            int span = base - 10;
+            if (lower >= 'a' && lower < 'a' + span)
+            {
+                return 10 + (lower - 'a');
+            }
+        }
+        return -1;
+    }
+
+    static std::string parseIntegerLiteralToDecimal(std::string_view literal)
+    {
+        if (literal.empty())
+        {
+            throw std::runtime_error("Empty number literal");
+        }
+
+        std::size_t pos = 0;
+        bool negative = false;
+        if (literal[pos] == '+' || literal[pos] == '-')
+        {
+            negative = literal[pos] == '-';
+            pos++;
+            if (pos >= literal.size())
+            {
+                throw std::runtime_error("Sign without digits in number literal");
+            }
+        }
+
+        int base = 10;
+        if (pos + 1 < literal.size() && literal[pos] == '0')
+        {
+            char prefix = literal[pos + 1];
+            if (prefix == 'x' || prefix == 'X')
+            {
+                base = 16;
+                pos += 2;
+            }
+            else if (prefix == 'b' || prefix == 'B')
+            {
+                base = 2;
+                pos += 2;
+            }
+        }
+
+        std::string digits;
+        digits.reserve(literal.size() - pos);
+        for (; pos < literal.size(); ++pos)
+        {
+            char c = literal[pos];
+            if (c == '\'')
+            {
+                continue;
+            }
+            if (c == '.' || c == 'e' || c == 'E' || c == 'p' || c == 'P')
+            {
+                throw std::runtime_error(std::string("Floating-point literal not supported: ") + std::string(literal));
+            }
+
+            int digit = digitValueForBase(c, base);
+            if (digit >= 0)
+            {
+                digits.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (digits.empty())
+        {
+            throw std::runtime_error(std::string("Failed to parse number literal: ") + std::string(literal));
+        }
+
+        for (; pos < literal.size(); ++pos)
+        {
+            char c = literal[pos];
+            if (!isIntegerSuffixChar(c))
+            {
+                throw std::runtime_error(std::string("Unexpected suffix in number literal: ") + std::string(literal));
+            }
+        }
+
+        std::vector<int> decimalDigits{0};
+        for (char c : digits)
+        {
+            int digitValue;
+            if (c >= '0' && c <= '9')
+            {
+                digitValue = c - '0';
+            }
+            else
+            {
+                digitValue = 10 + (static_cast<int>(c) - 'A');
+            }
+
+            int carry = digitValue;
+            for (std::size_t i = 0; i < decimalDigits.size(); ++i)
+            {
+                int temp = decimalDigits[i] * base + carry;
+                decimalDigits[i] = temp % 10;
+                carry = temp / 10;
+            }
+            while (carry > 0)
+            {
+                decimalDigits.push_back(carry % 10);
+                carry /= 10;
+            }
+        }
+
+        while (decimalDigits.size() > 1 && decimalDigits.back() == 0)
+        {
+            decimalDigits.pop_back();
+        }
+
+        std::string decimalString;
+        decimalString.reserve(decimalDigits.size() + (negative ? 1 : 0));
+        for (auto it = decimalDigits.rbegin(); it != decimalDigits.rend(); ++it)
+        {
+            decimalString.push_back(static_cast<char>('0' + *it));
+        }
+
+        if (negative && decimalString != "0")
+        {
+            decimalString.insert(decimalString.begin(), '-');
+        }
+
+        return decimalString;
+    }
 };
 
 } // namespace Hayroll
