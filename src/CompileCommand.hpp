@@ -31,16 +31,37 @@ struct CompileCommand
     {
         std::vector<std::filesystem::path> paths;
         paths.push_back(directory); // Include the command's directory as well.
-        for (const auto & arg : arguments)
+        for (std::size_t i = 0; i < arguments.size(); ++i)
         {
+            const std::string & arg = arguments[i];
             if (!arg.starts_with("-I")) continue;
-            std::string pathStr = arg.substr(2);
+
+            std::string pathStr;
+            if (arg.size() > 2)
+            {
+                // Handle "-Ifoo" / "-I/foo" style flags
+                pathStr = arg.substr(2);
+            }
+            else if (i + 1 < arguments.size())
+            {
+                // Handle "-I" "foo" split across two arguments
+                pathStr = arguments[i + 1];
+                ++i; // Skip the consumed path argument
+            }
+            else
+            {
+                // Dangling "-I" with no following path; skip gracefully
+                SPDLOG_WARN("Ignoring dangling '-I' flag in compile command for {}", file.string());
+                continue;
+            }
+
             std::filesystem::path path(pathStr);
             std::filesystem::path absolutePath = path;
             if (!absolutePath.is_absolute())
             {
                 absolutePath = directory / path; // Make it absolute relative to the command's directory.
             }
+            absolutePath = std::filesystem::weakly_canonical(absolutePath);
             assert(absolutePath.is_absolute());
             paths.push_back(absolutePath);
         }

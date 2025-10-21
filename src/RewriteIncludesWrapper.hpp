@@ -33,12 +33,34 @@ public:
             "-frewrite-includes"
         };
 
-        for (const auto& arg : compileCommand.arguments)
+        for (std::size_t i = 0; i < compileCommand.arguments.size(); ++i)
         {
-            if (arg.starts_with("-D") || arg.starts_with("-I"))
+            const std::string & arg = compileCommand.arguments[i];
+
+            if (arg.starts_with("-D"))
             {
                 clangArgs.push_back(arg);
+                continue;
             }
+
+            if (!arg.starts_with("-I")) continue;
+
+            if (arg.size() > 2)
+            {
+                clangArgs.push_back(arg);
+                continue;
+            }
+
+            if (i + 1 >= compileCommand.arguments.size())
+            {
+                SPDLOG_WARN("Ignoring dangling '-I' flag in rewrite-includes for {}", compileCommand.file.string());
+                continue;
+            }
+
+            // Merge split form: "-I" followed by the include path
+            const std::string & nextArg = compileCommand.arguments[i + 1];
+            clangArgs.push_back("-I" + nextArg);
+            ++i; // Skip consumed path argument
         }
 
         clangArgs.push_back("-o");
