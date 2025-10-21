@@ -67,6 +67,36 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     let source_change = builder_set.finish();
     apply_source_change(&mut db, &source_change);
 
+    // Pass 3: remove any block expression that has a lifetime attached to it
+    // (likely a CRrust bug to have kept these extra blocks)
+    let syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&db);
+    let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
+    let block_expr_with_lifetimes: Vec<(FileId, syntax::ast::BlockExpr)> = syntax_roots
+        .iter()
+        .flat_map(|(file_id, root)| {
+            root.syntax().descendants()
+                .filter_map(syntax::ast::BlockExpr::cast)
+                .filter_map(|block_expr| {
+                    let label = block_expr.label();
+                    match label {
+                        Some(label) if label.lifetime().is_some() => {
+                            Some((*file_id, block_expr))
+                        }
+                        _ => None,
+                    }
+                })
+        })
+        .collect();
+
+    for (file_id, block_expr) in block_expr_with_lifetimes.into_iter() {
+        let mut editor = builder_set.make_editor(block_expr.syntax());
+        editor.delete(block_expr.syntax());
+        builder_set.add_file_edits(file_id, editor);
+    }
+
+    let source_change = builder_set.finish();
+    apply_source_change(&mut db, &source_change);
+
     for file_id in syntax_roots.keys() {
         let file_path = vfs.file_path(*file_id);
         debug!(file = %file_path, "Writing cleaned file to disk");
