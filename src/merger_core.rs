@@ -6,8 +6,8 @@ use ide_db::base_db::{SourceDatabase, SourceDatabaseFileInputExt};
 use load_cargo;
 use project_model::CargoConfig;
 use syntax::{
-    ast::{self, ElseBranch, HasAttrs, HasModuleItem, SourceFile},
-    syntax_editor::Element,
+    ast::{self, ElseBranch, HasModuleItem, Item, SourceFile},
+    syntax_editor::{Element, Position},
     AstNode,
 };
 use tracing::{debug, info};
@@ -185,12 +185,34 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
         base_path_to_id.insert(rel_str, *fid);
     }
 
+    // Helper to get ExternItem under extern "C" blocks
+    let extern_c_items = |root: &SourceFile| -> Vec<ast::ExternItem> {
+        root.items().into_iter()
+            .filter_map(|item| {
+                if let Item::ExternBlock(ext_block) = item {
+                    Some(ext_block)
+                } else {
+                    None
+                }
+            }).filter(|ext_block| {
+                if let Some(abi) = ext_block.abi() {
+                    if let Some(abi_str) = abi.abi_string() {
+                        if let Ok(value) = abi_str.value() {
+                            return value == "C";
+                        }
+                    }
+                }
+                false
+            }).flat_map(|ext_block| {
+                ext_block.extern_item_list().unwrap().extern_items().into_iter()
+            }).collect()
+    };
     // Helper to get an item's simple name (direct child Name)
-    let item_name = |item: &ast::Item| -> Option<String> {
+    let item_name = |item: &dyn ast::AstNode| -> Option<String> {
         item.syntax().children().find_map(ast::Name::cast).map(|n| n.to_string())
     };
     // Helper to collect the set of attribute spellings directly on the item (ignore order)
-    let item_attr_set = |item: &ast::Item| -> std::collections::BTreeSet<String> {
+    let item_attr_set = |item: &dyn ast::HasAttrs| -> std::collections::BTreeSet<String> {
         item.attrs()
             .map(|a| a.to_string())
             .collect()
@@ -210,15 +232,13 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
         let Some(base_fid) = base_path_to_id.get(&rel_str).copied() else { continue };
         let base_root = base_syntax_roots.get(&base_fid).unwrap();
 
-        // Build signature set for base
-        let mut base_sigs: std::collections::BTreeSet<(String, std::collections::BTreeSet<String>)> =
-            std::collections::BTreeSet::new();
-        for b_item in base_root.items() {
-            if let Some(name) = item_name(&b_item) {
-                let attrs = item_attr_set(&b_item);
-                base_sigs.insert((name, attrs));
-            }
-        }
+        let base_sigs: std::collections::BTreeSet<(String, std::collections::BTreeSet<String>)> =
+            base_root.items().into_iter().filter_map(|item| {
+                item_name(&item).map(|name| {
+                    let attrs = item_attr_set(&item);
+                    (name, attrs)
+                })
+            }).collect();
 
         // Collect items to insert, categorized by placement
         let mut to_top: Vec<syntax::SyntaxElement> = Vec::new();
@@ -251,6 +271,44 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
                 let bot = bot_pos(base_root);
                 editor.insert_all(bot, to_bot);
             }
+            base_builder_set.add_file_edits(base_fid, editor);
+        }
+
+        let Some(base_first_extern_c) = base_root
+            .items()
+            .into_iter()
+            .find_map(|item| match item {
+                Item::ExternBlock(ext_block) => Some(ext_block),
+                _ => None,
+            })
+        else {
+            // No extern "C" block in base file, any extern "C" items in patch
+            // should have already be handled when merging top-level items above
+            continue;
+        };
+
+        // Collect items under an extern "C" block in base file
+        let base_extern_c_sigs: std::collections::BTreeSet<(String, std::collections::BTreeSet<String>)> =
+            extern_c_items(base_root).into_iter().filter_map(|item| {
+                item_name(&item).map(|name| {
+                    let attrs = item_attr_set(&item);
+                    (name, attrs)
+                })
+            }).collect();
+
+        // Print debug info
+        for p_item in extern_c_items(patch_root) {
+            let Some(name) = item_name(&p_item) else { continue };
+            let attrs = item_attr_set(&p_item);
+            if base_extern_c_sigs.contains(&(name.clone(), attrs.clone())) { continue }
+
+            let elem = p_item.syntax().clone_for_update().syntax_element();
+            let mut editor = base_builder_set.make_editor(base_root.syntax());
+            // Insert at the end of the first extern "C" block found in base file
+            let insert_pos = Position::before(
+                base_first_extern_c.extern_item_list().unwrap().r_curly_token().unwrap()
+            );
+            editor.insert_all(insert_pos, vec![elem, get_empty_line_element_mut()]);
             base_builder_set.add_file_edits(base_fid, editor);
         }
     }
