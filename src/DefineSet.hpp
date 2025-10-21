@@ -19,7 +19,7 @@ namespace Hayroll
 
 struct DefineSet
 {
-    std::unordered_map<std::string, std::optional<int>> defines;
+    std::unordered_map<std::string, std::optional<int64_t>> defines;
 
     DefineSet() = default;
 
@@ -35,7 +35,7 @@ struct DefineSet
             z3::expr value = model.get_const_interp(v);
             if (prefix == "val")
             {
-                int intValue = value.get_numeral_int();
+                int64_t intValue = value.get_numeral_int64();
                 defines.emplace(name, intValue);
             }
             else if (prefix == "def")
@@ -49,7 +49,7 @@ struct DefineSet
 
     DefineSet
     (
-        const std::unordered_map<std::string, std::optional<int>> & defines
+        const std::unordered_map<std::string, std::optional<int64_t>> & defines
     ) : defines(defines)
     {
     }

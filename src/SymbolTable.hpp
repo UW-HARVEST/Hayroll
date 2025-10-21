@@ -161,7 +161,7 @@ public:
             );
             ss << "\n";
             count++;
-            if (count >= maxEntries)
+            if (maxEntries > 0 && count >= maxEntries)
             {
                 ss << "...\n";
                 break;
