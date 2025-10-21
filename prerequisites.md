@@ -51,7 +51,7 @@ required libraries in system paths.
 
 ## Tree-sitter
 
-Tested version: 0.25.9
+Tested version: 0.25.10
 
 [tree-sitter](https://github.com/tree-sitter/tree-sitter) is a lightweight
 parser generator.
