@@ -564,6 +564,7 @@ public:
                 || arg.Name.empty()
                 || arg.ActualArgLocBegin.empty()
                 || arg.ActualArgLocEnd.empty()
+                || arg.Type.contains("(") // Function pointer types are not supported for now
             )
             {
                 return true;
