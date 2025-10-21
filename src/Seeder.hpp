@@ -188,7 +188,7 @@ public:
         else if (astKind == "Stmt" || astKind == "Stmts")
         {
             // Template:
-            // {*tagBegin;ORIGINAL_INVOCATION;*tagEnd;}
+            // *tagBegin;ORIGINAL_INVOCATION;*tagEnd;
             InstrumentationTask taskLeft
             {
                 .line = beginLine,
@@ -200,7 +200,7 @@ public:
                 .str =
                 (
                     std::stringstream()
-                    << "{*"
+                    << "*"
                     << tagBeginLiteral
                     << ";"
                 ).str(),
@@ -217,7 +217,7 @@ public:
                     std::stringstream()
                     << ";*"
                     << tagEndLiteral.value()
-                    << ";}"
+                    << ";"
                 ).str(),
                 .priority = priorityRight
             };
