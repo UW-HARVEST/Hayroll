@@ -8,11 +8,7 @@ use project_model::CargoConfig;
 use syntax::ast::{ElseBranch, IfExpr, Item, ReturnExpr, Stmt};
 use syntax::syntax_editor::Position;
 use syntax::ted;
-use syntax::{
-    ast::SourceFile,
-    syntax_editor::Element,
-    AstNode, SyntaxElement,
-};
+use syntax::{ast::SourceFile, syntax_editor::Element, AstNode, SyntaxElement};
 use tracing::{debug, info, warn};
 use vfs::FileId;
 
@@ -36,7 +32,8 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     // We need to add a new end tag after the return statement to ensure the Hayroll seed is complete
     let syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&db);
     let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
-    let hayroll_tags: Vec<HayrollTag> = extract_unmatched_hayroll_tags_from_syntax_roots(&syntax_roots);
+    let hayroll_tags: Vec<HayrollTag> =
+        extract_unmatched_hayroll_tags_from_syntax_roots(&syntax_roots);
     for tag in hayroll_tags.iter() {
         let file_id = tag.file_id();
         let root = syntax_roots.get(&file_id).unwrap();
@@ -45,22 +42,27 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         // Temporarily put the tag into a HayrollSeed to reuse the logic
         let seed = HayrollSeed::Stmts(tag.clone(), tag.clone());
         let code_region = seed.get_raw_code_region(true);
-        let CodeRegion::Stmts { parent, range } = code_region else { unreachable!() };
+        let CodeRegion::Stmts { parent, range } = code_region else {
+            unreachable!()
+        };
         let first_return = parent
             .statements()
             .enumerate()
             .filter(|(i, _stmt)| *i >= *range.start())
             .find(|(_i, stmt)| match stmt {
-                Stmt::ExprStmt(expr_stmt) => {
-                    expr_stmt.expr().map_or(false, |e| ReturnExpr::can_cast(e.syntax().kind()))
-                }
+                Stmt::ExprStmt(expr_stmt) => expr_stmt
+                    .expr()
+                    .map_or(false, |e| ReturnExpr::can_cast(e.syntax().kind())),
                 _ => false,
             })
             .map(|(_i, stmt)| stmt)
-            .expect(format!(
-                "Expected to find a return statement for Hayroll tag: {}",
-                tag.tag
-            ).as_str());
+            .expect(
+                format!(
+                    "Expected to find a return statement for Hayroll tag: {}",
+                    tag.tag
+                )
+                .as_str(),
+            );
         let after_return_pos = Position::after(&first_return.syntax());
         let end_literal_mut = tag.with_updated_begin(false).clone_for_update();
         let begin_stmt = parent.statements().nth(*range.start()).unwrap();
@@ -69,7 +71,10 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         let begin_stmt_mut = tree_mutator.make_mut(&begin_stmt);
         let begin_literal_mut = tree_mutator.make_syntax_mut(begin_literal.syntax());
         ted::replace(begin_literal_mut, end_literal_mut.syntax());
-        editor.insert(after_return_pos, begin_stmt_mut.syntax().syntax_element().clone());
+        editor.insert(
+            after_return_pos,
+            begin_stmt_mut.syntax().syntax_element().clone(),
+        );
         builder_set.add_file_edits(file_id, editor);
     }
 
@@ -83,7 +88,10 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     // Collect syntax roots from the database (no VFS dependency for discovery)
     let syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&db);
     let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
-    info!(found_files = syntax_roots.len(), "Found Rust files in the workspace");
+    info!(
+        found_files = syntax_roots.len(),
+        "Found Rust files in the workspace"
+    );
     for (file_id, _root) in &syntax_roots {
         debug!(file = %vfs.file_path(*file_id), "workspace file");
     }
@@ -106,7 +114,10 @@ pub fn run(workspace_path: &Path) -> Result<()> {
             // Add the function definition to the bottom of the file
             let fn_ = cluster.fn_();
             let fn_elem = fn_.syntax().syntax_element().clone();
-            editor.insert_all(bot_pos(&decl_root), vec![get_empty_line_element_mut(), fn_elem]);
+            editor.insert_all(
+                bot_pos(&decl_root),
+                vec![get_empty_line_element_mut(), fn_elem],
+            );
 
             // Call convention, which args must stay lvalue (ptr convention)
             let arg_requires_lvalue = cluster.args_require_lvalue();
@@ -115,7 +126,9 @@ pub fn run(workspace_path: &Path) -> Result<()> {
             for inv in cluster.invocations.iter() {
                 let code_region = inv.seed.get_raw_code_region(true);
                 let region_element_range = code_region.syntax_element_range();
-                let fn_call_elem = inv.call_expr_or_stmt_mut(&arg_requires_lvalue).syntax_element();
+                let fn_call_elem = inv
+                    .call_expr_or_stmt_mut(&arg_requires_lvalue)
+                    .syntax_element();
                 let expr_opt = match &code_region {
                     CodeRegion::Expr(expr) => Some(expr.clone()),
                     _ => None,
@@ -138,7 +151,8 @@ pub fn run(workspace_path: &Path) -> Result<()> {
                 match &code_region {
                     CodeRegion::Expr(expr) => {
                         let region_element_range = code_region.syntax_element_range();
-                        let replacement = maybe_wrap_else_branch(Some(expr.clone()), macro_call_node.clone());
+                        let replacement =
+                            maybe_wrap_else_branch(Some(expr.clone()), macro_call_node.clone());
                         editor.replace_all(region_element_range, vec![replacement]);
                     }
                     CodeRegion::Stmts { .. } => {
@@ -183,17 +197,20 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         println!("  - {}", vfs.file_path(*file_id));
     }
 
-    let hayroll_conditional_macros: Vec<HayrollConditionalMacro> = hayroll_seeds.iter()
+    let hayroll_conditional_macros: Vec<HayrollConditionalMacro> = hayroll_seeds
+        .iter()
         .filter(|seed| seed.is_conditional())
         .map(|seed| HayrollConditionalMacro { seed: seed.clone() })
         .collect();
 
     // Apply conditional macros: attach cfg attributes or wrap expressions
-    let teds = hayroll_conditional_macros.iter()
+    let teds = hayroll_conditional_macros
+        .iter()
         .flat_map(|conditional_macro| {
-        let new_teds = conditional_macro.attach_cfg_teds(&mut builder_set);
-        new_teds
-    }).collect::<Vec<Box<dyn FnOnce()>>>();
+            let new_teds = conditional_macro.attach_cfg_teds(&mut builder_set);
+            new_teds
+        })
+        .collect::<Vec<Box<dyn FnOnce()>>>();
 
     for ted in teds {
         ted();
@@ -211,10 +228,9 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
 
     // All items, ignore filtering out HAYROLL_TAG_FOR_* yet
-    let items: Vec<Item> = syntax_roots.iter()
-        .flat_map(|(_file_id, root)| {
-            root.syntax().descendants()
-        })
+    let items: Vec<Item> = syntax_roots
+        .iter()
+        .flat_map(|(_file_id, root)| root.syntax().descendants())
         .filter_map(|node| Item::cast(node))
         .collect();
 
@@ -232,14 +248,18 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         if !item_has_c2rust_src_loc(&item) {
             continue; // No c2rust::src_loc attribute, skip
         }
-        
+
         // Remove c2rust::src_loc attributes
         let item_no_c2rust = peel_c2rust_src_locs_from_item(&item).clone_for_update();
         editor.replace(
             item.syntax().syntax_element().clone(),
             item_no_c2rust.syntax().syntax_element().clone(),
         );
-        print!("Removed c2rust::src_loc from item: {} into {}\n", item.syntax().text(), item_no_c2rust.syntax().text());
+        print!(
+            "Removed c2rust::src_loc from item: {} into {}\n",
+            item.syntax().text(),
+            item_no_c2rust.syntax().text()
+        );
         builder_set.add_file_edits(file_id, editor);
     }
 
@@ -252,7 +272,11 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     for file_id in syntax_roots.keys() {
         let file_path = vfs.file_path(*file_id);
         let code = db.file_text(*file_id).to_string();
-        let code = if code.ends_with("\n") { code } else { code + "\n" };
+        let code = if code.ends_with("\n") {
+            code
+        } else {
+            code + "\n"
+        };
         let path = file_path.as_path().unwrap();
         fs::write(path, code)?;
     }
@@ -260,7 +284,10 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn maybe_wrap_else_branch(expr_opt: Option<syntax::ast::Expr>, element: SyntaxElement) -> SyntaxElement {
+fn maybe_wrap_else_branch(
+    expr_opt: Option<syntax::ast::Expr>,
+    element: SyntaxElement,
+) -> SyntaxElement {
     let Some(expr) = expr_opt else {
         return element;
     };

@@ -9,10 +9,7 @@ use tracing::{debug, info};
 use vfs::FileId;
 
 use crate::hayroll_ds::{
-    extract_hayroll_seeds_from_syntax_roots,
-    CodeRegion,
-    HayrollMeta,
-    HayrollSeed,
+    extract_hayroll_seeds_from_syntax_roots, CodeRegion, HayrollMeta, HayrollSeed,
 };
 use crate::util::{apply_source_change, collect_syntax_roots_from_db, SourceChangeBuilderSet};
 
@@ -32,7 +29,8 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         let syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&db);
         let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
         let hayroll_seeds = extract_hayroll_seeds_from_syntax_roots(&syntax_roots);
-        let seeds_by_file = group_and_order_seeds(hayroll_seeds, |seed| matches!(seed, HayrollSeed::Expr(_)));
+        let seeds_by_file =
+            group_and_order_seeds(hayroll_seeds, |seed| matches!(seed, HayrollSeed::Expr(_)));
         let total_expr: usize = seeds_by_file.values().map(|seeds| seeds.len()).sum();
         info!(count = total_expr, "Removing expression hayroll seeds");
 
@@ -48,9 +46,13 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     let hayroll_seeds = extract_hayroll_seeds_from_syntax_roots(&syntax_roots);
 
     for seed in hayroll_seeds.into_iter() {
-        let HayrollSeed::Stmts(..) = seed else { continue };
+        let HayrollSeed::Stmts(..) = seed else {
+            continue;
+        };
         let code_region = seed.get_raw_code_region(true);
-        let CodeRegion::Stmts { parent, range } = code_region else { continue };
+        let CodeRegion::Stmts { parent, range } = code_region else {
+            continue;
+        };
 
         let begin_stmt = parent.statements().nth(*range.start()).unwrap();
         let end_stmt = parent.statements().nth(*range.end()).unwrap();
@@ -69,7 +71,11 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         let file_path = vfs.file_path(*file_id);
         debug!(file = %file_path, "Writing cleaned file to disk");
         let code = db.file_text(*file_id).to_string();
-        let code = if code.ends_with('\n') { code } else { code + "\n" };
+        let code = if code.ends_with('\n') {
+            code
+        } else {
+            code + "\n"
+        };
         let path = file_path.as_path().unwrap();
         fs::write(path, code)?;
     }
@@ -109,7 +115,9 @@ fn apply_expr_seed_edits(
         if seeds.is_empty() {
             continue;
         }
-        let Some(root) = syntax_roots.get(&file_id) else { continue };
+        let Some(root) = syntax_roots.get(&file_id) else {
+            continue;
+        };
         let mut editor = builder_set.make_editor(root.syntax());
         let mut touched = false;
         for seed in seeds {
