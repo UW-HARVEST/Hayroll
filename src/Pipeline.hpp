@@ -49,7 +49,7 @@ public:
         const std::optional<std::size_t> defineSetIndex = std::nullopt
     )
     {
-        Hayroll::CompileCommand outCmd = base.withSanitizedFilename()
+        Hayroll::CompileCommand outCmd = base.withSanitizedPaths(projDir)
             .withUpdatedFilePathPrefix(outputDir / "src", projDir);
         if (newExt)
         {

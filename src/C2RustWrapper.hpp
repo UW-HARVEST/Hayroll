@@ -251,7 +251,7 @@ R"(
 
         for (const CompileCommand & cmd : compileCommands)
         {
-            CompileCommand sanitizedCmd = cmd.withSanitizedFilename();
+            CompileCommand sanitizedCmd = cmd.withSanitizedPaths(projDir);
             std::filesystem::path rel;
             try
             {

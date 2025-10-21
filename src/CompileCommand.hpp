@@ -2,6 +2,7 @@
 #define HAYROLL_COMPILECOMMAND_HPP
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -173,7 +174,7 @@ struct CompileCommand
         return withDeletedDefines().withAddedDefineSet(defineSet);
     }
 
-    CompileCommand withSanitizedFilename() const
+    CompileCommand withSanitizedPaths(const std::filesystem::path & projDir) const
     {
         CompileCommand updatedCommand = *this;
 
@@ -200,27 +201,43 @@ struct CompileCommand
             {
                 sanitized.pop_back();
             }
-            if (sanitized.empty())
-            {
-                sanitized = "file";
-            }
             return sanitized;
         };
 
-        std::filesystem::path original = updatedCommand.file.filename();
-        std::string stem = original.stem().string();
-        std::string extension = original.has_extension() ? original.extension().string() : std::string();
-
-        std::string sanitizedStem = sanitize(stem);
-        if (sanitizedStem.empty())
+        auto sanitizeFilename = [&](const std::filesystem::path & path) -> std::string
         {
-            sanitizedStem = "file";
+            std::string filename = path.filename().string();
+            size_t dotPos = filename.find('.');
+            std::string base = filename.substr(0, dotPos); // dotPos==npos -> whole string
+            std::string extension = (dotPos == std::string::npos) ? std::string() : filename.substr(dotPos);
+            std::string sanitizedBase = sanitize(base);
+            if (sanitizedBase.empty())
+            {
+                sanitizedBase = "file";
+            }
+            return extension.empty() ? sanitizedBase : sanitizedBase + extension;
+        };
+
+        std::filesystem::path projCanonical = std::filesystem::weakly_canonical(projDir);
+        std::filesystem::path fileCanonical = std::filesystem::weakly_canonical(updatedCommand.file);
+        std::filesystem::path relative = std::filesystem::relative(fileCanonical, projCanonical);
+
+        std::filesystem::path sanitizedParent;
+        std::filesystem::path parent = relative.parent_path();
+        for (const std::filesystem::path & part : parent)
+        {
+            if (part == ".") continue;
+            std::string sanitizedPart = sanitize(part.string());
+            if (sanitizedPart.empty()) sanitizedPart = "dir";
+            sanitizedParent /= sanitizedPart;
         }
 
-        std::string sanitizedFilename = extension.empty() ? sanitizedStem : sanitizedStem + extension;
-        std::filesystem::path updatedFile = updatedCommand.file.parent_path() / sanitizedFilename;
+        std::filesystem::path sanitizedRelative = sanitizedParent;
+        std::string sanitizedFilename = sanitizeFilename(fileCanonical);
+        sanitizedRelative /= sanitizedFilename;
 
-        return updatedCommand.withUpdatedFile(updatedFile);
+        std::filesystem::path sanitizedFilePath = projCanonical / sanitizedRelative;
+        return updatedCommand.withUpdatedFile(sanitizedFilePath);
     }
 
     CompileCommand withCleanup() const
