@@ -262,7 +262,10 @@ impl HayrollSeed {
                     .statements()
                     .position(|s| s == stmt_begin)
                     .unwrap();
-                let end_idx = stmt_list.statements().position(|s| s == stmt_end).unwrap();
+                let end_idx = stmt_list.statements().position(|s| s == stmt_end).expect(&format!(
+                    "Could not find end stmt in stmt list for Hayroll tag: {}",
+                    tag_end.tag
+                ));
                 CodeRegion::Stmts {
                     parent: stmt_list,
                     range: start_idx..=end_idx,

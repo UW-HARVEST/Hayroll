@@ -87,6 +87,7 @@ struct MakiInvocationSummary
     bool IsInvokedInMacroArgument;
     bool IsNamePresentInCPPConditional;
     bool IsExpansionICE;
+    bool IsInvokedInStmtBlock;
     bool IsExpansionTypeNull;
     bool IsExpansionTypeAnonymous;
     bool IsExpansionTypeLocalType;
@@ -145,6 +146,7 @@ struct MakiInvocationSummary
         IsInvokedInMacroArgument,
         IsNamePresentInCPPConditional,
         IsExpansionICE,
+        IsInvokedInStmtBlock,
         IsExpansionTypeNull,
         IsExpansionTypeAnonymous,
         IsExpansionTypeLocalType,

@@ -83,7 +83,8 @@ public:
     static std::list<InstrumentationTask> genInstrumentationTasks
     (
         std::string_view astKind,
-        std::optional<bool> isLvalue,
+        std::optional<bool> isLvalue, // only when astKind == "Expr"
+        std::optional<bool> createScope, // only when astKind == "Stmt" or "Stmts"
         int beginLine,
         int beginCol,
         int endLine,
@@ -188,7 +189,8 @@ public:
         else if (astKind == "Stmt" || astKind == "Stmts")
         {
             // Template:
-            // *tagBegin;ORIGINAL_INVOCATION;*tagEnd;
+            // When !createScope: *tagBegin;ORIGINAL_INVOCATION;*tagEnd;
+            // When createScope: {*tagBegin; ORIGINAL_INVOCATION; *tagEnd;}
             InstrumentationTask taskLeft
             {
                 .line = beginLine,
@@ -200,6 +202,7 @@ public:
                 .str =
                 (
                     std::stringstream()
+                    << (*createScope ? "{" : "")
                     << "*"
                     << tagBeginLiteral
                     << ";"
@@ -218,6 +221,7 @@ public:
                     << ";*"
                     << tagEndLiteral.value()
                     << ";"
+                    << (*createScope ? "}" : "")
                 ).str(),
                 .priority = priorityRight
             };
@@ -305,6 +309,7 @@ public:
         const std::vector<std::string> & argNames,
         std::string_view astKind,
         bool isLvalue,
+        bool createScope,
         std::string_view name,
         std::string_view locRefBegin,
         std::string_view spelling,
@@ -356,6 +361,7 @@ public:
         (
             astKind,
             astKind == "Expr" ? std::optional(isLvalue) : std::nullopt,
+            (astKind == "Stmt" || astKind == "Stmts") ? std::optional(createScope) : std::nullopt,
             lineBegin,
             colBegin,
             lineEnd,
@@ -383,6 +389,7 @@ public:
             {}, // argNames
             arg.ASTKind,
             arg.IsLValue,
+            false, // createScope
             arg.Name,
             arg.InvocationLocation,
             arg.Spelling,
@@ -466,6 +473,7 @@ public:
             argNames,
             inv.ASTKind,
             inv.IsLValue,
+            !inv.IsInvokedInStmtBlock, // createScope
             inv.Name,
             inv.DefinitionLocation,
             inv.Spelling,
@@ -515,6 +523,7 @@ public:
         (
             range.ASTKind,
             range.ASTKind == "Expr" ? std::optional(range.IsLValue) : std::nullopt,
+            (range.ASTKind == "Stmt" || range.ASTKind == "Stmts") ? std::optional(false) : std::nullopt,
             range.IsPlaceholder ? ifGroupLnBegin : lineBegin, // for placeholder ranges, enclose the whole #if group
             range.IsPlaceholder ? ifGroupColBegin : colBegin,
             range.IsPlaceholder ? ifGroupLnEnd : lineEnd,
