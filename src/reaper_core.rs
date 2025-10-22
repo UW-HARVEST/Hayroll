@@ -101,6 +101,23 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     let hayroll_seeds = extract_hayroll_seeds_from_syntax_roots(&syntax_roots);
     let hayroll_macro_invs = extract_hayroll_macro_invs_from_seeds(&hayroll_seeds);
     let hayroll_macro_db = HayrollMacroDB::from_hayroll_macro_invs(&hayroll_macro_invs);
+    
+    // Find out which macro invocations have name duplicates
+    // i.e. has another macro invocation with the same name but different locRefBegin
+    let name_has_duplicates: HashMap<String, bool> = {
+        let ref_loc_to_name: HashMap<String, String> = hayroll_macro_invs
+            .iter()
+            .map(|inv: &HayrollMacroInv| (inv.loc_ref_begin(), inv.name()))
+            .collect();
+        let mut name_count: HashMap<String, usize> = HashMap::new();
+        for name in ref_loc_to_name.values() {
+            *name_count.entry(name.clone()).or_insert(0) += 1;
+        }
+        name_count
+            .into_iter()
+            .map(|(name, count)| (name, count > 1))
+            .collect()
+    };
 
     // For each macro db entry, generate a new macro/func definition and add that to the top/bottom of the file
     // For each macro invocation, replace the invocation with a macro/func call
@@ -110,9 +127,11 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         let decl_root = syntax_roots.get(&decl_file_id).unwrap();
         let mut editor = builder_set.make_editor(decl_root.syntax());
 
+        let anti_name_duplicate = *name_has_duplicates.get(&cluster.name()).unwrap_or(&false);
+
         if cluster.can_be_fn() {
             // Add the function definition to the bottom of the file
-            let fn_ = cluster.fn_();
+            let fn_ = cluster.fn_(anti_name_duplicate);
             let fn_elem = fn_.syntax().syntax_element().clone();
             editor.insert_all(
                 bot_pos(&decl_root),
@@ -127,7 +146,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
                 let code_region = inv.seed.get_raw_code_region(true);
                 let region_element_range = code_region.syntax_element_range();
                 let fn_call_elem = inv
-                    .call_expr_or_stmt_mut(&arg_requires_lvalue)
+                    .call_expr_or_stmt_mut(&arg_requires_lvalue, anti_name_duplicate)
                     .syntax_element();
                 let expr_opt = match &code_region {
                     CodeRegion::Expr(expr) => Some(expr.clone()),
@@ -138,7 +157,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
             }
         } else if cluster.invs_internally_structurally_compatible() {
             // Not type-compatible, but can still be reconstructed as a Rust macro
-            let macro_rules = cluster.macro_rules();
+            let macro_rules = cluster.macro_rules(anti_name_duplicate);
             let macro_rules_elem = macro_rules.syntax().syntax_element();
             let top = top_pos(&decl_root);
             editor.insert_all(top, vec![macro_rules_elem, get_empty_line_element_mut()]);
@@ -146,7 +165,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
             // Replace the macro invocations with the macro calls
             for inv in cluster.invocations.iter() {
                 let code_region = inv.seed.get_raw_code_region(true);
-                let macro_call_node = inv.macro_call().syntax().syntax_element();
+                let macro_call_node = inv.macro_call(anti_name_duplicate).syntax().syntax_element();
 
                 match &code_region {
                     CodeRegion::Expr(expr) => {

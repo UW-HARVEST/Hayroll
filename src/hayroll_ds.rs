@@ -740,12 +740,16 @@ impl HayrollMacroInv {
         parts.join("_")
     }
 
-    pub fn name_with_signature(&self) -> String {
+    pub fn name_with_signature(&self, append_ref_ln: bool) -> String {
         let mut parts: Vec<String> = Vec::new();
         parts.push(self.name());
         let signature = self.signature();
         if !signature.is_empty() {
             parts.push(signature);
+        }
+        if append_ref_ln {
+            let ref_ln = LnCol::from_loc(&self.loc_ref_begin());
+            parts.push(ref_ln.line.to_string());
         }
         parts.join("_")
     }
@@ -786,8 +790,8 @@ impl HayrollMacroInv {
         }
     }
 
-    pub fn macro_rules(&self) -> ast::MacroRules {
-        let macro_name = self.name_with_signature();
+    pub fn macro_rules(&self, anti_name_duplicate: bool) -> ast::MacroRules {
+        let macro_name = self.name_with_signature(anti_name_duplicate);
         // arg format: ($x:expr) or ($x:stmt)
         let macro_args = self
             .args
@@ -832,8 +836,8 @@ impl HayrollMacroInv {
         macro_rules_node.clone_for_update()
     }
 
-    pub fn macro_call(&self) -> ast::MacroCall {
-        let macro_name = self.name_with_signature();
+    pub fn macro_call(&self, anti_name_duplicate: bool) -> ast::MacroCall {
+        let macro_name = self.name_with_signature(anti_name_duplicate);
         let args_spelling: String = self
             .args
             .iter()
@@ -851,7 +855,7 @@ impl HayrollMacroInv {
         ast_from_text::<ast::MacroCall>(&macro_call).clone_for_update()
     }
 
-    pub fn fn_(&self, args_require_lvalue: &Vec<bool>) -> ast::Fn {
+    pub fn fn_(&self, args_require_lvalue: &Vec<bool>, anti_name_duplicate: bool) -> ast::Fn {
         let return_type: String = match self.seed.ptr_or_base_type() {
             Some(t) => " -> ".to_string() + &t.to_string(),
             None => "".to_string(),
@@ -862,7 +866,7 @@ impl HayrollMacroInv {
             .zip(args_require_lvalue.iter())
             .filter_map(|((arg_name, arg_regions), requires_lvalue)| {
                 if arg_regions.is_empty() {
-                    warn!(macro_name = %self.name_with_signature(), arg = %arg_name, "argument is never used in macro");
+                    warn!(macro_name = %self.name_with_signature(anti_name_duplicate), arg = %arg_name, "argument is never used in macro");
                     None
                 } else {
                     let t = if *requires_lvalue {
@@ -884,7 +888,7 @@ impl HayrollMacroInv {
             });
         let fn_ = format!(
             "unsafe fn {}({}){} {{\n    {}\n}}",
-            self.name_with_signature(),
+            self.name_with_signature(anti_name_duplicate),
             arg_with_types,
             return_type,
             fn_body
@@ -892,15 +896,15 @@ impl HayrollMacroInv {
         ast_from_text::<ast::Fn>(&fn_).clone_for_update()
     }
 
-    pub fn call_expr(&self, args_require_lvalue: &Vec<bool>) -> ast::Expr {
-        let fn_name = self.name_with_signature();
+    pub fn call_expr(&self, args_require_lvalue: &Vec<bool>, anti_name_duplicate: bool) -> ast::Expr {
+        let fn_name = self.name_with_signature(anti_name_duplicate);
         let args_spelling: String = self
             .args
             .iter()
             .zip(args_require_lvalue.iter())
             .filter_map(|((_, arg_regions), requires_lvalue)| {
                 if arg_regions.is_empty() {
-                    warn!(macro_name = %self.name_with_signature(), "an argument is never used in macro");
+                    warn!(macro_name = %self.name_with_signature(anti_name_duplicate), "an argument is never used in macro");
                     None
                 } else {
                     let arg_code_region = arg_regions[0].get_raw_code_region(!requires_lvalue).peel_tag();
@@ -918,8 +922,8 @@ impl HayrollMacroInv {
         expr_from_text(&call_expr).clone_for_update()
     }
 
-    pub fn call_expr_or_stmt_mut(&self, args_require_lvalue: &Vec<bool>) -> SyntaxNode {
-        let call_expr = self.call_expr(args_require_lvalue);
+    pub fn call_expr_or_stmt_mut(&self, args_require_lvalue: &Vec<bool>, anti_name_duplicate: bool) -> SyntaxNode {
+        let call_expr = self.call_expr(args_require_lvalue, anti_name_duplicate);
         if self.seed.is_expr() {
             call_expr.syntax().clone()
         } else {
@@ -1025,14 +1029,14 @@ impl HayrollMacroCluster {
             .all(|inv| inv.is_type_compatible_with(&first))
     }
 
-    pub fn macro_rules(&self) -> ast::MacroRules {
+    pub fn macro_rules(&self, anti_name_duplicate: bool) -> ast::MacroRules {
         assert!(self.invs_internally_structurally_compatible());
-        self.invocations[0].macro_rules()
+        self.invocations[0].macro_rules(anti_name_duplicate)
     }
 
-    pub fn fn_(&self) -> ast::Fn {
+    pub fn fn_(&self, anti_name_duplicate: bool) -> ast::Fn {
         assert!(self.invs_internally_type_compatible());
-        self.invocations[0].fn_(&self.args_require_lvalue())
+        self.invocations[0].fn_(&self.args_require_lvalue(), anti_name_duplicate)
     }
 
     pub fn args_require_lvalue(&self) -> Vec<bool> {

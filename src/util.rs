@@ -151,6 +151,14 @@ impl LnCol {
         LnCol::new(line, col)
     }
 
+    pub fn from_loc(loc: &str) -> Self {
+        let mut parts = loc.split(':');
+        let _file = parts.next().unwrap();
+        let line: u32 = parts.next().unwrap().parse().unwrap();
+        let col: u32 = parts.next().unwrap().parse().unwrap();
+        LnCol::new(line, col)
+    }
+
     // Return true if this LnCol is within [start, end] using line/column containment semantics
     pub fn is_within(&self, range: &std::ops::RangeInclusive<LnCol>) -> bool {
         if self.line < range.start().line || self.line > range.end().line {
