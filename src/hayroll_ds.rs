@@ -1258,43 +1258,51 @@ pub fn extract_hayroll_macro_invs_from_seeds(
     hayroll_seeds: &Vec<HayrollSeed>,
 ) -> Vec<HayrollMacroInv> {
     // A region whose isArg is false is a macro; match args to their macro
-    let hayroll_macro_invs: Vec<HayrollMacroInv> = hayroll_seeds
-        .iter()
-        .filter(|seed| seed.is_invocation())
-        .fold(Vec::new(), |mut acc, region| {
-            if region.is_arg() == false {
-                // Pre-populate all expected argument names with empty vectors
-                let preset_args: Vec<(String, Vec<HayrollSeed>)> = region
-                    .arg_names()
-                    .into_iter()
-                    .map(|name| (name, Vec::new()))
-                    .collect();
-                acc.push(HayrollMacroInv {
-                    seed: region.clone(),
-                    args: preset_args,
-                });
-            } else {
-                let mut found = false;
-                for mac in acc.iter_mut().rev() {
-                    if mac.loc_begin() == region.loc_ref_begin() {
-                        assert!(mac.args.iter().any(|(name, _)| name == &region.name()));
-                        let arg = mac
-                            .args
-                            .iter_mut()
-                            .find(|(name, _)| name == &region.name())
-                            .unwrap();
-                        arg.1.push(region.clone());
-                        found = true;
-                        break;
-                    }
-                }
-                if !found {
-                    panic!("No matching macro found for arg: {:?}", region.loc_begin());
+    hayroll_seeds
+    .iter()
+    .filter(|seed| seed.is_invocation())
+    .fold(Vec::new(), |mut acc, region| {
+        if region.is_arg() == false {
+            // Pre-populate all expected argument names with empty vectors
+            let preset_args: Vec<(String, Vec<HayrollSeed>)> = region
+                .arg_names()
+                .into_iter()
+                .map(|name| (name, Vec::new()))
+                .collect();
+            acc.push(HayrollMacroInv {
+                seed: region.clone(),
+                args: preset_args,
+            });
+        } else {
+            let mut found = false;
+            for mac in acc.iter_mut().rev() {
+                if mac.loc_begin() == region.loc_ref_begin() {
+                    assert!(mac.args.iter().any(|(name, _)| name == &region.name()));
+                    let arg = mac
+                        .args
+                        .iter_mut()
+                        .find(|(name, _)| name == &region.name())
+                        .unwrap();
+                    arg.1.push(region.clone());
+                    found = true;
+                    break;
                 }
             }
-            acc
-        });
-    hayroll_macro_invs
+            if !found {
+                panic!("No matching macro found for arg: {:?}", region.loc_begin());
+            }
+        }
+        acc
+    })
+    .into_iter()
+    .filter(|mac| { // Filter out decl(s) macro invocations that find no actual decls
+        if mac.is_decl() || mac.is_decls() {
+            !mac.seed.get_raw_code_region(true).is_empty()
+        } else {
+            true
+        }
+    })
+    .collect()
 }
 
 // Returns a list of HayrollSeed and unmatched HayrollTag
