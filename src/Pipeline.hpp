@@ -457,68 +457,7 @@ public:
         saveBuildFile(rustToolchainToml, "rust-toolchain.toml");
 
         // Seeding report analysis
-        ordered_json statistics = ordered_json::object();
-        auto countByPredicate = [&](const std::function<bool(const Seeder::SeedingReport &)> & predicate)
-        {
-            return std::count_if
-            (
-                allSeedingReports.begin(),
-                allSeedingReports.end(),
-                predicate
-            );
-        };
-        statistics["macro"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return true; }
-        );
-        statistics["macro_seeded"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return r.seeded; }
-        );
-        statistics["macro_seeded_ratio"] = statistics["macro_seeded"].get<std::size_t>() /
-            static_cast<double>(statistics["macro"].get<std::size_t>());
-        statistics["macro_seeded_macro"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return r.seeded && !r.canBeFn; }
-        );
-        statistics["macro_seeded_fn"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return r.seeded && r.canBeFn; }
-        );
-        statistics["macro_expr"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr"; }
-        );
-        statistics["macro_expr_seeded"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && r.seeded; }
-        );
-        statistics["macro_expr_seeded_ratio"] = statistics["macro_expr_seeded"].get<std::size_t>() /
-            static_cast<double>(statistics["macro_expr"].get<std::size_t>());
-        statistics["macro_stmt"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return r.astKind == "Stmt" || r.astKind == "Stmts"; }
-        );
-        statistics["macro_stmt_seeded"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.seeded; }
-        );
-        statistics["macro_stmt_seeded_ratio"] = statistics["macro_stmt_seeded"].get<std::size_t>() /
-            static_cast<double>(statistics["macro_stmt"].get<std::size_t>());
-        statistics["macro_decl"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return r.astKind == "Decl"; }
-        );
-        statistics["macro_decl_seeded"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return r.astKind == "Decl" && r.seeded; }
-        );
-        statistics["macro_decl_seeded_ratio"] = statistics["macro_decl_seeded"].get<std::size_t>() /
-            static_cast<double>(statistics["macro_decl"].get<std::size_t>());
-        statistics["macro_others"] = statistics["macro"].get<std::size_t>()
-            - statistics["macro_expr"].get<std::size_t>()
-            - statistics["macro_stmt"].get<std::size_t>()
-            - statistics["macro_decl"].get<std::size_t>();
+        ordered_json statistics = Seeder::seedingReportStatistics(allSeedingReports);
 
         std::string statisticsStr = statistics.dump(4);
         Hayroll::saveStringToFile(statisticsStr, outputDir / "statistics.json");

@@ -32,6 +32,9 @@ namespace Hayroll
 
 class Seeder
 {
+    using json = nlohmann::json;
+    using ordered_json = nlohmann::ordered_json;
+
 public:
     // InstrumentationTask will be transformed into TextEditor edits
     struct InstrumentationTask
@@ -948,6 +951,111 @@ public:
 
         std::string seededSource = srcEditor.commit();
         return {seededSource, seedingReport};
+    }
+
+    static ordered_json seedingReportStatistics(std::vector<SeedingReport> reports)
+    {
+        // First, remove duplicate reports (those who have the same invocation location)
+        {
+            std::sort
+            (
+                reports.begin(),
+                reports.end(),
+                [](const Seeder::SeedingReport & a, const Seeder::SeedingReport & b)
+                {
+                    return a.locInv < b.locInv;
+                }
+            );
+            auto last = std::unique
+            (
+                reports.begin(),
+                reports.end(),
+                [](const Seeder::SeedingReport & a, const Seeder::SeedingReport & b)
+                {
+                    return a.locInv == b.locInv;
+                }
+            );
+            reports.erase(last, reports.end());
+        }
+
+        ordered_json statistics = ordered_json::object();
+        auto countByPredicate = [&](const std::function<bool(const Seeder::SeedingReport &)> & predicate)
+        {
+            return std::count_if
+            (
+                reports.begin(),
+                reports.end(),
+                predicate
+            );
+        };
+        statistics["macro"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return true; }
+        );
+        statistics["macro_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.seeded; }
+        );
+        statistics["macro_seeded_ratio"] = statistics["macro_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro"].get<std::size_t>());
+        statistics["macro_seeded_macro"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.seeded && !r.canBeFn; }
+        );
+        statistics["macro_seeded_fn"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.seeded && r.canBeFn; }
+        );
+        statistics["macro_syntactic"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind != ""; }
+        );
+        statistics["macro_syntactic_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind != "" && r.seeded; }
+        );
+        statistics["macro_syntactic_seeded_ratio"] = statistics["macro_syntactic_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_syntactic"].get<std::size_t>());
+        statistics["macro_non_syntactic"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == ""; }
+        );
+        statistics["macro_expr"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr"; }
+        );
+        statistics["macro_expr_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && r.seeded; }
+        );
+        statistics["macro_expr_seeded_ratio"] = statistics["macro_expr_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_expr"].get<std::size_t>());
+        statistics["macro_stmt"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Stmt" || r.astKind == "Stmts"; }
+        );
+        statistics["macro_stmt_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.seeded; }
+        );
+        statistics["macro_stmt_seeded_ratio"] = statistics["macro_stmt_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_stmt"].get<std::size_t>());
+        statistics["macro_decl"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Decl" || r.astKind == "Decls"; }
+        );
+        statistics["macro_decl_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Decl" || r.astKind == "Decls") && r.seeded; }
+        );
+        statistics["macro_decl_seeded_ratio"] = statistics["macro_decl_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_decl"].get<std::size_t>());
+        statistics["macro_typeloc"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "TypeLoc"; }
+        );
+
+        return statistics;
     }
 };
 
