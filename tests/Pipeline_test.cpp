@@ -23,6 +23,16 @@ int main()
 #define STMT_MACRO_INCR(x) (x)++
 #define STMT_MACRO_DECR(x) (x)--
 #define DECL_MACRO_INT int a;
+#define STRUCT_ASSIGN .x = 0, .y = 1
+#define STMT_BEFORE_RETURN()\
+    do {\
+    a++;\
+    } while (0)
+
+struct Point {
+    int x;
+    int y;
+};
 
 #define HALF_IF if (a < 0x00100000) {
 
@@ -34,6 +44,8 @@ DECL_MACRO_INT;
 
 int main()
 {
+    struct Point p = {STRUCT_ASSIGN};
+
     a =
     #ifdef COND_MACRO_1
     1
@@ -67,6 +79,8 @@ int main()
     } else {
         b = 2;
     }
+
+    STMT_BEFORE_RETURN();
 
     return EXPR_MACRO_ADD(b, 5);
 }
