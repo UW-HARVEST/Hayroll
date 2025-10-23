@@ -100,7 +100,7 @@ int main(const int argc, const char* argv[])
     std::cout << "Maki analysis completed." << std::endl;
     std::cout << "cpp2cStr:\n" << cpp2cStr << std::endl;
 
-    std::string output = Seeder::run(cpp2cInvocations, cpp2cRanges, cuStr, lineMap, inverseLineMap);
+    auto [output, seedingReport] = Seeder::run(cpp2cInvocations, cpp2cRanges, cuStr, lineMap, inverseLineMap);
 
     // Save the source file to the temporary directory
     std::ofstream tmpDstFile(tmpDstPath);

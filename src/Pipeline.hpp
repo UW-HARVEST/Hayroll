@@ -35,6 +35,7 @@ namespace Hayroll
 class Pipeline
 {
     using json = nlohmann::json;
+    using ordered_json = nlohmann::ordered_json;
 
 public:
     static std::filesystem::path saveOutput
@@ -42,7 +43,7 @@ public:
         const Hayroll::CompileCommand & base,
         const std::filesystem::path & outputDir,
         const std::filesystem::path & projDir,
-        const std::string & content,
+        const std::string_view content,
         const std::optional<std::string> & newExt,
         const std::string & step,
         const std::string & fileName,
@@ -113,6 +114,7 @@ public:
         // Collect Cargo.toml from all subtasks and splits
         std::vector<std::string> allCargoTomls;
         std::set<std::string> allRustFeatureAtoms;
+        std::vector<Seeder::SeedingReport> allSeedingReports;
         std::mutex collectionMutex;
 
         std::atomic<std::size_t> nextIdx{0};
@@ -275,16 +277,36 @@ public:
                     std::vector<std::string> c2rustStrs;
                     std::vector<std::string> cargoTomls;
                     std::vector<std::string> reapedStrs;
+                    std::vector<Seeder::SeedingReport> seedingReports;
                     for (std::size_t i = 0; i < defineSets.size(); ++i)
                     {
                         // Hayroll Seeder
-                        std::string cuSeededStr = Seeder::run
+                        auto [cuSeededStr, seedingReport] = Seeder::run
                         (
                             cpp2cInvocations[i],
                             cpp2cRangesCompleted[i],
                             cuStrs[i],
                             lineMaps[i],
                             inverseLineMaps[i]
+                        );
+                        seedingReports.insert
+                        (
+                            seedingReports.end(),
+                            seedingReport.begin(),
+                            seedingReport.end()
+                        );
+                        std::string seedingReportStr = json(seedingReport).dump(4);
+                        // Save to filename.{i}.seeder_report.json
+                        saveOutput
+                        (
+                            command,
+                            outputDir,
+                            projDir,
+                            seedingReportStr,
+                            std::format(".{}.seeder_report.json", i),
+                            "Hayroll Seeder report",
+                            command.file.string(),
+                            i
                         );
                         cuSeededStrs.push_back(cuSeededStr);
                         // Save to filename.{i}.seeded.cu.c
@@ -350,6 +372,7 @@ public:
                         std::lock_guard<std::mutex> lk(collectionMutex);
                         allCargoTomls.insert(allCargoTomls.end(), cargoTomls.begin(), cargoTomls.end());
                         allRustFeatureAtoms.insert(rustFeatureAtoms.begin(), rustFeatureAtoms.end());
+                        allSeedingReports.insert(allSeedingReports.end(), seedingReports.begin(), seedingReports.end());
                     }
 
                     // If multiple DefineSets, run Merger accumulatively
@@ -432,6 +455,74 @@ public:
         saveBuildFile(cargoTomlWithFeatures, "Cargo.toml");
         saveBuildFile(libRs, "lib.rs");
         saveBuildFile(rustToolchainToml, "rust-toolchain.toml");
+
+        // Seeding report analysis
+        ordered_json statistics = ordered_json::object();
+        auto countByPredicate = [&](const std::function<bool(const Seeder::SeedingReport &)> & predicate)
+        {
+            return std::count_if
+            (
+                allSeedingReports.begin(),
+                allSeedingReports.end(),
+                predicate
+            );
+        };
+        statistics["macro"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return true; }
+        );
+        statistics["macro_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.seeded; }
+        );
+        statistics["macro_seeded_ratio"] = statistics["macro_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro"].get<std::size_t>());
+        statistics["macro_seeded_macro"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.seeded && !r.canBeFn; }
+        );
+        statistics["macro_seeded_fn"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.seeded && r.canBeFn; }
+        );
+        statistics["macro_expr"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr"; }
+        );
+        statistics["macro_expr_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && r.seeded; }
+        );
+        statistics["macro_expr_seeded_ratio"] = statistics["macro_expr_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_expr"].get<std::size_t>());
+        statistics["macro_stmt"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Stmt" || r.astKind == "Stmts"; }
+        );
+        statistics["macro_stmt_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.seeded; }
+        );
+        statistics["macro_stmt_seeded_ratio"] = statistics["macro_stmt_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_stmt"].get<std::size_t>());
+        statistics["macro_decl"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Decl"; }
+        );
+        statistics["macro_decl_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Decl" && r.seeded; }
+        );
+        statistics["macro_decl_seeded_ratio"] = statistics["macro_decl_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_decl"].get<std::size_t>());
+        statistics["macro_others"] = statistics["macro"].get<std::size_t>()
+            - statistics["macro_expr"].get<std::size_t>()
+            - statistics["macro_stmt"].get<std::size_t>()
+            - statistics["macro_decl"].get<std::size_t>();
+
+        std::string statisticsStr = statistics.dump(4);
+        Hayroll::saveStringToFile(statisticsStr, outputDir / "statistics.json");
+        SPDLOG_INFO("Statistics saved to: {}", (outputDir / "statistics.json").string());
 
         // Print final results
         if (!failedTasks.empty())

@@ -12,6 +12,8 @@
 #include <filesystem>
 #include <format>
 #include <algorithm>
+#include <optional>
+#include <utility>
 #include <cstdint>
 
 #include <spdlog/spdlog.h>
@@ -406,9 +408,10 @@ public:
             !(
                 // Syntactic
                 !inv.isAligned()
+                || inv.ASTKind == "Decl" || inv.ASTKind == "Decls" // Declarations cannot be functions
 
                 // Scoping
-                || !inv.IsHygienic
+                // || !inv.IsHygienic // Unhygienic macros should have been dropped earlier
                 // || inv.IsInvokedWhereModifiableValueRequired // HAYROLL can handle lvalues
                 // || inv.IsInvokedWhereAddressableValueRequired // HAYROLL can handle lvalues
                 // || inv.IsAnyArgumentExpandedWhereModifiableValueRequired // HAYROLL can handle lvalues
@@ -536,59 +539,42 @@ public:
         );
     }
 
+    struct SeedingReport
+    {
+        std::string name;
+        std::string locInv; // invocation location (src)
+        std::string locRef; // definition location (src)
+        std::string astKind;
+        bool seeded;
+        std::string reason;
+        bool canBeFn;
+
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE
+        (
+            SeedingReport,
+            name, locInv, locRef, astKind, seeded, reason, canBeFn
+        );
+    };
+
     // Check if the invocation info is valid and thus should be kept
     // Invalid cases: empty fields, invalid path, non-Expr/Stmt ASTKind
-    static bool dropInvocationSummary
+    static std::tuple<bool, std::optional<SeedingReport>> dropInvocationSummary
     (
         const MakiInvocationSummary & invocation,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        if
-        (
-            invocation.DefinitionLocation.empty()
-            || invocation.Name.empty()
-            || invocation.ASTKind.empty()
-            // || invocation.ReturnType.empty() // Decl and Decls may not have a return type
-            || invocation.InvocationLocation.empty()
-            || invocation.InvocationLocationEnd.empty()
-            || invocation.mustUseMetaprogrammingToTransform()
-            || !invocation.IsHygienic
-            || invocation.IsInvokedWhereICERequired
-        )
+        if (invocation.DefinitionLocation.empty())
         {
-            return true;
+            return {true, std::nullopt};
         }
+        if (invocation.InvocationLocation.empty())
+        {
+            return {true, std::nullopt};
+        }
+        
+
         auto [path, line, col] = parseLocation(invocation.InvocationLocation);
-        constexpr static std::string_view validASTKinds[] = {"Expr", "Stmt", "Stmts", "Decl", "Decls"};
-        if (std::find(std::begin(validASTKinds), std::end(validASTKinds), invocation.ASTKind) == std::end(validASTKinds))
-        {
-            return true;
-        }
-        for (const MakiArgSummary & arg : invocation.Args)
-        {
-            if
-            (
-                arg.ASTKind.empty()
-                || arg.Name.empty()
-                || arg.ActualArgLocBegin.empty()
-                || arg.ActualArgLocEnd.empty()
-                || arg.Type.contains("(") // Function pointer types are not supported for now
-            )
-            {
-                return true;
-            }
-            auto [argPath, argLine, argCol] = parseLocation(arg.ActualArgLocBegin);
-            if (argPath != path)
-            {
-                return true;
-            }
-            auto [argPathEnd, argLineEnd, argColEnd] = parseLocation(arg.ActualArgLocEnd);
-            if (argPathEnd != path)
-            {
-                return true;
-            }
-        }
         // System-include filtering using inverseLineMap
         {
             auto [locRefPath, locRefLine, locRefCol] = parseLocation(invocation.DefinitionLocation);
@@ -602,10 +588,114 @@ public:
                     "Skipping instrumentation for {}: {}:{} (no include tree)",
                     invocation.Name, path.string(), srcLine
                 );
-                return true;
+                return {true, std::nullopt};
             }
         }
-        return false;
+
+        const std::string invSrcLoc = LineMatcher::cuLocToSrcLoc(invocation.InvocationLocation, inverseLineMap);
+        const std::string defSrcLoc = LineMatcher::cuLocToSrcLoc(invocation.DefinitionLocation, inverseLineMap);
+
+        auto makeReport = [&](std::string reason)
+        {
+            return SeedingReport
+            {
+                .name = invocation.Name,
+                .locInv = invSrcLoc,
+                .locRef = defSrcLoc,
+                .astKind = invocation.ASTKind,
+                .seeded = false,
+                .reason = std::move(reason),
+                .canBeFn = false,
+            };
+        };
+
+        auto drop = [&](std::string reason)
+        {
+            return std::make_tuple(true, makeReport(std::move(reason)));
+        };
+        
+        if (invocation.Name.empty())
+        {
+            return drop("missing invocation name");
+        }
+        if (invocation.ASTKind.empty())
+        {
+            return drop("non-syntactic");
+        }
+        if (invocation.InvocationLocationEnd.empty())
+        {
+            return drop("missing invocation end location");
+        }
+        if (invocation.mustUseMetaprogrammingToTransform())
+        {
+            return drop("requires metaprogramming");
+        }
+        if (!invocation.IsHygienic)
+        {
+            return drop("macro not hygienic");
+        }
+        if (invocation.IsInvokedWhereICERequired)
+        {
+            return drop("requires ICE");
+        }
+        if (invocation.NumArguments != static_cast<int>(invocation.Args.size()))
+        {
+            return drop("argument count mismatch");
+        }
+
+        constexpr static std::string_view validASTKinds[] = {"Expr", "Stmt", "Stmts", "Decl", "Decls"};
+        if (std::find(std::begin(validASTKinds), std::end(validASTKinds), invocation.ASTKind) == std::end(validASTKinds))
+        {
+            return drop("unsupported AST kind");
+        }
+        for (const MakiArgSummary & arg : invocation.Args)
+        {
+            if (arg.ASTKind.empty())
+            {
+                return drop("argument non-syntactic");
+            }
+            if (std::find(std::begin(validASTKinds), std::end(validASTKinds), arg.ASTKind) == std::end(validASTKinds))
+            {
+                return drop("argument unsupported AST kind");
+            }
+            if (arg.Name.empty())
+            {
+                return drop("argument missing name");
+            }
+            if (arg.ActualArgLocBegin.empty() || arg.ActualArgLocEnd.empty())
+            {
+                return drop("argument missing location");
+            }
+            if (arg.Type.contains("("))
+            {
+                return drop("argument has function pointer type");
+            }
+            auto [argPath, argLine, argCol] = parseLocation(arg.ActualArgLocBegin);
+            if (argPath != path)
+            {
+                return drop("argument path mismatch");
+            }
+            auto [argPathEnd, argLineEnd, argColEnd] = parseLocation(arg.ActualArgLocEnd);
+            if (argPathEnd != path)
+            {
+                return drop("argument end path mismatch");
+            }
+        }
+
+        return
+        {
+            false,
+            SeedingReport
+            {
+                .name = invocation.Name,
+                .locInv = invSrcLoc,
+                .locRef = defSrcLoc,
+                .astKind = invocation.ASTKind,
+                .seeded = true,
+                .reason = "",
+                .canBeFn = canBeRustFn(invocation),
+            }
+        };
     }
 
     struct ConditionalTag : JsonStringLiteralMixin<ConditionalTag>
@@ -677,8 +767,8 @@ public:
     // 1. invocations: the MakiInvocationSummary vector
     // 2. ranges: the MakiRangeSummary vector
     // Also requires the lineMap ((includeTree, line) <-> line in compilation unit file) and inverseLineMap.
-    // Returns the modified (CU) source code as a string.
-    static std::string run
+    // Returns the modified (CU) source code and a seeding report.
+    static std::tuple<std::string, std::vector<SeedingReport>> run
     (
         std::vector<Hayroll::MakiInvocationSummary> invocations,
         std::vector<Hayroll::MakiRangeSummary> ranges,
@@ -687,11 +777,22 @@ public:
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
-        // Remove invalid invocations and ranges
-        std::erase_if(invocations, [&inverseLineMap](const MakiInvocationSummary & inv)
+        std::vector<SeedingReport> seedingReport;
+
+        // Remove invalid invocations while collecting drop reasons
         {
-            return dropInvocationSummary(inv, inverseLineMap);
-        });
+            std::vector<MakiInvocationSummary> filteredInvocations;
+            filteredInvocations.reserve(invocations.size());
+            for (auto & invocation : invocations)
+            {
+                auto [shouldDrop, reportEntry] = dropInvocationSummary(invocation, inverseLineMap);
+                if (reportEntry) seedingReport.push_back(std::move(*reportEntry));
+                if (!shouldDrop) filteredInvocations.push_back(std::move(invocation));
+            }
+            invocations = std::move(filteredInvocations);
+        }
+
+        // Remove invalid ranges (no report needed for now)
         std::erase_if(ranges, [&inverseLineMap](const MakiRangeSummary & range)
         {
             return dropRangeSummary(range, inverseLineMap);
@@ -844,8 +945,9 @@ public:
             SPDLOG_TRACE(task.toString());
             task.addToEditor(srcEditor);
         }
-        
-        return srcEditor.commit();
+
+        std::string seededSource = srcEditor.commit();
+        return {seededSource, seedingReport};
     }
 };
 
