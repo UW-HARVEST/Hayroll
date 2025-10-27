@@ -548,6 +548,7 @@ public:
         std::string locInv; // invocation location (src)
         std::string locRef; // definition location (src)
         std::string astKind;
+        bool isObjectLike;
         bool seeded;
         std::string reason;
         bool canBeFn;
@@ -555,7 +556,7 @@ public:
         NLOHMANN_DEFINE_TYPE_INTRUSIVE
         (
             SeedingReport,
-            name, locInv, locRef, astKind, seeded, reason, canBeFn
+            name, locInv, locRef, astKind, isObjectLike, seeded, reason, canBeFn
         );
     };
 
@@ -606,6 +607,7 @@ public:
                 .locInv = invSrcLoc,
                 .locRef = defSrcLoc,
                 .astKind = invocation.ASTKind,
+                .isObjectLike = invocation.IsObjectLike,
                 .seeded = false,
                 .reason = std::move(reason),
                 .canBeFn = false,
@@ -694,6 +696,7 @@ public:
                 .locInv = invSrcLoc,
                 .locRef = defSrcLoc,
                 .astKind = invocation.ASTKind,
+                .isObjectLike = invocation.IsObjectLike,
                 .seeded = true,
                 .reason = "",
                 .canBeFn = canBeRustFn(invocation),
@@ -1030,6 +1033,26 @@ public:
         );
         statistics["macro_expr_seeded_ratio"] = statistics["macro_expr_seeded"].get<std::size_t>() /
             static_cast<double>(statistics["macro_expr"].get<std::size_t>());
+        statistics["macro_expr_objectlike"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr"; }
+        );
+        statistics["macro_expr_objectlike_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && r.isObjectLike; }
+        );
+        statistics["macro_expr_objectlike_seeded_ratio"] = statistics["macro_expr_objectlike_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_expr_objectlike"].get<std::size_t>());
+        statistics["macro_expr_functionlike"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && !r.isObjectLike; }
+        );
+        statistics["macro_expr_functionlike_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && !r.isObjectLike && r.seeded; }
+        );
+        statistics["macro_expr_functionlike_seeded_ratio"] = statistics["macro_expr_functionlike_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_expr_functionlike"].get<std::size_t>());
         statistics["macro_stmt"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return r.astKind == "Stmt" || r.astKind == "Stmts"; }
@@ -1040,6 +1063,34 @@ public:
         );
         statistics["macro_stmt_seeded_ratio"] = statistics["macro_stmt_seeded"].get<std::size_t>() /
             static_cast<double>(statistics["macro_stmt"].get<std::size_t>());
+        statistics["macro_stmt_unhygienic"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.reason == "macro not hygienic"; }
+        );
+        statistics["macro_stmt_requiresmetaprogramming"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.reason == "requires metaprogramming"; }
+        );
+        statistics["macro_stmt_objectlike"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.isObjectLike; }
+        );
+        statistics["macro_stmt_objectlike_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.isObjectLike && r.seeded; }
+        );
+        statistics["macro_stmt_objectlike_seeded_ratio"] = statistics["macro_stmt_objectlike_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_stmt_objectlike"].get<std::size_t>());
+        statistics["macro_stmt_functionlike"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && !r.isObjectLike; }
+        );
+        statistics["macro_stmt_functionlike_seeded"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && !r.isObjectLike && r.seeded; }
+        );
+        statistics["macro_stmt_functionlike_seeded_ratio"] = statistics["macro_stmt_functionlike_seeded"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_stmt_functionlike"].get<std::size_t>());
         statistics["macro_decl"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return r.astKind == "Decl" || r.astKind == "Decls"; }
