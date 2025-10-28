@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <optional>
 #include <utility>
+#include <set>
 #include <cstdint>
 
 #include <spdlog/spdlog.h>
@@ -550,15 +551,46 @@ public:
         std::string astKind;
         bool isObjectLike;
         bool seeded;
-        std::string reason;
+        std::set<std::string> reasons;
         bool canBeFn;
 
         NLOHMANN_DEFINE_TYPE_INTRUSIVE
         (
             SeedingReport,
-            name, locInv, locRef, astKind, isObjectLike, seeded, reason, canBeFn
+            name, locInv, locRef, astKind, isObjectLike, seeded, reasons, canBeFn
         );
     };
+
+    static std::string translateCuLocOrFallback
+    (
+        std::string_view cuLoc,
+        const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
+    )
+    {
+        if (cuLoc.empty())
+        {
+            return "";
+        }
+        try
+        {
+            auto [path, line, col] = parseLocation(cuLoc);
+            if (line <= 0 || static_cast<std::size_t>(line) >= inverseLineMap.size())
+            {
+                return std::string(cuLoc);
+            }
+            const auto & [includeTree, srcLine] = inverseLineMap[line];
+            if (!includeTree)
+            {
+                return std::string(cuLoc);
+            }
+            return makeLocation(includeTree->path, srcLine, col);
+        }
+        catch (const std::exception & ex)
+        {
+            SPDLOG_TRACE("Failed to translate CU location {}: {}", cuLoc, ex.what());
+            return "";
+        }
+    }
 
     // Check if the invocation info is valid and thus should be kept
     // Invalid cases: empty fields, invalid path, non-Expr/Stmt ASTKind
@@ -568,140 +600,181 @@ public:
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
+        std::set<std::string> reasons;
+
         if (invocation.DefinitionLocation.empty())
         {
-            return {true, std::nullopt};
+            return {true, std::nullopt}; // No need to report this
         }
         if (invocation.InvocationLocation.empty())
         {
-            return {true, std::nullopt};
-        }
-        
-
-        auto [path, line, col] = parseLocation(invocation.InvocationLocation);
-        // System-include filtering using inverseLineMap
-        {
-            auto [locRefPath, locRefLine, locRefCol] = parseLocation(invocation.DefinitionLocation);
-            assert(locRefPath == path);
-            auto [includeTree, srcLine] = inverseLineMap.at(line);
-            auto [locRefIncludeTree, locRefSrcLine] = inverseLineMap.at(locRefLine);
-            if (!includeTree || includeTree->isSystemInclude || !locRefIncludeTree || locRefIncludeTree->isSystemInclude)
-            {
-                SPDLOG_TRACE
-                (
-                    "Skipping instrumentation for {}: {}:{} (no include tree)",
-                    invocation.Name, path.string(), srcLine
-                );
-                return {true, std::nullopt};
-            }
-        }
-
-        const std::string invSrcLoc = LineMatcher::cuLocToSrcLoc(invocation.InvocationLocation, inverseLineMap);
-        const std::string defSrcLoc = LineMatcher::cuLocToSrcLoc(invocation.DefinitionLocation, inverseLineMap);
-
-        auto makeReport = [&](std::string reason)
-        {
-            return SeedingReport
-            {
-                .name = invocation.Name,
-                .locInv = invSrcLoc,
-                .locRef = defSrcLoc,
-                .astKind = invocation.ASTKind,
-                .isObjectLike = invocation.IsObjectLike,
-                .seeded = false,
-                .reason = std::move(reason),
-                .canBeFn = false,
-            };
-        };
-
-        auto drop = [&](std::string reason)
-        {
-            return std::make_tuple(true, makeReport(std::move(reason)));
-        };
-        
-        if (invocation.Name.empty())
-        {
-            return drop("missing invocation name");
-        }
-        if (invocation.ASTKind.empty())
-        {
-            return drop("non-syntactic");
+            return {true, std::nullopt}; // No need to report this
         }
         if (invocation.InvocationLocationEnd.empty())
         {
-            return drop("missing invocation end location");
+            return {true, std::nullopt}; // No need to report this
+        }
+
+        
+        std::optional<std::tuple<std::filesystem::path, int, int>> invocationLoc;
+        if (!invocation.InvocationLocation.empty())
+        {
+            try
+            {
+                invocationLoc = parseLocation(invocation.InvocationLocation);
+            }
+            catch (const std::exception &)
+            {
+                return {true, std::nullopt}; // No need to report this
+            }
+        }
+        const std::filesystem::path * invocationPathPtr = invocationLoc ? &std::get<0>(*invocationLoc) : nullptr;
+
+        std::optional<std::tuple<std::filesystem::path, int, int>> definitionLoc;
+        if (!invocation.DefinitionLocation.empty())
+        {
+            try
+            {
+                definitionLoc = parseLocation(invocation.DefinitionLocation);
+            }
+            catch (const std::exception &)
+            {
+                return {true, std::nullopt}; // No need to report this
+            }
+        }
+
+        if (invocationLoc && definitionLoc)
+        {
+            const auto & invPath = std::get<0>(*invocationLoc);
+            int invLine = std::get<1>(*invocationLoc);
+            const auto & defPath = std::get<0>(*definitionLoc);
+            int defLine = std::get<1>(*definitionLoc);
+            assert(invPath == defPath);
+
+            const auto & [includeTree, srcLine] = inverseLineMap.at(invLine);
+            const auto & [locRefIncludeTree, locRefSrcLine] = inverseLineMap.at(defLine);
+            if (!includeTree || includeTree->isSystemInclude || !locRefIncludeTree || locRefIncludeTree->isSystemInclude)
+            {
+                return {true, std::nullopt}; // No need to report this
+            }
+        }
+
+        if (invocation.Name.empty())
+        {
+            reasons.insert("missing invocation name");
+        }
+        if (invocation.ASTKind.empty())
+        {
+            reasons.insert("non-syntactic");
         }
         if (invocation.mustUseMetaprogrammingToTransform())
         {
-            return drop("requires metaprogramming");
+            reasons.insert("requires metaprogramming");
         }
         if (!invocation.IsHygienic)
         {
-            return drop("macro not hygienic");
+            reasons.insert("macro not hygienic");
         }
         if (invocation.IsInvokedWhereICERequired)
         {
-            return drop("requires ICE");
+            reasons.insert("requires ICE");
         }
         if (invocation.NumArguments != static_cast<int>(invocation.Args.size()))
         {
-            return drop("argument count mismatch");
+            reasons.insert("argument count mismatch");
         }
 
         constexpr static std::string_view validASTKinds[] = {"Expr", "Stmt", "Stmts", "Decl", "Decls"};
-        if (std::find(std::begin(validASTKinds), std::end(validASTKinds), invocation.ASTKind) == std::end(validASTKinds))
+        if (!invocation.ASTKind.empty() &&
+            std::find(std::begin(validASTKinds), std::end(validASTKinds), invocation.ASTKind) == std::end(validASTKinds))
         {
-            return drop("unsupported AST kind");
+            reasons.insert("unsupported AST kind");
         }
+
         for (const MakiArgSummary & arg : invocation.Args)
         {
             if (arg.ASTKind.empty())
             {
-                return drop("argument non-syntactic");
+                reasons.insert("argument non-syntactic");
             }
-            if (std::find(std::begin(validASTKinds), std::end(validASTKinds), arg.ASTKind) == std::end(validASTKinds))
+            else if (std::find(std::begin(validASTKinds), std::end(validASTKinds), arg.ASTKind) == std::end(validASTKinds))
             {
-                return drop("argument unsupported AST kind");
+                reasons.insert("argument unsupported AST kind");
             }
+
             if (arg.Name.empty())
             {
-                return drop("argument missing name");
+                reasons.insert("argument missing name");
             }
-            if (arg.ActualArgLocBegin.empty() || arg.ActualArgLocEnd.empty())
-            {
-                return drop("argument missing location");
-            }
+
             if (arg.Type.contains("("))
             {
-                return drop("argument has function pointer type");
+                reasons.insert("argument has function pointer type");
             }
-            auto [argPath, argLine, argCol] = parseLocation(arg.ActualArgLocBegin);
-            if (argPath != path)
+
+            bool argBeginAvailable = !arg.ActualArgLocBegin.empty();
+            bool argEndAvailable = !arg.ActualArgLocEnd.empty();
+            if (!argBeginAvailable || !argEndAvailable)
             {
-                return drop("argument path mismatch");
+                reasons.insert("argument missing location");
             }
-            auto [argPathEnd, argLineEnd, argColEnd] = parseLocation(arg.ActualArgLocEnd);
-            if (argPathEnd != path)
+
+            std::optional<std::tuple<std::filesystem::path, int, int>> argBeginLoc;
+            if (argBeginAvailable)
             {
-                return drop("argument end path mismatch");
+                try
+                {
+                    argBeginLoc = parseLocation(arg.ActualArgLocBegin);
+                }
+                catch (const std::exception &)
+                {
+                    reasons.insert("argument invalid location");
+                }
+            }
+
+            std::optional<std::tuple<std::filesystem::path, int, int>> argEndLoc;
+            if (argEndAvailable)
+            {
+                try
+                {
+                    argEndLoc = parseLocation(arg.ActualArgLocEnd);
+                }
+                catch (const std::exception &)
+                {
+                    reasons.insert("argument invalid location");
+                }
+            }
+
+            if (invocationPathPtr && argBeginLoc)
+            {
+                if (std::get<0>(*argBeginLoc) != *invocationPathPtr)
+                {
+                    reasons.insert("argument path mismatch");
+                }
+            }
+            if (invocationPathPtr && argEndLoc)
+            {
+                if (std::get<0>(*argEndLoc) != *invocationPathPtr)
+                {
+                    reasons.insert("argument end path mismatch");
+                }
             }
         }
 
-        return
+        SeedingReport report = SeedingReport
         {
-            false,
-            SeedingReport
-            {
-                .name = invocation.Name,
-                .locInv = invSrcLoc,
-                .locRef = defSrcLoc,
-                .astKind = invocation.ASTKind,
-                .isObjectLike = invocation.IsObjectLike,
-                .seeded = true,
-                .reason = "",
-                .canBeFn = canBeRustFn(invocation),
-            }
+            .name = invocation.Name,
+            .locInv = translateCuLocOrFallback(invocation.InvocationLocation, inverseLineMap),
+            .locRef = translateCuLocOrFallback(invocation.DefinitionLocation, inverseLineMap),
+            .astKind = invocation.ASTKind,
+            .isObjectLike = invocation.IsObjectLike,
+            .seeded = reasons.empty(),
+            .reasons = std::move(reasons),
+            .canBeFn = canBeRustFn(invocation)
         };
+
+        bool shouldDrop = !report.seeded;
+        return {shouldDrop, std::optional<SeedingReport>{std::move(report)}};
     }
 
     struct ConditionalTag : JsonStringLiteralMixin<ConditionalTag>
@@ -1063,14 +1136,6 @@ public:
         );
         statistics["macro_stmt_seeded_ratio"] = statistics["macro_stmt_seeded"].get<std::size_t>() /
             static_cast<double>(statistics["macro_stmt"].get<std::size_t>());
-        statistics["macro_stmt_unhygienic"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.reason == "macro not hygienic"; }
-        );
-        statistics["macro_stmt_requiresmetaprogramming"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.reason == "requires metaprogramming"; }
-        );
         statistics["macro_stmt_objectlike"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.isObjectLike; }
@@ -1105,6 +1170,17 @@ public:
         (
             [](const Seeder::SeedingReport & r) { return r.astKind == "TypeLoc"; }
         );
+
+        statistics["failing_reasons"] = ordered_json::object();
+        auto & failingReasons = statistics["failing_reasons"];
+        for (const Seeder::SeedingReport & report : reports)
+        {
+            if (report.seeded) continue;
+            for (const std::string & reason : report.reasons)
+            {
+                failingReasons[reason] = failingReasons.value(reason, 0) + 1;
+            }
+        }
 
         return statistics;
     }

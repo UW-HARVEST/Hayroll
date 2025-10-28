@@ -315,7 +315,7 @@ struct MakiInvocationSummary
             return true;
         }
 
-        assert(hasSemanticData());
+        if (!hasSemanticData()) return false;
         return IsExpansionControlFlowStmt || IsAnyArgumentConditionallyEvaluated;
     }
 
