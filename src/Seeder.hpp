@@ -661,34 +661,38 @@ public:
 
         if (invocation.Name.empty())
         {
-            reasons.insert("missing invocation name");
+            return {true, std::nullopt}; // No need to report this
         }
         if (invocation.ASTKind.empty())
         {
             reasons.insert("non-syntactic");
         }
-        if (invocation.mustUseMetaprogrammingToTransform())
+        if (invocation.HasStringification)
         {
-            reasons.insert("requires metaprogramming");
+            reasons.insert("uses stringification");
+        }
+        if (invocation.HasTokenPasting)
+        {
+            reasons.insert("uses token pasting");
         }
         if (!invocation.IsHygienic)
         {
-            reasons.insert("macro not hygienic");
+            reasons.insert("unhygienic");
         }
         if (invocation.IsInvokedWhereICERequired)
         {
-            reasons.insert("requires ICE");
+            reasons.insert("requires integral constant expression");
         }
         if (invocation.NumArguments != static_cast<int>(invocation.Args.size()))
         {
-            reasons.insert("argument count mismatch");
+            reasons.insert("argument unsupported");
         }
 
         constexpr static std::string_view validASTKinds[] = {"Expr", "Stmt", "Stmts", "Decl", "Decls"};
         if (!invocation.ASTKind.empty() &&
             std::find(std::begin(validASTKinds), std::end(validASTKinds), invocation.ASTKind) == std::end(validASTKinds))
         {
-            reasons.insert("unsupported AST kind");
+            reasons.insert("unsupported AST kind (type)");
         }
 
         for (const MakiArgSummary & arg : invocation.Args)
@@ -699,7 +703,7 @@ public:
             }
             else if (std::find(std::begin(validASTKinds), std::end(validASTKinds), arg.ASTKind) == std::end(validASTKinds))
             {
-                reasons.insert("argument unsupported AST kind");
+                reasons.insert("argument unsupported AST kind (type)");
             }
 
             if (arg.Name.empty())
@@ -1074,102 +1078,156 @@ public:
         );
         statistics["macro_seeded_ratio"] = statistics["macro_seeded"].get<std::size_t>() /
             static_cast<double>(statistics["macro"].get<std::size_t>());
-        statistics["macro_seeded_macro"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return r.seeded && !r.canBeFn; }
-        );
         statistics["macro_seeded_fn"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return r.seeded && r.canBeFn; }
         );
+        statistics["macro_seeded_fn_ratio"] = statistics["macro_seeded_fn"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_seeded"].get<std::size_t>());
+        statistics["macro_seeded_macro"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.seeded && !r.canBeFn; }
+        );
+        statistics["macro_seeded_macro_ratio"] = statistics["macro_seeded_macro"].get<std::size_t>() /
+            static_cast<double>(statistics["macro"].get<std::size_t>());
+        statistics["macro_rejected"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return !r.seeded; }
+        );
+        statistics["macro_rejected_ratio"] = statistics["macro_rejected"].get<std::size_t>() /
+            static_cast<double>(statistics["macro"].get<std::size_t>());
         statistics["macro_syntactic"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return r.astKind != ""; }
         );
+        statistics["macro_syntactic_ratio"] = statistics["macro_syntactic"].get<std::size_t>() /
+            static_cast<double>(statistics["macro"].get<std::size_t>());
         statistics["macro_syntactic_seeded"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return r.astKind != "" && r.seeded; }
         );
         statistics["macro_syntactic_seeded_ratio"] = statistics["macro_syntactic_seeded"].get<std::size_t>() /
             static_cast<double>(statistics["macro_syntactic"].get<std::size_t>());
-        statistics["macro_non_syntactic"] = countByPredicate
+        statistics["macro_syntactic_seeded_fn"] = countByPredicate
         (
-            [](const Seeder::SeedingReport & r) { return r.astKind == ""; }
+            [](const Seeder::SeedingReport & r) { return r.astKind != "" && r.seeded && r.canBeFn; }
         );
+        statistics["macro_syntactic_seeded_fn_ratio"] = statistics["macro_syntactic_seeded_fn"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_syntactic"].get<std::size_t>());
+        statistics["macro_syntactic_seeded_macro"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind != "" && r.seeded && !r.canBeFn; }
+        );
+        statistics["macro_syntactic_seeded_macro_ratio"] = statistics["macro_syntactic_seeded_macro"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_syntactic"].get<std::size_t>());
+        statistics["macro_syntactic_rejected"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind != "" && !r.seeded; }
+        );
+        statistics["macro_syntactic_rejected_ratio"] = statistics["macro_syntactic_rejected"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_syntactic"].get<std::size_t>());
         statistics["macro_expr"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return r.astKind == "Expr"; }
         );
+        statistics["macro_expr_ratio"] = statistics["macro_expr"].get<std::size_t>() /
+            static_cast<double>(statistics["macro"].get<std::size_t>());
         statistics["macro_expr_seeded"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && r.seeded; }
         );
         statistics["macro_expr_seeded_ratio"] = statistics["macro_expr_seeded"].get<std::size_t>() /
             static_cast<double>(statistics["macro_expr"].get<std::size_t>());
-        statistics["macro_expr_objectlike"] = countByPredicate
+        statistics["macro_expr_seeded_fn"] = countByPredicate
         (
-            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr"; }
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && r.seeded && r.canBeFn; }
         );
-        statistics["macro_expr_objectlike_seeded"] = countByPredicate
+        statistics["macro_expr_seeded_fn_ratio"] = statistics["macro_expr_seeded_fn"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_expr"].get<std::size_t>());
+        statistics["macro_expr_seeded_macro"] = countByPredicate
         (
-            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && r.isObjectLike; }
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && r.seeded && !r.canBeFn; }
         );
-        statistics["macro_expr_objectlike_seeded_ratio"] = statistics["macro_expr_objectlike_seeded"].get<std::size_t>() /
-            static_cast<double>(statistics["macro_expr_objectlike"].get<std::size_t>());
-        statistics["macro_expr_functionlike"] = countByPredicate
+        statistics["macro_expr_seeded_macro_ratio"] = statistics["macro_expr_seeded_macro"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_expr"].get<std::size_t>());
+        statistics["macro_expr_rejected"] = countByPredicate
         (
-            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && !r.isObjectLike; }
+            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && !r.seeded; }
         );
-        statistics["macro_expr_functionlike_seeded"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return r.astKind == "Expr" && !r.isObjectLike && r.seeded; }
-        );
-        statistics["macro_expr_functionlike_seeded_ratio"] = statistics["macro_expr_functionlike_seeded"].get<std::size_t>() /
-            static_cast<double>(statistics["macro_expr_functionlike"].get<std::size_t>());
+        statistics["macro_expr_rejected_ratio"] = statistics["macro_expr_rejected"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_expr"].get<std::size_t>());
         statistics["macro_stmt"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return r.astKind == "Stmt" || r.astKind == "Stmts"; }
         );
+        statistics["macro_stmt_ratio"] = statistics["macro_stmt"].get<std::size_t>() /
+            static_cast<double>(statistics["macro"].get<std::size_t>());
         statistics["macro_stmt_seeded"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.seeded; }
         );
         statistics["macro_stmt_seeded_ratio"] = statistics["macro_stmt_seeded"].get<std::size_t>() /
             static_cast<double>(statistics["macro_stmt"].get<std::size_t>());
-        statistics["macro_stmt_objectlike"] = countByPredicate
+        statistics["macro_stmt_seeded_fn"] = countByPredicate
         (
-            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.isObjectLike; }
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.seeded && r.canBeFn; }
         );
-        statistics["macro_stmt_objectlike_seeded"] = countByPredicate
+        statistics["macro_stmt_seeded_fn_ratio"] = statistics["macro_stmt_seeded_fn"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_stmt"].get<std::size_t>());
+        statistics["macro_stmt_seeded_macro"] = countByPredicate
         (
-            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.isObjectLike && r.seeded; }
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && r.seeded && !r.canBeFn; }
         );
-        statistics["macro_stmt_objectlike_seeded_ratio"] = statistics["macro_stmt_objectlike_seeded"].get<std::size_t>() /
-            static_cast<double>(statistics["macro_stmt_objectlike"].get<std::size_t>());
-        statistics["macro_stmt_functionlike"] = countByPredicate
+        statistics["macro_stmt_seeded_macro_ratio"] = statistics["macro_stmt_seeded_macro"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_stmt"].get<std::size_t>());
+        statistics["macro_stmt_rejected"] = countByPredicate
         (
-            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && !r.isObjectLike; }
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && !r.seeded; }
         );
-        statistics["macro_stmt_functionlike_seeded"] = countByPredicate
-        (
-            [](const Seeder::SeedingReport & r) { return (r.astKind == "Stmt" || r.astKind == "Stmts") && !r.isObjectLike && r.seeded; }
-        );
-        statistics["macro_stmt_functionlike_seeded_ratio"] = statistics["macro_stmt_functionlike_seeded"].get<std::size_t>() /
-            static_cast<double>(statistics["macro_stmt_functionlike"].get<std::size_t>());
+        statistics["macro_stmt_rejected_ratio"] = statistics["macro_stmt_rejected"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_stmt"].get<std::size_t>());
         statistics["macro_decl"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return r.astKind == "Decl" || r.astKind == "Decls"; }
         );
+        statistics["macro_decl_ratio"] = statistics["macro_decl"].get<std::size_t>() /
+            static_cast<double>(statistics["macro"].get<std::size_t>());
         statistics["macro_decl_seeded"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return (r.astKind == "Decl" || r.astKind == "Decls") && r.seeded; }
         );
         statistics["macro_decl_seeded_ratio"] = statistics["macro_decl_seeded"].get<std::size_t>() /
             static_cast<double>(statistics["macro_decl"].get<std::size_t>());
+        statistics["macro_decl_seeded_fn"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Decl" || r.astKind == "Decls") && r.seeded && r.canBeFn; }
+        );
+        statistics["macro_decl_seeded_fn_ratio"] = statistics["macro_decl_seeded_fn"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_decl"].get<std::size_t>());
+        statistics["macro_decl_seeded_macro"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Decl" || r.astKind == "Decls") && r.seeded && !r.canBeFn; }
+        );
+        statistics["macro_decl_seeded_macro_ratio"] = statistics["macro_decl_seeded_macro"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_decl"].get<std::size_t>());
+        statistics["macro_decl_rejected"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return (r.astKind == "Decl" || r.astKind == "Decls") && !r.seeded; }
+        );
+        statistics["macro_decl_rejected_ratio"] = statistics["macro_decl_rejected"].get<std::size_t>() /
+            static_cast<double>(statistics["macro_decl"].get<std::size_t>());
         statistics["macro_typeloc"] = countByPredicate
         (
             [](const Seeder::SeedingReport & r) { return r.astKind == "TypeLoc"; }
         );
+        statistics["macro_typeloc_ratio"] = statistics["macro_typeloc"].get<std::size_t>() /
+            static_cast<double>(statistics["macro"].get<std::size_t>());
+        statistics["macro_non_syntactic"] = countByPredicate
+        (
+            [](const Seeder::SeedingReport & r) { return r.astKind == ""; }
+        );
+        statistics["macro_non_syntactic_ratio"] = statistics["macro_non_syntactic"].get<std::size_t>() /
+            static_cast<double>(statistics["macro"].get<std::size_t>());
 
         statistics["failing_reasons"] = ordered_json::object();
         auto & failingReasons = statistics["failing_reasons"];
