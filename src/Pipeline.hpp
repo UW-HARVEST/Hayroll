@@ -333,8 +333,8 @@ public:
                             outputDir,
                             projDir,
                             DefineSet::defineSetsToString(defineSets),
-                            ".defset.txt",
-                            "DefineSets summary",
+                            ".defset.raw.txt",
+                            "raw DefineSets summary",
                             command.file.string(),
                             std::nullopt
                         );
@@ -356,68 +356,91 @@ public:
                     std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRangesCompleted;
                     std::set<std::string> rustFeatureAtoms;
 
-                    const std::size_t defineCount = defineSets.size();
-                    cuStrs.reserve(defineCount);
-                    lineMaps.reserve(defineCount);
-                    inverseLineMaps.reserve(defineCount);
-                    cpp2cStrs.reserve(defineCount);
-                    cpp2cInvocations.reserve(defineCount);
-                    cpp2cRanges.reserve(defineCount);
+                    const std::size_t candidateCount = defineSets.size();
+                    cuStrs.reserve(candidateCount);
+                    lineMaps.reserve(candidateCount);
+                    inverseLineMaps.reserve(candidateCount);
+                    cpp2cStrs.reserve(candidateCount);
+                    cpp2cInvocations.reserve(candidateCount);
+                    cpp2cRanges.reserve(candidateCount);
+
+                    std::vector<DefineSet> validDefineSets;
+                    validDefineSets.reserve(candidateCount);
+                    std::vector<CompileCommand> validCommandsWithDefSets;
+                    validCommandsWithDefSets.reserve(candidateCount);
 
                     {
                         StageTimer::Scope stage(stageTimer, StageNames::Maki);
-                        for (std::size_t i = 0; i < defineCount; ++i)
+                        for (std::size_t i = 0; i < candidateCount; ++i)
                         {
                             const CompileCommand & commandWithDefineSet = commandsWithDefSets[i];
+                            const DefineSet & candidateDefineSet = defineSets[i];
 
-                            std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(commandWithDefineSet);
-                            saveOutput
-                            (
-                                commandWithDefineSet,
-                                outputDir,
-                                projDir,
-                                cuStr,
-                                std::format(".{}.cu.c", i),
-                                "Compilation unit file",
-                                command.file.string(),
-                                i
-                            );
-                            cuStrs.push_back(cuStr);
+                            try
+                            {
+                                const std::size_t validIndex = validDefineSets.size();
 
-                            const auto [lineMap, inverseLineMap] = LineMatcher::run
-                            (
-                                cuStrs.back(),
-                                executor.includeTree,
-                                command.getIncludePaths()
-                            );
-                            lineMaps.push_back(lineMap);
-                            inverseLineMaps.push_back(inverseLineMap);
+                                std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(commandWithDefineSet);
+                                const auto [lineMap, inverseLineMap] = LineMatcher::run
+                                (
+                                    cuStr,
+                                    executor.includeTree,
+                                    command.getIncludePaths()
+                                );
 
-                            auto [codeRangeAnalysisTasks, defSetRustFeatureAtoms]
-                                = premiseTree->getCodeRangeAnalysisTasksAndRustFeatureAtoms(lineMap);
-                            rustFeatureAtoms.insert(defSetRustFeatureAtoms.begin(), defSetRustFeatureAtoms.end());
+                                auto [codeRangeAnalysisTasks, defSetRustFeatureAtoms]
+                                    = premiseTree->getCodeRangeAnalysisTasksAndRustFeatureAtoms(lineMap);
 
-                            std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
-                            saveOutput
-                            (
-                                commandWithDefineSet,
-                                outputDir,
-                                projDir,
-                                cpp2cStr,
-                                std::format(".{}.cpp2c", i),
-                                "Maki cpp2c output",
-                                command.file.string(),
-                                i
-                            );
-                            cpp2cStrs.push_back(cpp2cStr);
+                                std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
 
-                            auto [invocations, ranges] = parseCpp2cSummary(cpp2cStrs.back());
-                            cpp2cInvocations.push_back(invocations);
-                            cpp2cRanges.push_back(ranges);
+                                auto [invocations, ranges] = parseCpp2cSummary(cpp2cStr);
+
+                                saveOutput
+                                (
+                                    commandWithDefineSet,
+                                    outputDir,
+                                    projDir,
+                                    cuStr,
+                                    std::format(".{}.cu.c", validIndex),
+                                    "Compilation unit file",
+                                    command.file.string(),
+                                    validIndex
+                                );
+                                saveOutput
+                                (
+                                    commandWithDefineSet,
+                                    outputDir,
+                                    projDir,
+                                    cpp2cStr,
+                                    std::format(".{}.cpp2c", validIndex),
+                                    "Maki cpp2c output",
+                                    command.file.string(),
+                                    validIndex
+                                );
+
+                                cuStrs.push_back(std::move(cuStr));
+                                lineMaps.push_back(lineMap);
+                                inverseLineMaps.push_back(inverseLineMap);
+                                cpp2cStrs.push_back(std::move(cpp2cStr));
+                                cpp2cInvocations.push_back(std::move(invocations));
+                                cpp2cRanges.push_back(std::move(ranges));
+                                rustFeatureAtoms.insert(defSetRustFeatureAtoms.begin(), defSetRustFeatureAtoms.end());
+                                validDefineSets.push_back(candidateDefineSet);
+                                validCommandsWithDefSets.push_back(commandWithDefineSet);
+                            }
+                            catch (...)
+                            {
+                                SPDLOG_WARN
+                                (
+                                    "Skipping DefineSet {} (index {}) due to Maki failure",
+                                    candidateDefineSet.toString(),
+                                    i
+                                );
+                            }
                         }
 
                         cpp2cRangesCompleted = Hayroll::MakiRangeSummary::complementRangeSummaries(cpp2cRanges, inverseLineMaps);
-                        for (std::size_t i = 0; i < defineCount; ++i)
+                        for (std::size_t i = 0; i < cpp2cRangesCompleted.size(); ++i)
                         {
                             saveOutput
                             (
@@ -432,6 +455,21 @@ public:
                             );
                         }
                     }
+
+                    defineSets = std::move(validDefineSets);
+                    commandsWithDefSets = std::move(validCommandsWithDefSets);
+                    const std::size_t defineCount = defineSets.size();
+                    saveOutput
+                    (
+                        command,
+                        outputDir,
+                        projDir,
+                        DefineSet::defineSetsToString(defineSets),
+                        ".defset.txt",
+                        "Valid DefineSets summary",
+                        command.file.string(),
+                        std::nullopt
+                    );
 
                     std::vector<std::string> cargoTomls;
                     cargoTomls.reserve(defineCount);

@@ -30,6 +30,9 @@ public:
     {
         std::vector<DefineSet> result;
         if (!premiseTree) return result;
+
+        result.push_back(DefineSet{}); // Always have the empty DefineSet.
+
         // Premise tree nodes that are not yet satisfied by any DefineSet.
         // Do reverse-level-order traversal so that more constrained nodes are processed first.
         std::list<const PremiseTree *> worklist = premiseTree->getDescendantsLevelOrder();
@@ -77,12 +80,6 @@ public:
             }
         }
 
-        // Put an empty DefineSet if no valid DefineSet could be generated.
-        if (result.empty())
-        {
-            result.push_back(DefineSet());
-        }
-
         SPDLOG_DEBUG("Generated {} DefineSet(s).", result.size());
         if (!uncovered.empty())
         {
@@ -98,7 +95,7 @@ public:
     }
 
 private:
-    // Check if the DefineSet can be used to successfully run through Maki and C2Rust.
+    // Check if the DefineSet can be used to successfully run through C2Rust.
     static bool validate
     (
         const DefineSet & defineSet,
@@ -117,16 +114,8 @@ private:
             return false;
         }
 
-        try
-        {
-            // Ignore code range analysis tasks here
-            std::string makiSummaryStr = MakiWrapper::runCpp2cOnCu(updatedCommand);
-        }
-        catch (const std::exception & e)
-        {
-            SPDLOG_WARN("Maki cpp2c analysis failed during DefineSet validation: {}", defineSet.toString());
-            return false;
-        }
+        // Validating against Maki is too time-consuming, so we offload the responsibility to the caller
+
         return true;
     }
 };
