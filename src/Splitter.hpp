@@ -31,8 +31,6 @@ public:
         std::vector<DefineSet> result;
         if (!premiseTree) return result;
 
-        result.push_back(DefineSet{}); // Always have the empty DefineSet.
-
         // Premise tree nodes that are not yet satisfied by any DefineSet.
         // Do reverse-level-order traversal so that more constrained nodes are processed first.
         std::list<const PremiseTree *> worklist = premiseTree->getDescendantsLevelOrder();
@@ -78,6 +76,12 @@ public:
                     ++it;
                 }
             }
+        }
+
+        // If there is not an empty DefineSet, add one to cover the trivial case.
+        if (std::none_of(result.begin(), result.end(), [](const DefineSet & ds) { return ds.defines.empty(); }))
+        {
+            result.insert(result.begin(), DefineSet{});
         }
 
         SPDLOG_DEBUG("Generated {} DefineSet(s).", result.size());
