@@ -50,7 +50,7 @@ public:
             if (!validate(defineSet, compileCommand))
             {
                 // If not, skip this DefineSet
-                SPDLOG_WARN("DefineSet {} cannot be validated by C2Rust or Maki, skipping.",
+                SPDLOG_WARN("DefineSet {} cannot be validated by C2Rust, skipping.",
                     defineSet.toString());
                 uncovered.push_back(node);
                 continue;

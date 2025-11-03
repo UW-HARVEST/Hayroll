@@ -6,7 +6,7 @@ use ide_db::base_db::{SourceDatabase, SourceDatabaseFileInputExt};
 use load_cargo;
 use project_model::CargoConfig;
 use syntax::{
-    ast::{self, ElseBranch, HasModuleItem, Item, SourceFile},
+    ast::{self, ElseBranch, HasModuleItem, Item, SourceFile, UseTree},
     syntax_editor::{Element, Position},
     AstNode,
 };
@@ -223,7 +223,7 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
     //   compute signatures of base items (name + attr set ignoring order).
     // - For each patch item, if not a HAYROLL_TAG_FOR* and its signature isn't in base,
     //   insert it: macros at file top (after top-level attrs), others at file bottom.
-    // - Only consider items with a name; unnamed items are skipped to avoid accidental duplication.
+    // - Only consider items with a name (or use ...); unnamed items are skipped to avoid accidental duplication.
 
     // Build a relpath->FileId index for base files (strip workspace root prefix)
     let mut base_path_to_id: HashMap<String, FileId> = HashMap::new();
@@ -266,12 +266,14 @@ pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()
             })
             .collect()
     };
-    // Helper to get an item's simple name (direct child Name)
+    // Helper to get an item's simple name (direct child Name) or UseTree (for merging use) or ABI (for extern items)
     let item_name = |item: &dyn ast::AstNode| -> Option<String> {
-        item.syntax()
-            .children()
-            .find_map(ast::Name::cast)
-            .map(|n| n.to_string())
+        item.syntax().children().find_map(|child| {
+            ast::Name::cast(child.clone())
+                .map(|name| name.to_string())
+                .or_else(|| UseTree::cast(child.clone()).map(|tree| tree.to_string()))
+                .or_else(|| ast::Abi::cast(child).map(|abi| abi.to_string()))
+        })
     };
     // Helper to collect the set of attribute spellings directly on the item (ignore order)
     let item_attr_set = |item: &dyn ast::HasAttrs| -> std::collections::BTreeSet<String> {
