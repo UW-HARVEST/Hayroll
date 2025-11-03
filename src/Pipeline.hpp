@@ -260,6 +260,8 @@ public:
         std::chrono::nanoseconds performanceTotal{0};
 
         std::atomic<std::size_t> nextIdx{0};
+        std::atomic<std::size_t> totalSuccessfulSplits{0};
+        std::atomic<std::size_t> completedTasks{0};
 
         auto worker = [&]()
         {
@@ -270,6 +272,7 @@ public:
                 const CompileCommand & command = compileCommands[taskIdx];
                 std::filesystem::path srcPath = command.file;
                 StageTimer stageTimer;
+                std::size_t taskSuccessfulSplits = 0;
 
                 try
                 {
@@ -334,7 +337,7 @@ public:
                             projDir,
                             DefineSet::defineSetsToString(defineSets),
                             ".defset.raw.txt",
-                            "raw DefineSets summary",
+                            "Raw DefineSets summary",
                             command.file.string(),
                             std::nullopt
                         );
@@ -532,6 +535,7 @@ public:
                             auto transpileResult = C2RustWrapper::transpile(cuSeededStr, commandsWithDefSets[i]);
                             c2rustStr = std::move(std::get<0>(transpileResult));
                             cargoToml = std::move(std::get<1>(transpileResult));
+                            ++taskSuccessfulSplits;
                             saveOutput
                             (
                                 command,
@@ -627,6 +631,9 @@ public:
                         allRustFeatureAtoms.insert(rustFeatureAtoms.begin(), rustFeatureAtoms.end());
                         allSeedingReports.insert(allSeedingReports.end(), seedingReports.begin(), seedingReports.end());
                     }
+
+                    totalSuccessfulSplits.fetch_add(taskSuccessfulSplits, std::memory_order_relaxed);
+                    completedTasks.fetch_add(1, std::memory_order_relaxed);
 
                     SPDLOG_INFO("Task {}/{} {} completed", taskIdx + 1, numTasks, command.file.string());
                 }
@@ -747,6 +754,18 @@ public:
         std::string performanceStr = performance.dump(4);
         Hayroll::saveStringToFile(performanceStr, outputDir / "performance.json");
         SPDLOG_INFO("Performance statistics saved to: {}", (outputDir / "performance.json").string());
+
+        const std::size_t completedTaskCount = completedTasks.load(std::memory_order_relaxed);
+        const std::size_t totalSplits = totalSuccessfulSplits.load(std::memory_order_relaxed);
+        const double averageSplitsPerTask = completedTaskCount > 0
+            ? static_cast<double>(totalSplits) / static_cast<double>(completedTaskCount)
+            : 0.0;
+        SPDLOG_INFO(
+            "Successful splits: {} total; {:.2f} per completed task ({} completed task(s))",
+            totalSplits,
+            averageSplitsPerTask,
+            completedTaskCount
+        );
 
         // Print final results
         if (!failedTasks.empty())
