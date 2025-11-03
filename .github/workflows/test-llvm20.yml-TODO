@@ -41,6 +41,7 @@ jobs:
           pushd ../libmcs
           make clean
           bear -- make -j"$(nproc)"
+          : > libm/include/config.h
           popd
           ./hayroll ../libmcs/compile_commands.json ./output/
       - name: Build Transpiled LibmCS
