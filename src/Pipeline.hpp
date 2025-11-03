@@ -374,11 +374,14 @@ public:
 
                     {
                         StageTimer::Scope stage(stageTimer, StageNames::Maki);
-                        for (std::size_t i = 0; i < candidateCount; ++i)
-                        {
-                            const CompileCommand & commandWithDefineSet = commandsWithDefSets[i];
-                            const DefineSet & candidateDefineSet = defineSets[i];
 
+                        auto makiStep = [&]
+                        (
+                            size_t i,
+                            const CompileCommand & commandWithDefineSet,
+                            const DefineSet & candidateDefineSet
+                        )
+                        {
                             try
                             {
                                 const std::size_t validIndex = validDefineSets.size();
@@ -440,6 +443,26 @@ public:
                                     i
                                 );
                             }
+                        };
+
+                        for (std::size_t i = 0; i < candidateCount; ++i)
+                        {
+                            const CompileCommand & commandWithDefineSet = commandsWithDefSets[i];
+                            const DefineSet & candidateDefineSet = defineSets[i];
+                            makiStep(i, commandWithDefineSet, candidateDefineSet);
+                        }
+
+                        // If none of the candidate DefineSets are valid, fall back to an empty DefineSet
+                        if (validDefineSets.empty())
+                        {
+                            SPDLOG_WARN
+                            (
+                                "All candidate DefineSets failed Maki; falling back to empty DefineSet"
+                            );
+                            const std::size_t i = 0;
+                            DefineSet candidateDefineSet = DefineSet{};
+                            const CompileCommand & commandWithDefineSet = command.withCleanup().withUpdatedDefineSet(candidateDefineSet);
+                            makiStep(i, commandWithDefineSet, candidateDefineSet);
                         }
 
                         cpp2cRangesCompleted = Hayroll::MakiRangeSummary::complementRangeSummaries(cpp2cRanges, inverseLineMaps);

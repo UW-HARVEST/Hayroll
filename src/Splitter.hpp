@@ -78,10 +78,9 @@ public:
             }
         }
 
-        // If there is not an empty DefineSet, add one to cover the trivial case.
-        if (std::none_of(result.begin(), result.end(), [](const DefineSet & ds) { return ds.defines.empty(); }))
+        if (result.empty())
         {
-            result.insert(result.begin(), DefineSet{});
+            result.push_back(DefineSet{});
         }
 
         SPDLOG_DEBUG("Generated {} DefineSet(s).", result.size());
