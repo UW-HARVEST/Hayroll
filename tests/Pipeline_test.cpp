@@ -133,6 +133,7 @@ int main()
         compileCommandsPath,
         outDir,
         projDir,
+        true, // enableInline
         1
     );
 

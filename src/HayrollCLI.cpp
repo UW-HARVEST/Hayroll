@@ -22,6 +22,7 @@ int main(const int argc, const char* argv[])
     std::filesystem::path outputDir;
     std::size_t jobs = 0;
     std::filesystem::path projDir;
+    bool enableInline = false;
     int verbose = 0;
 
     try
@@ -39,6 +40,9 @@ int main(const int argc, const char* argv[])
             ->default_str("");
         app.add_option("-j,--jobs", jobs, "Worker threads")
             ->default_val(hardwareThreads);
+        app.add_flag("-i,--inline", enableInline,
+            "Enable inline macro expansion")
+            ->default_val(false);
         app.add_flag("-v,--verbose", verbose,
             "Increase verbosity (-v=debug, -vv=trace)")
             ->default_val(0);
@@ -114,6 +118,7 @@ int main(const int argc, const char* argv[])
             compileCommandsJsonPath,
             outputDir,
             projDir,
+            enableInline,
             jobs
         );
     }

@@ -30,6 +30,7 @@ const std::filesystem::path MakiDir = std::filesystem::canonical(std::filesystem
 const std::filesystem::path LibmcsDir = std::filesystem::canonical(std::filesystem::path(LIBMCS_DIR));
 const std::filesystem::path HayrollReaperExe = std::filesystem::canonical(std::filesystem::path(HAYROLL_REAPER_EXE));
 const std::filesystem::path HayrollMergerExe = std::filesystem::canonical(std::filesystem::path(HAYROLL_MERGER_EXE));
+const std::filesystem::path HayrollInlinerExe = std::filesystem::canonical(std::filesystem::path(HAYROLL_INLINER_EXE));
 const std::filesystem::path HayrollCleanerExe = std::filesystem::canonical(std::filesystem::path(HAYROLL_CLEANER_EXE));
 
 template<class... Ts>

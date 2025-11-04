@@ -70,6 +70,20 @@ path = "src/main.rs"
         return runTool(config, {reapedRustStrBase, reapedRustStrPatch});
     }
 
+    static std::string runInliner(std::string_view rustStr)
+    {
+        ToolConfig config;
+        config.toolName = "Inliner";
+        config.executable = HayrollInlinerExe;
+        config.workingDirIndex = 0;
+        config.outputDirIndex = 0;
+        config.buildArgs = [](const std::vector<std::filesystem::path> & paths)
+        {
+            return std::vector<std::string>{paths[0].string()};
+        };
+        return runTool(config, {rustStr});
+    }
+
     static std::string runCleaner(std::string_view rustStr)
     {
         ToolConfig config;

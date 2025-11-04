@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use hir::Semantics;
 use ide_db::{
     base_db::{SourceDatabase, SourceDatabaseFileInputExt, SourceRootDatabase},
     source_change::SourceChangeBuilder,
@@ -286,6 +287,26 @@ pub fn collect_syntax_roots_from_db(db: &RootDatabase) -> HashMap<FileId, Source
         // Depending on the RA version, the `SourceRoot` may expose iteration via `iter()` over FileId.
         for file_id in sr.iter() {
             let tree = db.parse(EditionedFileId::current_edition(file_id)).tree();
+            out.insert(file_id, tree);
+        }
+    }
+    out
+}
+
+pub fn collect_syntax_roots_from_sema(sema: &Semantics<'_, RootDatabase>) -> HashMap<FileId, SourceFile> {
+    let mut out = HashMap::new();
+    let graph = sema.db.crate_graph();
+    let mut source_root_ids = HashSet::new();
+    for krate in graph.iter() {
+        let root_file = graph[krate].root_file_id;
+        source_root_ids.insert(sema.db.file_source_root(root_file));
+    }
+
+    for sr_id in source_root_ids {
+        let sr = sema.db.source_root(sr_id);
+        for file_id in sr.iter() {
+            let tree = sema.parse_guess_edition(file_id);
+            sema.assert_contains_node(tree.syntax());
             out.insert(file_id, tree);
         }
     }

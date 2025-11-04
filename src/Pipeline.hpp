@@ -215,6 +215,7 @@ public:
         const std::filesystem::path & compileCommandsJsonPath,
         const std::filesystem::path & outputDir,
         const std::filesystem::path & projDir,
+        const bool enableInline,
         std::size_t jobs
     )
     {
@@ -584,23 +585,39 @@ public:
                         }
                         cargoTomls.push_back(cargoToml);
 
-                        std::string reaperStr;
+                        std::string reapedStr;
                         {
                             StageTimer::Scope stage(stageTimer, StageNames::Reaper);
-                            reaperStr = RustRefactorWrapper::runReaper(c2rustStr);
+                            reapedStr = RustRefactorWrapper::runReaper(c2rustStr);
                             saveOutput
                             (
                                 command,
                                 outputDir,
                                 projDir,
-                                reaperStr,
+                                reapedStr,
                                 std::format(".{}.reaped.rs", i),
                                 "Hayroll Reaper output",
                                 command.file.string(),
                                 i
                             );
                         }
-                        reapedStrs.push_back(reaperStr);
+                        reapedStrs.push_back(reapedStr);
+
+                        if (enableInline)
+                        {
+                            std::string inlinedStr = RustRefactorWrapper::runInliner(reapedStr);
+                            saveOutput
+                            (
+                                command,
+                                outputDir,
+                                projDir,
+                                inlinedStr,
+                                std::format(".{}.inlined.rs", i),
+                                "Hayroll Inliner output",
+                                command.file.string(),
+                                i
+                            );
+                        }
                     }
 
                     if (reapedStrs.empty())

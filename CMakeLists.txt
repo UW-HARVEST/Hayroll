@@ -103,6 +103,7 @@ add_library(hayroll_exe_config INTERFACE)
 target_compile_definitions(hayroll_exe_config INTERFACE
     HAYROLL_REAPER_EXE="${CMAKE_SOURCE_DIR}/reaper"
     HAYROLL_MERGER_EXE="${CMAKE_SOURCE_DIR}/merger"
+    HAYROLL_INLINER_EXE="${CMAKE_SOURCE_DIR}/inliner"
     HAYROLL_CLEANER_EXE="${CMAKE_SOURCE_DIR}/cleaner"
 )
 

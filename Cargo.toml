@@ -31,5 +31,9 @@ name = "merger"
 path = "src/merger.rs"
 
 [[bin]]
+name = "inliner"
+path = "src/inliner.rs"
+
+[[bin]]
 name = "cleaner"
 path = "src/cleaner.rs"
