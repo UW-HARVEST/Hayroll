@@ -1,11 +1,11 @@
-use std::{collections::HashMap, fs, path::Path};
+use std::{collections::{HashMap, HashSet}, fs, path::Path};
 
 use anyhow::Result;
 use hir::{Semantics, db::ExpandDatabase, prettify_macro_expansion};
 use ide_db::base_db::SourceDatabase;
 use load_cargo;
 use project_model::CargoConfig;
-use syntax::{ast::{self, SourceFile}, AstNode};
+use syntax::{AstNode, SyntaxNode, ast::{self, SourceFile}};
 use tracing::{debug, info};
 use vfs::FileId;
 
@@ -62,6 +62,17 @@ pub fn run(workspace_path: &Path) -> Result<()> {
     }
 
     info!(inlined_macros = inlined_count, "Applied inline macro transformations");
+
+    // Remove all macro definitions
+    let all_macro_rules = syntax_roots.values().flat_map(|root| {
+        root.syntax().descendants().filter_map(ast::MacroRules::cast)
+    }).map(|macro_def| macro_def.syntax().clone()).collect::<HashSet<SyntaxNode>>();
+    for macro_def in all_macro_rules {
+        let file_id = builder_set.file_id_of_node(&macro_def).unwrap();
+        let mut editor = builder_set.make_editor(&macro_def);
+        editor.delete(&macro_def);
+        builder_set.add_file_edits(file_id, editor);
+    }
 
     let source_change = builder_set.finish();
     apply_source_change(&mut db, &source_change);
