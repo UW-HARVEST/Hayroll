@@ -222,6 +222,9 @@ Consider the following simple C file with three macro invocations:
 DECL_MACRO_INT
 
 int main() {
+    #ifdef FEAT1
+    ++a;
+    #endif
     STMT_MACRO_INCR(a);
     return EXPR_MACRO_ADD(a, 5);
 }
@@ -235,34 +238,37 @@ rvalue).  A snippet of the seeded CU looks like this (whitespace and comments
 added for readability):
 
 ```c
-DECL_MACRO_INT const char * HAYROLL_TAG_FOR_DECL_MACRO_INT
-  = "{ … \"astKind\":\"Decl\", … , \"cuLnColBegin\":\"7:1\", … }";
+DECL_MACRO_INT const char * HAYROLL_TAG_FOR_DECL_MACRO_INT = "{ ... \"astKind\":\"Decl\", ... , \"cuLnColBegin\":\"7:1\", ... }"; // Tag for DECL_MACRO_INT
 
 int main()
 {
-  *"{ … \"astKind\":\"Stmt\", \"begin\":true, … }";
+  *"{ ... \"astKind\":\"Stmt\", \"begin\":true, ... }"; // Begin tag for conditional compilation
+  #ifdef FEAT1
+  ++a;
+  #endif
+  *"{ ... \"astKind\":\"Stmt\", \"begin\":false, ... }"; // End tag for conditional compilation
+  *"{ ... \"astKind\":\"Stmt\", \"begin\":true, ... }"; // Begin tag for STMT_MACRO_INCR
   STMT_MACRO_INCR
   (
     (*
-      ((*"{ … \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":true, … }"?
+      ((*"{ ... \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":true, ... }"? // Tag for argument 1
       (&(a)):
       ((__typeof__(a)*)(0)))
     )
   );
-  *"{ … \"astKind\":\"Stmt\", \"begin\":false, … }";
+  *"{ ... \"astKind\":\"Stmt\", \"begin\":false, ... }"; // End tag for STMT_MACRO_INCR
   return 
   (
-    *"{ … \"astKind\":\"Expr\", \"begin\":true, … }"?
+    *"{ ... \"astKind\":\"Expr\", \"begin\":true, ... }"? // Tag for EXPR_MACRO_ADD
     EXPR_MACRO_ADD
-    (   // Arg 1
+    (
       (*
-        ((*"{ … \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":true, … }"?
+        ((*"{ ... \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":true, ... }"? // Tag for argument 1
         (&(a)):
         ((__typeof__(a)*)(0))))
       ),
-      // Arg 2
       (
-        *"{ … \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":false, … }"?
+        *"{ ... \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":false, ... }"? // Tag for argument 2
         (5)
         :
         (*(__typeof__(5)*)(0))
@@ -288,35 +294,35 @@ needed to reconstruct the original macro.
 pub static mut a: libc::c_int = 0;
 #[c2rust::src_loc = "7:29"]
 pub static mut HAYROLL_TAG_FOR_DECL_MACRO_INT: *const libc::c_char =
-    b"{ … \"astKind\":\"Decl\", … , \"cuLnColBegin\":\"7:1\", … }\0" as *const u8
-        as *const libc::c_char;
+    b"{ ... \"astKind\":\"Decl\", ... , \"cuLnColBegin\":\"7:1\", ... }\0" as *const u8
+        as *const libc::c_char; // Tag for DECL_MACRO_INT
 
 #[c2rust::src_loc = "9:1"]
 unsafe fn main_0() -> libc::c_int {
-    *(b"{ … \"astKind\":\"Stmt\", \"begin\":true, … }\0" as *const u8 as *const libc::c_char);
-
-    let ref mut fresh0 = *if *(b"{ … \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":true, … }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0
+    *(b"{ ... \"astKind\":\"Stmt\", \"begin\":true, ... }\0" as *const u8 as *const libc::c_char); // Begin tag for conditional compilation
+    a += 1;
+    *(b"{ ... \"astKind\":\"Stmt\", \"begin\":false, ... }\0" as *const u8 as *const libc::c_char); // End tag for conditional compilation
+    *(b"{ ... \"astKind\":\"Stmt\", \"begin\":true, ... }\0" as *const u8 as *const libc::c_char); // Begin tag for STMT_MACRO_INCR
+    let ref mut fresh0 = *if *(b"{ ... \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":true, ... }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0 // Tag for argument 1
     {
         &mut a
     } else {
         0 as *mut libc::c_int
     };
-
     *fresh0 += 1;
     *fresh0;
+    *(b"{ ... \"astKind\":\"Stmt\", \"begin\":false, ... }\0" as *const u8 as *const libc::c_char); // End tag for STMT_MACRO_INCR
 
-    *(b"{ … \"astKind\":\"Stmt\", \"begin\":false, … }\0" as *const u8 as *const libc::c_char);
-
-    return if *(b"{ … \"astKind\":\"Expr\", \"begin\":true, … }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0
+    return if *(b"{ ... \"astKind\":\"Expr\", \"begin\":true, ... }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0 // Tag for EXPR_MACRO_ADD
     {
-        *(if *(b"{ … \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":true, … }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0
+        *(if *(b"{ ... \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":true, ... }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0 // Tag for argument 1
         {
             &mut a
         } else {
             0 as *mut libc::c_int
         })
         +
-        (if *(b"{ … \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":false, … }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0
+        (if *(b"{ ... \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":false, ... }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0 // Tag for argument 2
         {
             5 as libc::c_int
         } else {
@@ -332,6 +338,32 @@ pub fn main() {
 }
 ```
 <!-- markdownlint-enable MD013 --><!-- long lines -->
+
+Sending the above Rust code to Reaper yields (simplified for clarity):
+
+```rust
+use ::libc;
+macro_rules! DECL_MACRO_INT
+{
+    () => {
+        #[no_mangle]
+        pub static mut a: libc::c_int = 0;
+    }
+}
+DECL_MACRO_INT!();
+unsafe fn EXPR_MACRO_ADD(x: *mut libc::c_int, y: libc::c_int) -> libc::c_int {
+    *(x) + (y)
+}
+unsafe fn STMT_MACRO_INCR(x: *mut libc::c_int) {
+    *x += 1;
+}
+unsafe fn main() -> libc::c_int {
+    #[cfg(feature = "FEAT1")]
+    (a += 1);
+    STMT_MACRO_INCR(&mut a);
+    return EXPR_MACRO_ADD(&mut a, 5 as libc::c_int);
+}
+```
 
 ## Implementation
 

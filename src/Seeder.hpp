@@ -685,7 +685,7 @@ public:
         }
         if (invocation.NumArguments != static_cast<int>(invocation.Args.size()))
         {
-            reasons.insert("argument unsupported");
+            reasons.insert("argument non-syntactic");
         }
 
         constexpr static std::string_view validASTKinds[] = {"Expr", "Stmt", "Stmts", "Decl", "Decls"};
