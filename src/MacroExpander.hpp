@@ -909,11 +909,7 @@ private:
             {
                 continue;
             }
-            if (c == '.' || c == 'e' || c == 'E' || c == 'p' || c == 'P')
-            {
-                throw std::runtime_error(std::string("Floating-point literal not supported: ") + std::string(literal));
-            }
-
+            
             int digit = digitValueForBase(c, base);
             if (digit >= 0)
             {
@@ -921,6 +917,13 @@ private:
             }
             else
             {
+                // Check if this is a floating-point indicator
+                if (c == '.' || c == 'e' || c == 'E' || c == 'p' || c == 'P')
+                {
+                    throw std::runtime_error(std::string("Floating-point literal not supported: ") + std::string(literal));
+                }
+                // If it's not a valid digit and not a floating-point indicator, 
+                // it might be an integer suffix, so we break here
                 break;
             }
         }
