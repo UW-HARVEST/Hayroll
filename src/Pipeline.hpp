@@ -19,6 +19,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <initializer_list>
 
 #include <spdlog/spdlog.h>
 #include "json.hpp"
@@ -54,8 +55,7 @@ private:
         static constexpr std::string_view C2Rust = "C2Rust";
         static constexpr std::string_view Reaper = "Reaper";
         static constexpr std::string_view Merger = "Merger";
-        static constexpr std::string_view Cleaner = "Cleaner";
-        inline static constexpr std::array<std::string_view, 8> Ordered
+        inline static constexpr std::initializer_list<std::string_view> Ordered =
         {
             Pioneer,
             Splitter,
@@ -63,8 +63,7 @@ private:
             Seeder,
             C2Rust,
             Reaper,
-            Merger,
-            Cleaner
+            Merger
         };
     };
 
@@ -75,16 +74,16 @@ private:
         {
         public:
             Scope(StageTimer & timer, std::string_view stage)
-                : timer_(&timer), stage_(stage)
+                : timer(&timer), stage(stage)
             {
-                timer_->beginStage(stage_);
+                this->timer->beginStage(stage);
             }
 
             Scope(const Scope &) = delete;
             Scope & operator=(const Scope &) = delete;
 
             Scope(Scope && other) noexcept
-                : timer_(std::exchange(other.timer_, nullptr)), stage_(std::move(other.stage_))
+                : timer(std::exchange(other.timer, nullptr)), stage(std::move(other.stage))
             {
             }
 
@@ -92,24 +91,24 @@ private:
 
             ~Scope()
             {
-                if (timer_) timer_->endStage(stage_);
+                if (timer) timer->endStage(stage);
             }
 
         private:
             friend class StageTimer;
 
-            StageTimer * timer_;
-            std::string stage_;
+            StageTimer * timer;
+            std::string stage;
         };
 
         [[nodiscard]] std::unordered_map<std::string, std::chrono::nanoseconds> getStageDurations() const
         {
-            return elapsedDurations_;
+            return elapsedDurations;
         }
 
         [[nodiscard]] std::chrono::nanoseconds totalDuration() const
         {
-            return total_;
+            return total;
         }
 
         [[nodiscard]] ordered_json toJson() const
@@ -118,11 +117,11 @@ private:
             for (std::string_view stageName : StageNames::Ordered)
             {
                 const std::string stageKey(stageName);
-                const auto it = elapsedDurations_.find(stageKey);
-                const double valueMs = (it != elapsedDurations_.end()) ? toMillis(it->second) : 0.0;
+                const auto it = elapsedDurations.find(stageKey);
+                const double valueMs = (it != elapsedDurations.end()) ? toMillis(it->second) : 0.0;
                 stagesJson[stageKey] = valueMs;
             }
-            for (const auto & [name, duration] : elapsedDurations_)
+            for (const auto & [name, duration] : elapsedDurations)
             {
                 const std::string_view nameView{name};
                 if (std::find(StageNames::Ordered.begin(), StageNames::Ordered.end(), nameView) == StageNames::Ordered.end())
@@ -133,8 +132,14 @@ private:
 
             ordered_json result = ordered_json::object();
             result["stages"] = stagesJson;
-            result["total_ms"] = toMillis(total_);
+            result["total_ms"] = toMillis(total);
+            result["loc_count"] = locCount;
             return result;
+        }
+
+        void setLocCount(int count)
+        {
+            locCount = count;
         }
 
         static double toMillis(std::chrono::nanoseconds ns)
@@ -149,32 +154,33 @@ private:
 
         void beginStage(std::string_view stage)
         {
-            auto [it, inserted] = runningStages_.try_emplace(std::string(stage), clock::now());
+            auto [it, inserted] = runningStages.try_emplace(std::string(stage), clock::now());
             if (!inserted)
             {
                 return;
             }
-            elapsedDurations_.try_emplace(it->first, std::chrono::nanoseconds::zero());
+            elapsedDurations.try_emplace(it->first, std::chrono::nanoseconds::zero());
         }
 
         void endStage(const std::string & stage)
         {
-            auto it = runningStages_.find(stage);
-            if (it == runningStages_.end())
+            auto it = runningStages.find(stage);
+            if (it == runningStages.end())
             {
                 return;
             }
 
             const auto now = clock::now();
             const auto delta = std::chrono::duration_cast<std::chrono::nanoseconds>(now - it->second);
-            elapsedDurations_[stage] += delta;
-            total_ += delta;
-            runningStages_.erase(it);
+            elapsedDurations[stage] += delta;
+            total += delta;
+            runningStages.erase(it);
         }
 
-        std::unordered_map<std::string, clock::time_point> runningStages_;
-        std::unordered_map<std::string, std::chrono::nanoseconds> elapsedDurations_;
-        std::chrono::nanoseconds total_{0};
+        std::unordered_map<std::string, clock::time_point> runningStages;
+        std::unordered_map<std::string, std::chrono::nanoseconds> elapsedDurations;
+        std::chrono::nanoseconds total{0};
+        int locCount{0};
     };
 
 public:
@@ -259,6 +265,7 @@ public:
         std::mutex collectionMutex;
         std::unordered_map<std::string, std::chrono::nanoseconds> performanceStageTotals;
         std::chrono::nanoseconds performanceTotal{0};
+        std::atomic<int> totalLocCount{0};
 
         std::atomic<std::size_t> nextIdx{0};
         std::atomic<std::size_t> totalSuccessfulSplits{0};
@@ -372,6 +379,8 @@ public:
                     validDefineSets.reserve(candidateCount);
                     std::vector<CompileCommand> validCommandsWithDefSets;
                     validCommandsWithDefSets.reserve(candidateCount);
+
+                    int avgLocCount = 0;
 
                     {
                         StageTimer::Scope stage(stageTimer, StageNames::Maki);
@@ -497,6 +506,17 @@ public:
                         command.file.string(),
                         std::nullopt
                     );
+
+                    if (!cuStrs.empty())
+                    {
+                        int taskTotalLocCount = 0;
+                        for (const std::string & cuStr : cuStrs)
+                        {
+                            taskTotalLocCount += static_cast<int>(std::count(cuStr.begin(), cuStr.end(), '\n'));
+                        }
+                        avgLocCount = taskTotalLocCount / static_cast<int>(cuStrs.size());
+                        stageTimer.setLocCount(avgLocCount);
+                    }
 
                     std::vector<std::string> cargoTomls;
                     cargoTomls.reserve(defineCount);
@@ -646,11 +666,10 @@ public:
                             );
                             mergedRustStrs.push_back(std::move(merged));
                         }
-                    }
+                        std::string finalRustStr = mergedRustStrs.back();
 
-                    std::string finalRustStr = mergedRustStrs.back();
-                    {
-                        StageTimer::Scope stage(stageTimer, StageNames::Cleaner);
+                        // Cleaner shares merger's stage timer
+
                         finalRustStr = RustRefactorWrapper::runCleaner(finalRustStr);
                         saveOutput
                         (
@@ -672,8 +691,9 @@ public:
                         allSeedingReports.insert(allSeedingReports.end(), seedingReports.begin(), seedingReports.end());
                     }
 
-                    totalSuccessfulSplits.fetch_add(taskSuccessfulSplits, std::memory_order_relaxed);
-                    completedTasks.fetch_add(1, std::memory_order_relaxed);
+                    totalSuccessfulSplits += taskSuccessfulSplits;
+                    completedTasks++;
+                    totalLocCount += avgLocCount;
 
                     SPDLOG_INFO("Task {}/{} {} completed", taskIdx + 1, numTasks, command.file.string());
                 }
@@ -765,31 +785,24 @@ public:
         Hayroll::saveStringToFile(statisticsStr, outputDir / "statistics.json");
         SPDLOG_INFO("Statistics saved to: {}", (outputDir / "statistics.json").string());
 
+        // Performance report
         ordered_json performance = ordered_json::object();
+        
         ordered_json stageTotalsJson = ordered_json::object();
-        const std::size_t taskCount = numTasks;
-        const double taskCountDouble = taskCount > 0 ? static_cast<double>(taskCount) : 1.0;
+        // First, add all predefined stages in order (with 0 if not found)
         for (std::string_view stageName : StageNames::Ordered)
         {
             const std::string stageKey(stageName);
             const auto it = performanceStageTotals.find(stageKey);
             const double totalMs = (it != performanceStageTotals.end()) ? StageTimer::toMillis(it->second) : 0.0;
-            const double valueMs = (taskCount > 0) ? (totalMs / taskCountDouble) : 0.0;
-            stageTotalsJson[stageKey] = valueMs;
+            stageTotalsJson[stageKey] = totalMs;
         }
-        for (const auto & [name, duration] : performanceStageTotals)
-        {
-            const std::string_view nameView{name};
-            if (std::find(StageNames::Ordered.begin(), StageNames::Ordered.end(), nameView) == StageNames::Ordered.end())
-            {
-                const double totalMs = StageTimer::toMillis(duration);
-                stageTotalsJson[name] = (taskCount > 0) ? (totalMs / taskCountDouble) : 0.0;
-            }
-        }
+
         performance["stages"] = stageTotalsJson;
         const double totalMsAll = StageTimer::toMillis(performanceTotal);
-        performance["total_ms"] = (taskCount > 0) ? (totalMsAll / taskCountDouble) : 0.0;
-        performance["task_count"] = taskCount;
+        performance["total_ms"] = totalMsAll;
+        performance["loc_count"] = totalLocCount.load();
+        performance["task_count"] = numTasks;
 
         std::string performanceStr = performance.dump(4);
         Hayroll::saveStringToFile(performanceStr, outputDir / "performance.json");

@@ -703,7 +703,8 @@ public:
             }
             else if (std::find(std::begin(validASTKinds), std::end(validASTKinds), arg.ASTKind) == std::end(validASTKinds))
             {
-                reasons.insert("argument unsupported AST kind (type)");
+                // Actually TypeLoc
+                reasons.insert("argument unsupported AST kind");
             }
 
             if (arg.Name.empty())
@@ -713,7 +714,8 @@ public:
 
             if (arg.Type.contains("("))
             {
-                reasons.insert("argument has function pointer type");
+                // Function pointer
+                reasons.insert("argument unsupported AST kind");
             }
 
             bool argBeginAvailable = !arg.ActualArgLocBegin.empty();
