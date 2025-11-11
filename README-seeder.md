@@ -298,19 +298,17 @@ pub static mut HAYROLL_TAG_FOR_DECL_MACRO_INT: *const libc::c_char =
         as *const libc::c_char; // Tag for DECL_MACRO_INT
 
 #[c2rust::src_loc = "9:1"]
-unsafe fn main_0() -> libc::c_int {
+unsafe fn main() -> libc::c_int {
     *(b"{ ... \"astKind\":\"Stmt\", \"begin\":true, ... }\0" as *const u8 as *const libc::c_char); // Begin tag for conditional compilation
     a += 1;
     *(b"{ ... \"astKind\":\"Stmt\", \"begin\":false, ... }\0" as *const u8 as *const libc::c_char); // End tag for conditional compilation
     *(b"{ ... \"astKind\":\"Stmt\", \"begin\":true, ... }\0" as *const u8 as *const libc::c_char); // Begin tag for STMT_MACRO_INCR
-    let ref mut fresh0 = *if *(b"{ ... \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":true, ... }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0 // Tag for argument 1
+    *if *(b"{ ... \"isArg\":true, \"astKind\":\"Expr\", \"isLvalue\":true, ... }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0 // Tag for argument 1
     {
         &mut a
     } else {
         0 as *mut libc::c_int
-    };
-    *fresh0 += 1;
-    *fresh0;
+    } += 1;
     *(b"{ ... \"astKind\":\"Stmt\", \"begin\":false, ... }\0" as *const u8 as *const libc::c_char); // End tag for STMT_MACRO_INCR
 
     return if *(b"{ ... \"astKind\":\"Expr\", \"begin\":true, ... }\0" as *const u8 as *const libc::c_char) as libc::c_int != 0 // Tag for EXPR_MACRO_ADD
@@ -331,10 +329,6 @@ unsafe fn main_0() -> libc::c_int {
     } else {
         *(0 as *mut libc::c_int)
     };
-}
-
-pub fn main() {
-    unsafe { ::std::process::exit(main_0() as i32) }
 }
 ```
 <!-- markdownlint-enable MD013 --><!-- long lines -->
@@ -358,8 +352,12 @@ unsafe fn STMT_MACRO_INCR(x: *mut libc::c_int) {
     *x += 1;
 }
 unsafe fn main() -> libc::c_int {
+    // Tags for conditional compilation are kept for Merger to handle
+    *(b"{ ... \"astKind\":\"Stmt\", \"begin\":true, ... }\0" as *const u8 as *const libc::c_char); // Begin tag for conditional compilation
     #[cfg(feature = "FEAT1")]
     (a += 1);
+    *(b"{ ... \"astKind\":\"Stmt\", \"begin\":false, ... }\0" as *const u8 as *const libc::c_char); // End tag for conditional compilation
+
     STMT_MACRO_INCR(&mut a);
     return EXPR_MACRO_ADD(&mut a, 5 as libc::c_int);
 }
