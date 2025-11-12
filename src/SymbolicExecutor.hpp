@@ -127,12 +127,22 @@ public:
     SymbolTablePtr symbolTableRoot;
     PremiseTreeScribe scribe;
 
-    SymbolicExecutor(std::filesystem::path srcPath, std::filesystem::path projPath, const std::vector<std::filesystem::path> & includePaths = {})
+    bool analyzeInvocations;
+
+    SymbolicExecutor
+    (
+        std::filesystem::path srcPath,
+        std::filesystem::path projPath,
+        const std::vector<std::filesystem::path> & includePaths = {},
+        std::optional<std::vector<std::string>> macroWhitelist = std::nullopt,
+        bool analyzeInvocations = false
+    )
         : lang(CPreproc()), ctx(std::make_unique<z3::context>()), srcPath(std::filesystem::canonical(srcPath)),
           projPath(std::filesystem::canonical(projPath)), includeResolver(ClangExe, includePaths),
           astBank(lang), macroExpander(lang, ctx.get()),
           includeTree(IncludeTree::make(TSNode{}, std::filesystem::canonical(srcPath))),
-          symbolTableRoot(SymbolTable::make()), scribe()
+          symbolTableRoot(SymbolTable::make(SymbolSegment::make(), nullptr, macroWhitelist)),
+          scribe(), analyzeInvocations(analyzeInvocations)
     {
         astBank.addFileOrFind(srcPath);
     }
@@ -148,9 +158,9 @@ public:
         // Generate a base symbol table with the predefined macros.
         std::string builtinMacros = includeResolver.getBuiltinMacros();
         const TSTree & predefinedMacroTree = astBank.addAnonymousSource(std::move(builtinMacros));
-        State buildinMacroState{symbolTableRoot, ctx->bool_val(true)};
+        State builtinMacroState{symbolTableRoot, ctx->bool_val(true)};
         ProgramPoint predefinedMacroProgramPoint{IncludeTree::make(TSNode{}, "<built-in>"), predefinedMacroTree.rootNode()};
-        Warp predefinedMacroWarp{std::move(predefinedMacroProgramPoint), {std::move(buildinMacroState)}};
+        Warp predefinedMacroWarp{std::move(predefinedMacroProgramPoint), {std::move(builtinMacroState)}};
         predefinedMacroWarp = executeTranslationUnit(std::move(predefinedMacroWarp));
         assert(predefinedMacroWarp.states.size() == 1);
         SymbolTablePtr builtinMacroSymbolTable = predefinedMacroWarp.states[0].symbolTable;
@@ -323,6 +333,13 @@ public:
         const auto & [programPoint, states] = startWarp;
         const auto & [includeTree, node] = programPoint;
 
+        if (!analyzeInvocations)
+        {
+            // Just skip the c_tokens node.
+            startWarp.programPoint = startWarp.programPoint.nextSibling();
+            return std::move(startWarp);
+        }
+
         for (const TSNode & token : node.iterateChildren())
         {
             if (!token.isSymbol(lang.identifier_s)) continue;
@@ -339,12 +356,11 @@ public:
             for (const State & state : states)
             {
                 const auto & [symbolTable, premise] = state;
-                if (std::optional<const Hayroll::Symbol *> symbol = symbolTable->lookup(name))
+                if (std::optional<Hayroll::Symbol> symbol = symbolTable->lookup(name))
                 {
-                    if (std::holds_alternative<ObjectSymbol>(**symbol) || std::holds_alternative<FunctionSymbol>(**symbol))
+                    if (std::holds_alternative<ObjectSymbol>(*symbol) || std::holds_alternative<FunctionSymbol>(*symbol))
                     {
-                        ProgramPoint defProgramPoint = symbolProgramPoint(**symbol);
-
+                        ProgramPoint defProgramPoint = symbolProgramPoint(*symbol);
                         if (!premiseTreeNode)
                         {
                             premiseTreeNode = scribe.createNode({includeTree, token}, ctx->bool_val(true));
@@ -405,7 +421,7 @@ public:
                             }
                         }
                     }
-                    else if (std::holds_alternative<UndefinedSymbol>(**symbol))
+                    else if (std::holds_alternative<UndefinedSymbol>(*symbol))
                     {
                         unexpandedPremise = unexpandedPremise || premise;
                     }

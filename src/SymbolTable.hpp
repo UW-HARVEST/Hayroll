@@ -191,7 +191,8 @@ public:
     static SymbolTablePtr make
     (
         SymbolSegmentPtr symbols = SymbolSegment::make(),
-        ConstSymbolTablePtr parent = nullptr
+        ConstSymbolTablePtr parent = nullptr,
+        std::optional<std::vector<std::string>> whitelist = std::nullopt
     )
     {
         totalSymbolTables++;
@@ -199,6 +200,7 @@ public:
         auto table = std::make_shared<SymbolTable>();
         table->symbols = symbols;
         table->parent = parent;
+        table->whitelist = whitelist;
         return table;
     }
 
@@ -217,15 +219,25 @@ public:
     }
 
     // Lookup a symbol in the current table and its parent tables
-    std::optional<const Symbol *> lookup(std::string_view name) const
+    std::optional<Symbol> lookup(std::string_view name) const
     {
         if (std::optional<const Symbol *> symbol = symbols->lookup(name))
         {
-            return symbol;
+            return **symbol;
         }
         if (parent)
         {
             return parent->lookup(name);
+        }
+        if (whitelist)
+        {
+            // In whitelist mode, only symbols in the whitelist are allowed to be symbolized (returned as nullopt).
+            if (std::find(whitelist->begin(), whitelist->end(), name) != whitelist->end())
+            {
+                return std::nullopt;
+            }
+            // If the name is not in the whitelist, treat it as undefined.
+            return UndefinedSymbol{name};
         }
         // Missing: unknown symbol, should create a symbolic value
         return std::nullopt;
@@ -253,6 +265,7 @@ public:
 private:
     SymbolSegmentPtr symbols;
     ConstSymbolTablePtr parent;
+    std::optional<std::vector<std::string>> whitelist;
 
     SymbolTablePtr makeChild(SymbolSegmentPtr segment)
     {
@@ -288,7 +301,7 @@ public:
         undefStack.pop_back();
     }
 
-    std::optional<const Symbol *> lookup(std::string_view name) const
+    std::optional<Symbol> lookup(std::string_view name) const
     {
         // size
         auto it = std::find_if(undefStack.rbegin(), undefStack.rend(), [&name](const Symbol & s)
@@ -299,7 +312,7 @@ public:
         });
         if (it != undefStack.rend())
         {
-            return &*it;
+            return *it;
         }
         // Check the parent symbol table
         if (symbolTable) return symbolTable->lookup(name);

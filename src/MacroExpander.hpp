@@ -185,11 +185,11 @@ public:
             if (token.isSymbol(lang.identifier_s))
             {
                 std::string_view name = token.textView();
-                std::optional<const Hayroll::Symbol *> symbol = symbolTable.lookup(name);
+                std::optional<Hayroll::Symbol> symbol = symbolTable.lookup(name);
 
                 if (symbol.has_value())
                 {
-                    const Symbol & sym = *symbol.value();
+                    const Symbol & sym = *symbol;
                     if (!std::holds_alternative<ExpandedSymbol>(sym))
                     {
                         // All other kinds of symbols are stored in the base symbol table
@@ -328,10 +328,10 @@ public:
                     {
                         bool replaced = false;
                         std::string_view name = tokenX.textView();
-                        std::optional<const Hayroll::Symbol *> symbol = symbolTable.lookup(name);
+                        std::optional<Hayroll::Symbol> symbol = symbolTable.lookup(name);
                         if (symbol.has_value())
                         {
-                            const Symbol & sym = *symbol.value();
+                            const Symbol & sym = *symbol;
                             if (std::holds_alternative<ObjectSymbol>(sym) || std::holds_alternative<FunctionSymbol>(sym) || std::holds_alternative<ExpandedSymbol>(sym))
                             {
                                 buffer.push_back(constToken1);
@@ -440,10 +440,10 @@ public:
 
             if (!current.isSymbol(lang.identifier_s)) continue;
 
-            std::optional<const Hayroll::Symbol *> symbol = symbolTable->lookup(current.textView());
+            std::optional<Hayroll::Symbol> symbol = symbolTable->lookup(current.textView());
             if (symbol.has_value())
             {
-                const Symbol & sym = *symbol.value();
+                const Symbol & sym = *symbol;
                 if (std::holds_alternative<ObjectSymbol>(sym) || std::holds_alternative<FunctionSymbol>(sym))
                 {
                     ProgramPoint defProgramPoint = symbolProgramPoint(sym);

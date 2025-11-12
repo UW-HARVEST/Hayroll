@@ -133,6 +133,7 @@ int main()
         compileCommandsPath,
         outDir,
         projDir,
+        std::nullopt, // symbolicMacroWhitelist
         true, // enableInline
         1
     );

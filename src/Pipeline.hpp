@@ -221,6 +221,7 @@ public:
         const std::filesystem::path & compileCommandsJsonPath,
         const std::filesystem::path & outputDir,
         const std::filesystem::path & projDir,
+        std::optional<std::vector<std::string>> symbolicMacroWhitelist,
         const bool enableInline,
         std::size_t jobs
     )
@@ -301,7 +302,7 @@ public:
 
                     // Hayroll Pioneer symbolic execution
                     // compileCommands + cpp2cStr --SymbolicExecutor-> includeTree + premiseTree
-                    SymbolicExecutor executor(srcPath, projDir, command.getIncludePaths());
+                    SymbolicExecutor executor(srcPath, projDir, command.getIncludePaths(), symbolicMacroWhitelist, false);
                     PremiseTree * premiseTree = nullptr;
                     {
                         StageTimer::Scope stage(stageTimer, StageNames::Pioneer);

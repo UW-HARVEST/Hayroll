@@ -4,12 +4,14 @@
 
 #include <spdlog/spdlog.h>
 #include "CLI11.hpp"
+#include "json.hpp"
 
 #include "Pipeline.hpp"
 
 int main(const int argc, const char* argv[])
 {
     using namespace Hayroll;
+    using nlohmann::json;
 
     std::size_t hardwareThreads = std::thread::hardware_concurrency();
     if (hardwareThreads == 0) hardwareThreads = 2;
@@ -22,6 +24,7 @@ int main(const int argc, const char* argv[])
     std::filesystem::path outputDir;
     std::size_t jobs = 0;
     std::filesystem::path projDir;
+    std::filesystem::path symbolicMacroWhitelistPath;
     bool enableInline = false;
     int verbose = 0;
 
@@ -37,6 +40,9 @@ int main(const int argc, const char* argv[])
         // Shared options
         app.add_option("-p,--project-dir", projDir,
             "Project directory (defaults to folder containing compile_commands.json)")
+            ->default_str("");
+        app.add_option("-w,--whitelist", symbolicMacroWhitelistPath,
+            "Path to symbolic macro whitelist json file, which defines which macros are allowed to be symbolically executed")
             ->default_str("");
         app.add_option("-j,--jobs", jobs, "Worker threads")
             ->default_val(hardwareThreads);
@@ -113,11 +119,26 @@ int main(const int argc, const char* argv[])
             SPDLOG_INFO("Project directory not given, defaulting to: {}", projDir.string());
         }
 
+        std::optional<std::vector<std::string>> symbolicMacroWhitelist = std::nullopt;
+        if (!symbolicMacroWhitelistPath.empty())
+        {
+            json symbolicMacroWhitelistJson;
+            std::ifstream whitelistFile(symbolicMacroWhitelistPath);
+            if (!whitelistFile)
+            {
+                std::cerr << "Failed to open symbolic macro whitelist file: " << symbolicMacroWhitelistPath << std::endl;
+                return 1;
+            }
+            whitelistFile >> symbolicMacroWhitelistJson;
+            symbolicMacroWhitelist = symbolicMacroWhitelistJson.get<std::vector<std::string>>();
+        }
+
         return Pipeline::run
         (
             compileCommandsJsonPath,
             outputDir,
             projDir,
+            symbolicMacroWhitelist,
             enableInline,
             jobs
         );
