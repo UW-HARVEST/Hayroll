@@ -115,6 +115,7 @@ struct MakiInvocationSummary
 
     // Later collected
     std::string Spelling = "";
+    std::string Premise = "";
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT
     (
@@ -397,6 +398,7 @@ struct MakiRangeSummary
     std::string ASTKind;
     bool IsLValue;
     std::string ParentLocation; // srcLoc
+    bool IsInStatementBlock;
     CodeRangeAnalysisTaskExtraInfo ExtraInfo;
     
     // Later collected in complementRangeSummaries
@@ -410,7 +412,7 @@ struct MakiRangeSummary
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT
     (
         MakiRangeSummary,
-        Location, LocationEnd, ASTKind, IsLValue, ParentLocation, ExtraInfo,
+        Location, LocationEnd, ASTKind, IsLValue, ParentLocation, IsInStatementBlock, ExtraInfo,
         IsPlaceholder, ReferenceLocation, Spelling
     )
 
@@ -420,7 +422,7 @@ struct MakiRangeSummary
     // if its ASTKind is "" but other vectors have a non-empty ASTKind at the same IncludeTreePtr,
     // fill in the ASTKind from other vectors and mark IsPlaceholder = true
     // if its ASTKind is non-empty, mark IsPlaceholder = false
-    // if all vectors have "" at the same IncludeTreePtr. delete this item
+    // if all vectors have "" at the same IncludeTreePtr, keep as placeholder with empty ASTKind
     static std::vector<std::vector<MakiRangeSummary>> complementRangeSummaries
     (
         const std::vector<std::vector<MakiRangeSummary>> & rangeSummaryVecs,

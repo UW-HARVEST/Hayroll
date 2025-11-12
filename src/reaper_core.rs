@@ -28,8 +28,8 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         load_cargo::load_workspace_at(workspace_path, &cargo_config, &load_cargo_config, &|_| {})?;
 
     // ---- Zero Pass: add end tag for unmatched Hayroll tags ----
-    // For stmt ranges that include a return statement, the original end tag would be removed by C2Rust
-    // We need to add a new end tag after the return statement to ensure the Hayroll seed is complete
+    // For stmt ranges that include a return statement / abort() / etc. , the original end tag would be removed by C2Rust
+    // We need to add a new end tag after the control-flow-ending statement to properly mark the end of the region
     let syntax_roots: HashMap<FileId, SourceFile> = collect_syntax_roots_from_db(&db);
     let mut builder_set = SourceChangeBuilderSet::from_syntax_roots(&syntax_roots);
     let hayroll_tags: Vec<HayrollTag> =
@@ -45,14 +45,17 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         let CodeRegion::Stmts { parent, range } = code_region else {
             unreachable!()
         };
-        let first_return = parent
+        let first_return_or_abort = parent
             .statements()
             .enumerate()
             .filter(|(i, _stmt)| *i >= *range.start())
             .find(|(_i, stmt)| match stmt {
                 Stmt::ExprStmt(expr_stmt) => expr_stmt
                     .expr()
-                    .map_or(false, |e| ReturnExpr::can_cast(e.syntax().kind())),
+                    .map_or(false, |e| {
+                        ReturnExpr::can_cast(e.syntax().kind())
+                        || e.syntax().text().to_string().contains("abort()")
+                    }),
                 _ => false,
             })
             .map(|(_i, stmt)| stmt)
@@ -63,7 +66,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
                 )
                 .as_str(),
             );
-        let after_return_pos = Position::after(&first_return.syntax());
+        let insert_pos = Position::after(&first_return_or_abort.syntax());
         let end_literal_mut = tag.with_updated_begin(false).clone_for_update();
         let begin_stmt = parent.statements().nth(*range.start()).unwrap();
         let begin_literal = &tag.literal;
@@ -72,7 +75,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
         let begin_literal_mut = tree_mutator.make_syntax_mut(begin_literal.syntax());
         ted::replace(begin_literal_mut, end_literal_mut.syntax());
         editor.insert(
-            after_return_pos,
+            insert_pos,
             begin_stmt_mut.syntax().syntax_element().clone(),
         );
         builder_set.add_file_edits(file_id, editor);

@@ -124,7 +124,7 @@ struct DefineSet
 
         z3::expr implies = z3::implies(assigns, expr);
         bool ok = z3CheckTautology(implies);
-        SPDLOG_DEBUG
+        SPDLOG_TRACE
         (
             "Implication check: set=({}) expr={} assigns={} result={}",
             toString(), expr.to_string(), assigns.to_string(), ok ? "true" : "false"

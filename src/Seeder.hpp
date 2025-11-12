@@ -11,6 +11,7 @@
 #include <tuple>
 #include <filesystem>
 #include <format>
+#include <ranges>
 #include <algorithm>
 #include <optional>
 #include <utility>
@@ -295,6 +296,7 @@ public:
         std::string cuLnColBegin; // Loc in the CU file, without filename (only "l:c")
         std::string cuLnColEnd;
         std::string locRefBegin; // For invocation: definition begin; for arg: invocation begin
+        std::string premise;
 
         bool canBeFn;
 
@@ -302,7 +304,7 @@ public:
         (
             InvocationTag,
             hayroll, seedType, begin, isArg, argNames, astKind, isLvalue, name, locBegin, locEnd,
-            cuLnColBegin, cuLnColEnd, locRefBegin, canBeFn
+            cuLnColBegin, cuLnColEnd, locRefBegin, premise, canBeFn
         );
     };
 
@@ -319,6 +321,7 @@ public:
         std::string_view name,
         std::string_view locRefBegin,
         std::string_view spelling,
+        std::string_view premise,
         bool canBeFn,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
@@ -356,6 +359,7 @@ public:
             .cuLnColBegin = cuLnColBegin,
             .cuLnColEnd = cuLnColEnd,
             .locRefBegin = srcLocRefBegin,
+            .premise = std::string(premise),
 
             .canBeFn = canBeFn
         };
@@ -399,6 +403,7 @@ public:
             arg.Name,
             arg.InvocationLocation,
             arg.Spelling,
+            "", // premise
             false, // canBeFn
             inverseLineMap
         );
@@ -484,6 +489,7 @@ public:
             inv.Name,
             inv.DefinitionLocation,
             inv.Spelling,
+            inv.Premise,
             canBeRustFn(inv),
             inverseLineMap
         );
@@ -495,6 +501,7 @@ public:
     static std::list<InstrumentationTask> genConditionalInstrumentationTasks
     (
         const MakiRangeSummary & range,
+        bool createScope,
         const std::vector<std::pair<IncludeTreePtr, int>> & inverseLineMap
     )
     {
@@ -530,7 +537,7 @@ public:
         (
             range.ASTKind,
             range.ASTKind == "Expr" ? std::optional(range.IsLValue) : std::nullopt,
-            (range.ASTKind == "Stmt" || range.ASTKind == "Stmts") ? std::optional(false) : std::nullopt,
+            (range.ASTKind == "Stmt" || range.ASTKind == "Stmts") ? std::optional(createScope) : std::nullopt,
             range.IsPlaceholder ? ifGroupLnBegin : lineBegin, // for placeholder ranges, enclose the whole #if group
             range.IsPlaceholder ? ifGroupColBegin : colBegin,
             range.IsPlaceholder ? ifGroupLnEnd : lineEnd,
@@ -539,7 +546,7 @@ public:
             tagBegin.stringLiteral(),
             (range.ASTKind == "Stmt" || range.ASTKind == "Stmts") ? std::optional(tagEnd.stringLiteral()) : std::nullopt,
             range.Spelling,
-            -1 // priorityLeft: prefer outside
+            -ifGroupLnEnd // priorityLeft: prefer outside, and give higher priority to outer #if groups
         );
     }
 
@@ -692,7 +699,12 @@ public:
         if (!invocation.ASTKind.empty() &&
             std::find(std::begin(validASTKinds), std::end(validASTKinds), invocation.ASTKind) == std::end(validASTKinds))
         {
-            reasons.insert("unsupported AST kind (type)");
+            reasons.insert("unsupported AST kind");
+        }
+        if (invocation.ReturnType.contains("("))
+        {
+            // Function pointer
+            reasons.insert("unsupported AST kind");
         }
 
         for (const MakiArgSummary & arg : invocation.Args)
@@ -706,17 +718,17 @@ public:
                 // Actually TypeLoc
                 reasons.insert("argument unsupported AST kind");
             }
+            if (arg.Type.contains("("))
+            {
+                // Function pointer
+                reasons.insert("argument unsupported AST kind");
+            }
 
             if (arg.Name.empty())
             {
                 reasons.insert("argument missing name");
             }
 
-            if (arg.Type.contains("("))
-            {
-                // Function pointer
-                reasons.insert("argument unsupported AST kind");
-            }
 
             bool argBeginAvailable = !arg.ActualArgLocBegin.empty();
             bool argEndAvailable = !arg.ActualArgLocEnd.empty();
@@ -886,6 +898,7 @@ public:
         TextEditor srcEditor{srcStr};
 
         // Extract spelling for invocations and arguments
+        // Also attach premises against conditional ranges
         for (MakiInvocationSummary & invocation : invocations)
         {
             auto [pathBegin, lineBegin, colBegin] = parseLocation(invocation.InvocationLocation);
@@ -913,6 +926,7 @@ public:
                 arg.Spelling = srcEditor.get(argLineBegin, argColBegin, argLineEnd, argColEnd);
                 arg.InvocationLocation = invocation.InvocationLocation;
             }
+
         }
 
         // Extract spelling for ranges
@@ -939,7 +953,7 @@ public:
         }
         for (const MakiRangeSummary & range : ranges)
         {
-            std::list<InstrumentationTask> rangeTasks = genConditionalInstrumentationTasks(range, inverseLineMap);
+            std::list<InstrumentationTask> rangeTasks = genConditionalInstrumentationTasks(range, !range.IsInStatementBlock, inverseLineMap);
             tasks.splice(tasks.end(), rangeTasks);
         }
 

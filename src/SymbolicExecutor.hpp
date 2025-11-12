@@ -126,6 +126,7 @@ public:
     // it is not intended to be supplemented by the user from the command line (-D).
     SymbolTablePtr symbolTableRoot;
     PremiseTreeScribe scribe;
+    std::optional<std::vector<std::string>> macroWhitelist;
 
     bool analyzeInvocations;
 
@@ -142,7 +143,7 @@ public:
           astBank(lang), macroExpander(lang, ctx.get()),
           includeTree(IncludeTree::make(TSNode{}, std::filesystem::canonical(srcPath))),
           symbolTableRoot(SymbolTable::make(SymbolSegment::make(), nullptr, macroWhitelist)),
-          scribe(), analyzeInvocations(analyzeInvocations)
+          scribe(), analyzeInvocations(analyzeInvocations), macroWhitelist(macroWhitelist)
     {
         astBank.addFileOrFind(srcPath);
     }
@@ -190,6 +191,7 @@ public:
         // An example of this is header guard macros.
         // We enforce this by scanning the translation unit for all #define and #undef nodes,
         // and undefining them in the symbol table.
+        // This does not apply to whitelisted macros.
         for (TSNode node : startWarp.programPoint.node.iterateDescendants())
         {
             if (node.isSymbol(lang.preproc_def_s) || node.isSymbol(lang.preproc_function_def_s) || node.isSymbol(lang.preproc_undef_s))
@@ -199,6 +201,14 @@ public:
                 // but with the macro undefined.
                 TSNode name = node.childByFieldId(lang.preproc_undef_s.name_f);
                 std::string_view nameStr = name.textView();
+                if (macroWhitelist)
+                {
+                    if (std::find(macroWhitelist->begin(), macroWhitelist->end(), nameStr) != macroWhitelist->end())
+                    {
+                        // In whitelist mode, do not undefine whitelisted macros.
+                        continue;
+                    }
+                }
                 symbolTableRoot->forceDefine(UndefinedSymbol{nameStr});
             }
         }

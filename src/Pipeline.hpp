@@ -405,7 +405,10 @@ public:
                                     command.getIncludePaths()
                                 );
 
-                                auto [codeRangeAnalysisTasks, defSetRustFeatureAtoms]
+                                // This way of getting feature atoms would ignore conditionally-defined macros
+                                // that do not appear as pure C code in the CU file.
+                                // We fall back to collecting via DefineSet.
+                                auto [codeRangeAnalysisTasks, _]
                                     = premiseTree->getCodeRangeAnalysisTasksAndRustFeatureAtoms(lineMap);
 
                                 std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
@@ -441,7 +444,6 @@ public:
                                 cpp2cStrs.push_back(std::move(cpp2cStr));
                                 cpp2cInvocations.push_back(std::move(invocations));
                                 cpp2cRanges.push_back(std::move(ranges));
-                                rustFeatureAtoms.insert(defSetRustFeatureAtoms.begin(), defSetRustFeatureAtoms.end());
                                 validDefineSets.push_back(candidateDefineSet);
                                 validCommandsWithDefSets.push_back(commandWithDefineSet);
                             }
@@ -683,6 +685,14 @@ public:
                             command.file.string(),
                             std::nullopt
                         );
+                    }
+
+                    for (const DefineSet & defSet : defineSets)
+                    {
+                        for (auto [name, val] : defSet.defines)
+                        {
+                            rustFeatureAtoms.insert("def" + name);
+                        }
                     }
 
                     {

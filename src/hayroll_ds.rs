@@ -317,6 +317,11 @@ impl HayrollSeed {
     pub fn ptr_or_base_type(&self) -> Option<ast::Type> {
         // lvalue: *if{}else{0 as *mut T} -> *mut T
         // rvalue: if{}else{*(0 as *mut T)} -> T
+        
+        // In some dirty extra type conversion cases:
+        // lvalue: *if{}else{0 as *mut T as U} -> U // Same as normal lvalue case
+        // rvalue: if{}else{*(0 as *mut T) as U} -> U // Special handling
+
         match self {
             HayrollSeed::Expr(ref seed) => {
                 let if_expr = parent_until_kind::<ast::IfExpr>(&seed.literal).unwrap();
@@ -326,20 +331,23 @@ impl HayrollSeed {
                 } else {
                     panic!("Expected a block");
                 };
-                // Find the first ast::PtrType
-                let ptr_type = else_block
+                let last_converted_type = else_block
                     .syntax()
                     .descendants()
-                    .find_map(|element| ast::PtrType::cast(element))
-                    .expect(&format!(
-                        "Expected to find a PtrType in else branch for Hayroll tag: {}",
-                        seed.tag
-                    ));
-                if self.is_lvalue() {
-                    Some(syntax::ast::Type::PtrType(ptr_type))
+                    .find_map(|element| ast::CastExpr::cast(element.clone()))
+                    .unwrap().ty().unwrap();
+                let ret = if let Some(ptr_type) = ast::PtrType::cast(last_converted_type.syntax().clone()) {
+                    // Normal case
+                    if self.is_lvalue() {
+                        last_converted_type
+                    } else {
+                        ptr_type.ty().unwrap()
+                    }
                 } else {
-                    Some(ptr_type.ty().unwrap())
-                }
+                    // Special dirty case
+                    last_converted_type
+                };
+                return Some(ret);
             }
             HayrollSeed::Stmts(_, _) => None,
             HayrollSeed::Decls(_) => None,
@@ -816,11 +824,42 @@ impl HayrollMacroInv {
                     let name_token = ast::make::tokens::ident(&name);
                     let name_node = name_token.parent().unwrap().clone_for_update();
                     let dollar_token_mut = get_dollar_token_mut();
-                    vec![
-                        syntax::NodeOrToken::Token(dollar_token_mut),
-                        syntax::NodeOrToken::Node(name_node),
-                    ]
-                },
+
+                    // If arg is Expr and immediately follows an else, we need to wrap with {}
+                    let arg_region_is_following_else = match arg_region {
+                        HayrollSeed::Expr(_) => {
+                            let code_region = arg_region.get_raw_code_region(true);
+                            let expr = match code_region {
+                                CodeRegion::Expr(e) => e,
+                                _ => panic!("Expected Expr code region"),
+                            };
+                            expr.syntax().parent().map_or_else(|| false, |p| {
+                                ast::IfExpr::cast(p.clone()).map_or(false, |if_expr| {
+                                    if_expr.else_branch().map_or(false, |else_branch| {
+                                        match else_branch {
+                                            ast::ElseBranch::IfExpr(else_if_expr) => {
+                                                else_if_expr.syntax() == expr.syntax()
+                                            }
+                                            _ => false,
+                                        }
+                                    })
+                                })
+                            })
+                        }
+                        _ => false,
+                    };
+                    // In case of Expr, Wrap with {} in case the arg follows an else
+                    if arg_region_is_following_else {
+                        vec![
+                            syntax::NodeOrToken::Token(ast::make::token(syntax::SyntaxKind::L_CURLY)),
+                            syntax::NodeOrToken::Token(dollar_token_mut),
+                            syntax::NodeOrToken::Node(name_node),
+                            syntax::NodeOrToken::Token(ast::make::token(syntax::SyntaxKind::R_CURLY)),
+                        ]
+                    } else {
+                        vec![syntax::NodeOrToken::Token(dollar_token_mut), syntax::NodeOrToken::Node(name_node)]
+                    }
+                }
             ),
             HayrollSeed::Decls(_) => self
                 .seed
@@ -856,8 +895,20 @@ impl HayrollMacroInv {
     }
 
     pub fn fn_(&self, args_require_lvalue: &Vec<bool>, anti_name_duplicate: bool) -> ast::Fn {
+        // Note: The Seeder part does not support matching premises to invocations yet
+        let attr_text = if self.premise().is_empty() {
+            "".to_string()
+        } else {
+            format!("#[cfg({})]", self.premise())
+        };
         let return_type: String = match self.seed.ptr_or_base_type() {
-            Some(t) => " -> ".to_string() + &t.to_string(),
+            Some(t) => {
+                if t.to_string().contains("c_void") {
+                    "".to_string()
+                } else {
+                    " -> ".to_string() + &t.to_string()
+                }
+            }
             None => "".to_string(),
         };
         let arg_with_types = self
@@ -887,7 +938,8 @@ impl HayrollMacroInv {
                 vec![syntax::NodeOrToken::Node(name_node)]
             });
         let fn_ = format!(
-            "unsafe fn {}({}){} {{\n    {}\n}}",
+            "{}unsafe fn {}({}){} {{\n    {}\n}}",
+            attr_text,
             self.name_with_signature(anti_name_duplicate),
             arg_with_types,
             return_type,
@@ -1362,6 +1414,8 @@ pub fn extract_hayroll_seeds_from_syntax_roots_impl(
                 match seed {
                     HayrollSeed::Stmts(tag_begin, ref mut tag_end) => {
                         if tag_begin.loc_begin() == tag.loc_begin()
+                            && tag_begin.loc_end() == tag.loc_end()
+                            && tag_begin.loc_ref_begin() == tag.loc_ref_begin()
                             && tag_begin.seed_type() == tag.seed_type()
                             && tag.begin() == false
                         {

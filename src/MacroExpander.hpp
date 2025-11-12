@@ -950,11 +950,11 @@ private:
         for (char c : cleanedDigits)
         {
             int digit = digitValueForBase(c, base);
-            const std::uint64_t maxBeforeMul = (limit - static_cast<std::uint64_t>(digit)) / static_cast<std::uint64_t>(base);
-            if (value > maxBeforeMul)
-            {
-                throw std::runtime_error(std::string("Integer literal exceeds 64-bit range: ") + std::string(literal));
-            }
+            // const std::uint64_t maxBeforeMul = (limit - static_cast<std::uint64_t>(digit)) / static_cast<std::uint64_t>(base);
+            // if (value > maxBeforeMul)
+            // {
+            //     throw std::runtime_error(std::string("Integer literal exceeds 64-bit range: ") + std::string(literal));
+            // }
             value = value * static_cast<std::uint64_t>(base) + static_cast<std::uint64_t>(digit);
         }
 
