@@ -672,7 +672,7 @@ public:
         }
         if (invocation.ASTKind.empty())
         {
-            reasons.insert("non-syntactic");
+            reasons.insert("non-syntactical");
         }
         if (invocation.HasStringification)
         {
@@ -692,7 +692,7 @@ public:
         }
         if (invocation.NumArguments != static_cast<int>(invocation.Args.size()))
         {
-            reasons.insert("argument non-syntactic");
+            reasons.insert("argument non-syntactical");
         }
 
         constexpr static std::string_view validASTKinds[] = {"Expr", "Stmt", "Stmts", "Decl", "Decls"};
@@ -703,15 +703,14 @@ public:
         }
         if (invocation.ReturnType.contains("("))
         {
-            // Function pointer
-            reasons.insert("unsupported AST kind");
+            reasons.insert("function pointer");
         }
 
         for (const MakiArgSummary & arg : invocation.Args)
         {
             if (arg.ASTKind.empty())
             {
-                reasons.insert("argument non-syntactic");
+                reasons.insert("argument non-syntactical");
             }
             else if (std::find(std::begin(validASTKinds), std::end(validASTKinds), arg.ASTKind) == std::end(validASTKinds))
             {
@@ -720,8 +719,7 @@ public:
             }
             if (arg.Type.contains("("))
             {
-                // Function pointer
-                reasons.insert("argument unsupported AST kind");
+                reasons.insert("argument function pointer");
             }
 
             if (arg.Name.empty())
