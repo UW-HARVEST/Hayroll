@@ -21,7 +21,8 @@ TS_TAG="v0.25.10"
 TSC_PREPROC_GIT="https://github.com/UW-HARVEST/tree-sitter-c_preproc.git"
 TSC_PREPROC_TAG="0.1.5"
 Z3_GIT="https://github.com/Z3Prover/z3.git"
-Z3_TAG="z3-4.13.4"
+Z3_VERSION="4.13.4"
+Z3_TAG="z3-${Z3_VERSION}"
 LIBMCS_GIT="https://gitlab.com/gtd-gmbh/libmcs.git"
 LIBMCS_TAG="1.2.0"
 
@@ -218,13 +219,21 @@ else
 fi
 
 # --- Z3 ----------------------------------------------------------------------
+# z3 takes forever to build, so install through z3-solver, the Python wrapper,
+# which is published by z3 for each release.
+uv tool install z3-solver@${Z3_VERSION}
 git_clone_or_checkout "z3" "${Z3_GIT}" "${Z3_TAG}"
 pushd z3 > /dev/null
-echo "[*] Building Z3"
+echo "[*] Installing Z3 with z3-solver prebuilt"
 mkdir -p build && cd build
 run_quiet z3-cmake.log cmake -DCMAKE_BUILD_TYPE=Release -DZ3_BUILD_PYTHON_BINDINGS=OFF ..
-run_quiet z3-make.log make -j"$(nproc)"
-run_quiet z3-install.log ${SUDO} make install
+# run_quiet z3-make.log make -j"$(nproc)"
+# Copy `libz3.so` and `z3` from `z3-solver` to `build/` so that installation works.
+ln -s "$(uv tool dir)"/z3-solver/lib/python*/site-packages/z3/lib/libz3.so .
+ln -s libz3.so "libz3.so.$(echo "${Z3_VERSION}" | awk -F. '{print $1 "." $2}')" # ${major}.${minor}
+ln -s libz3.so "libz3.so.${Z3_VERSION}".0                                       # ${major}.${minor}.${patch}.0
+ln -s "$(uv tool dir)/z3-solver/bin/z3" .
+run_quiet z3-install.log ${SUDO} cmake --install .
 popd > /dev/null
 
 # --- tree-sitter core --------------------------------------------------------

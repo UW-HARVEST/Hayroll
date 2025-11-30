@@ -15,6 +15,7 @@ jobs:
         with:
           fetch-depth: 1
           show-progress: false
+      - uses: astral-sh/setup-uv@v6
       - name: Remove old versions of clang and llvm
         run: |
           ./remove-all-llvm.bash $NOSUDO
