@@ -155,9 +155,18 @@ target_link_libraries(hayroll PRIVATE
 
 # Rust
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CARGO_PROFILE "dev")
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(CARGO_PROFILE "release")
+else()
+    # No builtin equivalent unless we define our own profile.
+    set(CARGO_PROFILE "dev")
+endif()
+
 add_custom_target(
     Rust ALL
-    COMMAND CARGO_TARGET_DIR=${CMAKE_SOURCE_DIR}/build/ cargo build
+    COMMAND CARGO_TARGET_DIR=${CMAKE_SOURCE_DIR}/build/ cargo build --profile ${CARGO_PROFILE}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Building Rust binaries"
 )
