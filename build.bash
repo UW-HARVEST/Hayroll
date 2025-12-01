@@ -2,10 +2,14 @@
 
 BUILD_DIR="build"
 BUILD_TYPE="Debug" # Default to Debug; use -r/--release for Release
+RUST_PROFILE="debug" # Cargo profile directory name
 
 while [[ "$#" -gt 0 ]]; do
   case $1 in
-    -r | --release) BUILD_TYPE="Release" ;;
+    -r | --release)
+      BUILD_TYPE="Release"
+      RUST_PROFILE="release"
+      ;;
     -c | --clean) CLEAN=true ;;
     -h | --help)
       echo "Usage: ./build.bash [options]"
@@ -53,10 +57,10 @@ fi
 
 # Add soft links to binaries, from here (build directory) to the root directory
 ln -sf "${BUILD_DIR}/hayroll" ../hayroll
-# Rust binaries are in debug subdirectory
-ln -sf "${BUILD_DIR}/debug/reaper" ../reaper
-ln -sf "${BUILD_DIR}/debug/merger" ../merger
-ln -sf "${BUILD_DIR}/debug/inliner" ../inliner
-ln -sf "${BUILD_DIR}/debug/cleaner" ../cleaner
+RUST_BIN_DIR="${BUILD_DIR}/${RUST_PROFILE}"
+ln -sf "${RUST_BIN_DIR}/reaper" ../reaper
+ln -sf "${RUST_BIN_DIR}/merger" ../merger
+ln -sf "${RUST_BIN_DIR}/inliner" ../inliner
+ln -sf "${RUST_BIN_DIR}/cleaner" ../cleaner
 
 echo "Build completed"
