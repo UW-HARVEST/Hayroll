@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BUILD_DIR="build"
-BUILD_TYPE="Debug" # Default to Debug; use -r/--release for Release
+BUILD_TYPE="Debug"   # Default to Debug; use -r/--release for Release
 RUST_PROFILE="debug" # Cargo profile directory name
 
 while [[ "$#" -gt 0 ]]; do
