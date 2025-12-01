@@ -150,6 +150,29 @@ run_quiet() {
   fi
 }
 
+ensure_uv() {
+  if command -v uv > /dev/null 2>&1; then
+    echo "[*] uv already installed, version: $(uv --version | head -n 1)"
+    return
+  fi
+
+  echo "[*] Installing uv (https://astral.sh/uv)"
+  local installer_url="https://astral.sh/uv/install.sh"
+  run_quiet uv-install.log bash -c "curl -LsSf ${installer_url} | sh"
+
+  local uv_bin_dir="${HOME}/.local/bin"
+  if [[ ":${PATH}:" != *":${uv_bin_dir}:"* ]]; then
+    export PATH="${uv_bin_dir}:${PATH}"
+  fi
+
+  if ! command -v uv > /dev/null 2>&1; then
+    echo "Error: uv installation failed. Ensure ${uv_bin_dir} is in your PATH."
+    exit 1
+  fi
+
+  echo "[*] uv installed successfully"
+}
+
 # Generate LLVM package names based on whether version is specified
 if [[ -n "${LLVM_VERSION}" ]]; then
   CLANG_PKG="clang-${LLVM_VERSION}"
@@ -221,6 +244,7 @@ fi
 # --- Z3 ----------------------------------------------------------------------
 # z3 takes forever to build, so install through z3-solver, the Python wrapper,
 # which is published by z3 for each release.
+ensure_uv
 uv tool install z3-solver@${Z3_VERSION}
 git_clone_or_checkout "z3" "${Z3_GIT}" "${Z3_TAG}"
 pushd z3 > /dev/null
@@ -229,10 +253,10 @@ mkdir -p build && cd build
 run_quiet z3-cmake.log cmake -DCMAKE_BUILD_TYPE=Release -DZ3_BUILD_PYTHON_BINDINGS=OFF ..
 # run_quiet z3-make.log make -j"$(nproc)"
 # Copy `libz3.so` and `z3` from `z3-solver` to `build/` so that installation works.
-ln -s "$(uv tool dir)"/z3-solver/lib/python*/site-packages/z3/lib/libz3.so .
-ln -s libz3.so "libz3.so.$(echo "${Z3_VERSION}" | awk -F. '{print $1 "." $2}')" # ${major}.${minor}
-ln -s libz3.so "libz3.so.${Z3_VERSION}".0                                       # ${major}.${minor}.${patch}.0
-ln -s "$(uv tool dir)/z3-solver/bin/z3" .
+ln -sf "$(uv tool dir)"/z3-solver/lib/python*/site-packages/z3/lib/libz3.so .
+ln -sf libz3.so "libz3.so.$(echo "${Z3_VERSION}" | awk -F. '{print $1 "." $2}')" # ${major}.${minor}
+ln -sf libz3.so "libz3.so.${Z3_VERSION}".0                                       # ${major}.${minor}.${patch}.0
+ln -sf "$(uv tool dir)/z3-solver/bin/z3" .
 run_quiet z3-install.log ${SUDO} cmake --install .
 popd > /dev/null
 
