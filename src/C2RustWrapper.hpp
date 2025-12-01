@@ -188,13 +188,9 @@ public:
     static std::string genRustToolchainToml()
     {
         const std::string rustToolchainToml =
-        // Note: the toolchain version C2Rust 0.20.0 is by default nightly-2022-08-08
-        // but for compiling libpng 1.5.30 it depends on quote 1.0.42 which requires Rust 1.68+
-        // and that #![feature(extern_types)] requires a nightly version versus stable
-        // as a compromise we use nightly-2023-03-28
 R"(
 [toolchain]
-channel = "nightly-2023-03-28"
+channel = "nightly-2023-04-15"
 components = ["rustfmt"]
 )";
         return rustToolchainToml;
