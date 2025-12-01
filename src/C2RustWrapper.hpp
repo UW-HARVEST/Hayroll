@@ -195,7 +195,7 @@ public:
 R"(
 [toolchain]
 channel = "nightly-2023-03-28"
-components = ["rustfmt", "rustc-dev", "rust-src", "miri", "rust-analyzer"]
+components = ["rustfmt"]
 )";
         return rustToolchainToml;
     }
