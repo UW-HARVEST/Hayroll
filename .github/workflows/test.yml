@@ -1,12 +1,16 @@
-name: Smoke test with LLVM 19
+name: Smoke test
 on: [push, pull_request]
-env:
-  LLVM_VERSION: 19
-  SUDO: sudo
-  NOSUDO:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        llvm: [17, 18, 19]
+    env:
+      LLVM_VERSION: ${{ matrix.llvm }}
+      SUDO: sudo
+      NOSUDO:
     defaults:
       run:
         shell: bash -l {0}
