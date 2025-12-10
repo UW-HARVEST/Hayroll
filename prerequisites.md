@@ -30,7 +30,7 @@ PATH.
 
 ## Maki (Hayroll-modified Version)
 
-Tested version: tag 0.1.5
+Tested version: tag 0.1.6
 
 [Maki](https://github.com/UW-HARVEST/Maki) is a C macro analysis tool. Hayroll
 uses a modified version.
@@ -63,7 +63,7 @@ make -C tree-sitter
 
 ## Hayroll Tree-sitter-c_preproc
 
-Tested version: tag 0.1.5
+Tested version: tag 0.1.6
 
 [tree-sitter-c_preproc](https://github.com/UW-HARVEST/tree-sitter-c_preproc) is
 a parser for C macros.
