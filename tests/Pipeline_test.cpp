@@ -3,6 +3,8 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <optional>
+#include <stdexcept>
 
 #include <spdlog/spdlog.h>
 #include "json.hpp"
@@ -10,6 +12,7 @@
 #include "Pipeline.hpp"
 #include "TempDir.hpp"
 #include "CompileCommand.hpp"
+#include "subprocess.hpp"
 
 int main()
 {
@@ -127,6 +130,8 @@ int main()
         ofs << compileCommandsJson.dump(2);
     }
 
+    const std::string binaryName = srcPath.stem().string();
+
     // Invoke the pipeline
     int returnCode = Hayroll::Pipeline::run
     (
@@ -135,13 +140,71 @@ int main()
         projDir,
         std::nullopt, // symbolicMacroWhitelist
         true, // enableInline
-        1
+        1,
+        std::optional<std::string>(binaryName)
     );
+
 
     if (returnCode != 0)
     {
         return returnCode;
     }
+
+    const std::string outDirStr = outDir.string();
+
+    auto runCargoCommand = [&](const std::initializer_list<std::string> & args, int expectedRet)
+    {
+        subprocess::Popen proc
+        (
+            args,
+            subprocess::output{subprocess::PIPE},
+            subprocess::error{subprocess::PIPE},
+            subprocess::cwd{outDirStr.c_str()}
+        );
+        auto [out, err] = proc.communicate();
+        int ret = proc.retcode();
+        if (ret != expectedRet)
+        {
+            std::string commandLine;
+            for (const std::string & arg : args)
+            {
+                if (!commandLine.empty()) commandLine.push_back(' ');
+                commandLine += arg;
+            }
+            SPDLOG_ERROR("{} failed with exit code {} (expected {}). stdout:\n{}\nstderr:\n{}",
+                commandLine,
+                ret,
+                expectedRet,
+                out.buf.data(),
+                err.buf.data()
+            );
+            throw std::runtime_error("cargo command failed");
+        }
+    };
+
+    runCargoCommand
+    (
+        {
+            "cargo",
+            "build",
+            "--quiet",
+            "--features",
+            "defCOND_MACRO_1",
+        },
+        0
+    );
+
+    runCargoCommand
+    (
+        {
+            "cargo",
+            "run",
+            "--quiet",
+            "--features",
+            "defCOND_MACRO_1",
+        },
+        6
+    );
 
     return 0;
 }

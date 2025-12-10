@@ -216,6 +216,83 @@ public:
         return outPath;
     }
 
+    static std::optional<std::pair<std::string, std::filesystem::path>> resolveBinaryTarget
+    (
+        const std::vector<CompileCommand> & compileCommands,
+        const std::filesystem::path & projDir,
+        const std::filesystem::path & outputDir,
+        std::string_view query
+    )
+    {
+        std::filesystem::path queryPath(query);
+        if (!queryPath.is_absolute())
+        {
+            queryPath = projDir / queryPath;
+        }
+        queryPath = queryPath.lexically_normal();
+
+        std::vector<const CompileCommand*> matches;
+        for (const CompileCommand & command : compileCommands)
+        {
+            std::filesystem::path commandStem = command.file;
+            commandStem.replace_extension("");
+            commandStem = commandStem.lexically_normal();
+            if (commandStem == queryPath)
+            {
+                matches.push_back(&command);
+            }
+        }
+
+        if (matches.empty())
+        {
+            SPDLOG_ERROR(
+                "Binary target '{}' did not match any translation unit (provide the path to the source file without its extension, relative to the project directory or absolute).",
+                query
+            );
+            return std::nullopt;
+        }
+        if (matches.size() > 1)
+        {
+            SPDLOG_ERROR(
+                "Binary target '{}' is ambiguous; found {} translation units with the same stem",
+                query,
+                matches.size()
+            );
+            for (const CompileCommand * cmd : matches)
+            {
+                SPDLOG_ERROR("  candidate: {}", cmd->file.string());
+            }
+            return std::nullopt;
+        }
+
+        CompileCommand projectedCommand = matches.front()->withSanitizedPaths(projDir)
+            .withUpdatedFilePathPrefix(outputDir / "src", projDir)
+            .withUpdatedFileExtension(".rs");
+        std::filesystem::path relativePath;
+        try
+        {
+            relativePath = std::filesystem::relative(projectedCommand.file, outputDir);
+        }
+        catch (const std::exception & e)
+        {
+            SPDLOG_ERROR("Failed to compute binary output path for '{}': {}", query, e.what());
+            return std::nullopt;
+        }
+        if (relativePath.empty())
+        {
+            SPDLOG_ERROR("Binary target '{}' produced an empty relative path", query);
+            return std::nullopt;
+        }
+        relativePath = relativePath.lexically_normal();
+
+        SPDLOG_INFO(
+            "Binary target '{}' will generate a [[bin]] entry pointing to {}",
+            query,
+            relativePath.generic_string()
+        );
+        return std::make_optional(std::make_pair(std::string(query), relativePath));
+    }
+
     static int run
     (
         const std::filesystem::path & compileCommandsJsonPath,
@@ -223,7 +300,8 @@ public:
         const std::filesystem::path & projDir,
         std::optional<std::vector<std::string>> symbolicMacroWhitelist,
         const bool enableInline,
-        std::size_t jobs
+        std::size_t jobs,
+        std::optional<std::string> binaryTargetName
     )
     {
         // Load compile_commands.json
@@ -249,6 +327,16 @@ public:
                     dirs.size(),
                     projDir.string()
                 );
+            }
+        }
+
+        std::optional<std::pair<std::string, std::filesystem::path>> binaryTargetConfig;
+        if (binaryTargetName)
+        {
+            binaryTargetConfig = resolveBinaryTarget(compileCommands, projDir, outputDir, *binaryTargetName);
+            if (!binaryTargetConfig)
+            {
+                return 1;
             }
         }
 
@@ -775,7 +863,17 @@ public:
         // Build files
         std::string buildRs = C2RustWrapper::genBuildRs();
         std::string mergedCargoToml = C2RustWrapper::mergeCargoTomls(allCargoTomls);
-        std::string cargoTomlWithFeatures = C2RustWrapper::addFeaturesToCargoToml(mergedCargoToml, allRustFeatureAtoms);
+        std::string cargoTomlWithBinTarget = mergedCargoToml;
+        if (binaryTargetConfig)
+        {
+            cargoTomlWithBinTarget = C2RustWrapper::addBinaryTargetToCargoToml
+            (
+                mergedCargoToml,
+                binaryTargetConfig->first,
+                binaryTargetConfig->second.generic_string()
+            );
+        }
+        std::string cargoTomlWithFeatures = C2RustWrapper::addFeaturesToCargoToml(cargoTomlWithBinTarget, allRustFeatureAtoms);
         std::string libRs = C2RustWrapper::genLibRs(projDir, compileCommands);
         std::string rustToolchainToml = C2RustWrapper::genRustToolchainToml();
         auto saveBuildFile = [&](const std::string & content, const std::string & fileName)

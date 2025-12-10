@@ -1,6 +1,7 @@
 #include <iostream>
 #include <filesystem>
 #include <thread>
+#include <optional>
 
 #include <spdlog/spdlog.h>
 #include "CLI11.hpp"
@@ -27,6 +28,7 @@ int main(const int argc, const char* argv[])
     std::filesystem::path symbolicMacroWhitelistPath;
     bool enableInline = false;
     int verbose = 0;
+    std::string binaryTargetName;
 
     try
     {
@@ -52,6 +54,12 @@ int main(const int argc, const char* argv[])
         app.add_flag("-v,--verbose", verbose,
             "Increase verbosity (-v=debug, -vv=trace)")
             ->default_val(0);
+        app.add_option(
+            "-b,--binary",
+            binaryTargetName,
+            "Emit a Cargo [[bin]] entry using the main() from the specified translation unit "
+            "(pass the file name without extension)")
+            ->default_str("");
 
         // Main (default) pattern positionals
         app.add_option("compile_commands", compileCommandsJsonPath, "Path to compile_commands.json");
@@ -133,6 +141,12 @@ int main(const int argc, const char* argv[])
             symbolicMacroWhitelist = symbolicMacroWhitelistJson.get<std::vector<std::string>>();
         }
 
+        std::optional<std::string> binaryTarget = std::nullopt;
+        if (!binaryTargetName.empty())
+        {
+            binaryTarget = binaryTargetName;
+        }
+
         return Pipeline::run
         (
             compileCommandsJsonPath,
@@ -140,7 +154,8 @@ int main(const int argc, const char* argv[])
             projDir,
             symbolicMacroWhitelist,
             enableInline,
-            jobs
+            jobs,
+            binaryTarget
         );
     }
     catch (const std::exception & e)

@@ -185,6 +185,43 @@ public:
         return toml::format(tomlVal);
     }
 
+    static std::string addBinaryTargetToCargoToml
+    (
+        const std::string & cargoToml,
+        const std::string & binaryName,
+        const std::string & binaryPath
+    )
+    {
+        if (binaryName.empty() || binaryPath.empty())
+        {
+            return cargoToml;
+        }
+
+        toml::ordered_value tomlVal = toml::parse_str<toml::ordered_type_config>(cargoToml);
+
+        if (!tomlVal.contains("bin"))
+        {
+            tomlVal["bin"] = toml::array{};
+        }
+        else if (!tomlVal["bin"].is_array())
+        {
+            throw std::runtime_error("Cargo.toml 'bin' entry must be an array of tables");
+        }
+
+        toml::ordered_value binEntry = toml::table{};
+        binEntry["name"] = binaryName;
+        binEntry["path"] = binaryPath;
+        tomlVal["bin"].as_array().push_back(binEntry);
+
+        if (!tomlVal.contains("package"))
+        {
+            tomlVal["package"] = toml::table{};
+        }
+        tomlVal["package"]["autobins"] = false;
+
+        return toml::format(tomlVal);
+    }
+
     static std::string genRustToolchainToml()
     {
         const std::string rustToolchainToml =
