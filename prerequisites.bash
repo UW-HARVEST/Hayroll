@@ -230,6 +230,14 @@ if ! command -v rustc > /dev/null 2>&1; then
   exit 1
 else
   echo "[*] rustc found, version: $(rustc --version)"
+  rust_version=$(rustc --version | awk '{print $2}')
+  rust_major=${rust_version%%.*}
+  rust_minor=$(echo "${rust_version}" | cut -d. -f2)
+  if [[ ${rust_major} -lt 1 || ( ${rust_major} -eq 1 && ${rust_minor} -lt 84 ) ]]; then
+    echo "Error: Rust 1.84+ required."
+    echo "Please run: rustup update stable"
+    exit 1
+  fi
 fi
 
 # --- C2Rust ------------------------------------------------------------------
@@ -245,7 +253,11 @@ fi
 # z3 takes forever to build, so install through z3-solver, the Python wrapper,
 # which is published by z3 for each release.
 ensure_uv
-uv tool install z3-solver@${Z3_VERSION}
+if uv tool list 2>/dev/null | grep -q "z3-solver ${Z3_VERSION}"; then
+  echo "[*] z3-solver ${Z3_VERSION} already installed via uv"
+else
+  run_quiet z3-solver-install.log uv tool install --force z3-solver@${Z3_VERSION}
+fi
 git_clone_or_checkout "z3" "${Z3_GIT}" "${Z3_TAG}"
 pushd z3 > /dev/null
 echo "[*] Installing Z3 with z3-solver prebuilt"
