@@ -63,27 +63,29 @@ public:
         TempDir outputDir;
         std::filesystem::path outputDirPath = outputDir.getPath();
 
-        SPDLOG_TRACE
-        (
-            "Issuing command: {} {} {} {} {}",
+        std::vector<std::string> args =
+        {
             C2RustExe.string(),
             "transpile",
             "--reorganize-definitions",
             "--emit-build-files",
             compileCommandsPath.string(),
             "--output-dir", outputDirPath.string()
-        );
+        };
+
+        std::string argsStr = [&args]()
+        {
+            std::ostringstream oss;
+            for (const auto & arg : args)
+            {
+                oss << arg << " ";
+            }
+            return oss.str();
+        }();
 
         subprocess::Popen c2rustProc
         (
-            {
-                C2RustExe.string(),
-                "transpile",
-                "--reorganize-definitions",
-                "--emit-build-files",
-                compileCommandsPath.string(),
-                "--output-dir", outputDirPath.string()
-            },
+            args,
             subprocess::output{subprocess::PIPE},
             subprocess::error{subprocess::PIPE}
         );

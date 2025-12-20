@@ -67,11 +67,16 @@ public:
         clangArgs.push_back(outputPath.string());
         clangArgs.push_back(sourcePath.string());
 
-        std::string clangArgsStr;
-        for (const auto& arg : clangArgs)
+        std::string clangArgsStr = [&clangArgs]()
         {
-            clangArgsStr += arg + " ";
-        }
+            std::ostringstream oss;
+            for (const auto & arg : clangArgs)
+            {
+                oss << arg << " ";
+            }
+            return oss.str();
+        }();
+        
         SPDLOG_TRACE
         (
             "cwd to {} and issuing command: {}",
