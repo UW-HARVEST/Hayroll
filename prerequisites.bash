@@ -233,7 +233,7 @@ else
   rust_version=$(rustc --version | awk '{print $2}')
   rust_major=${rust_version%%.*}
   rust_minor=$(echo "${rust_version}" | cut -d. -f2)
-  if [[ ${rust_major} -lt 1 || ( ${rust_major} -eq 1 && ${rust_minor} -lt 84 ) ]]; then
+  if [[ ${rust_major} -lt 1 || (${rust_major} -eq 1 && ${rust_minor} -lt 84) ]]; then
     echo "Error: Rust 1.84+ required."
     echo "Please run: rustup update stable"
     exit 1
@@ -253,7 +253,7 @@ fi
 # z3 takes forever to build, so install through z3-solver, the Python wrapper,
 # which is published by z3 for each release.
 ensure_uv
-if uv tool list 2>/dev/null | grep -q "z3-solver ${Z3_VERSION}"; then
+if uv tool list 2> /dev/null | grep -q "z3-solver ${Z3_VERSION}"; then
   echo "[*] z3-solver ${Z3_VERSION} already installed via uv"
 else
   run_quiet z3-solver-install.log uv tool install --force z3-solver@${Z3_VERSION}
