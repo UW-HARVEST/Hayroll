@@ -423,169 +423,282 @@ public:
 
                     // Splitter
                     std::vector<DefineSet> defineSets;
-                    std::vector<CompileCommand> commandsWithDefSets;
-                    {
-                        StageTimer::Scope stage(stageTimer, StageNames::Splitter);
-                        defineSets = Splitter::run(premiseTree, command);
-                        saveOutput
-                        (
-                            command,
-                            outputDir,
-                            projDir,
-                            DefineSet::defineSetsToString(defineSets),
-                            ".defset.raw.txt",
-                            "Raw DefineSets summary",
-                            command.file.string(),
-                            std::nullopt
-                        );
-
-                        commandsWithDefSets.reserve(defineSets.size());
-                        for (std::size_t i = 0; i < defineSets.size(); ++i)
-                        {
-                            commandsWithDefSets.push_back(command.withCleanup().withUpdatedDefineSet(defineSets[i]));
-                        }
-                    }
-
-                    // Run rewrite-includes + LineMatcher + CodeRangeAnalysisTasks generation + Maki cpp2c on each DefineSet
-                    std::vector<std::string> cuStrs;
-                    std::vector<std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>>> lineMaps;
-                    std::vector<std::vector<std::pair<Hayroll::IncludeTreePtr, int>>> inverseLineMaps;
-                    std::vector<std::string> cpp2cStrs;
-                    std::vector<std::vector<Hayroll::MakiInvocationSummary>> cpp2cInvocations;
-                    std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRanges;
-                    std::vector<std::vector<Hayroll::MakiRangeSummary>> cpp2cRangesCompleted;
+                    std::vector<std::string> cargoTomls;
+                    std::vector<std::string> reapedStrs;
+                    std::vector<Seeder::SeedingReport> seedingReports;
                     std::set<std::string> rustFeatureAtoms;
-
-                    const std::size_t candidateCount = defineSets.size();
-                    cuStrs.reserve(candidateCount);
-                    lineMaps.reserve(candidateCount);
-                    inverseLineMaps.reserve(candidateCount);
-                    cpp2cStrs.reserve(candidateCount);
-                    cpp2cInvocations.reserve(candidateCount);
-                    cpp2cRanges.reserve(candidateCount);
-
-                    std::vector<DefineSet> validDefineSets;
-                    validDefineSets.reserve(candidateCount);
-                    std::vector<CompileCommand> validCommandsWithDefSets;
-                    validCommandsWithDefSets.reserve(candidateCount);
-
                     int avgLocCount = 0;
 
+                    Splitter splitter(premiseTree, command);
+                    Splitter::Feedback feedback = Splitter::Feedback::initial();
+
+                    auto processDefineSet = [&](const DefineSet & defineSet) -> bool
                     {
-                        StageTimer::Scope stage(stageTimer, StageNames::Maki);
+                        CompileCommand commandWithDefineSet = command.withCleanup().withUpdatedDefineSet(defineSet);
 
-                        auto makiStep = [&]
-                        (
-                            size_t i,
-                            const CompileCommand & commandWithDefineSet,
-                            const DefineSet & candidateDefineSet
-                        )
+                        std::string cuStr;
+                        std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> lineMap;
+                        std::vector<std::pair<Hayroll::IncludeTreePtr, int>> inverseLineMap;
+                        std::string cpp2cStr;
+                        std::vector<Hayroll::MakiInvocationSummary> cpp2cInvocations;
+                        std::vector<Hayroll::MakiRangeSummary> cpp2cRanges;
+                        std::vector<Hayroll::MakiRangeSummary> cpp2cRangesCompleted;
+                        std::vector<Seeder::SeedingReport> seedingReportEntries;
+                        std::string cuSeededStr;
+                        std::string c2rustStr;
+                        std::string cargoToml;
+                        std::string reapedStr;
+                        std::string inlinedStr;
+                        std::string failedStage = "Unknown";
+
+                        try
                         {
-                            try
                             {
-                                const std::size_t validIndex = validDefineSets.size();
-
-                                std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(commandWithDefineSet);
-                                const auto [lineMap, inverseLineMap] = LineMatcher::run
+                                failedStage = StageNames::Maki;
+                                StageTimer::Scope stage(stageTimer, StageNames::Maki);
+                                cuStr = RewriteIncludesWrapper::runRewriteIncludes(commandWithDefineSet);
+                                const auto lineMapResults = LineMatcher::run
                                 (
                                     cuStr,
                                     executor.includeTree,
                                     command.getIncludePaths()
                                 );
+                                lineMap = lineMapResults.first;
+                                inverseLineMap = lineMapResults.second;
 
-                                // This way of getting feature atoms would ignore conditionally-defined macros
-                                // that do not appear as pure C code in the CU file.
-                                // We fall back to collecting via DefineSet.
-                                auto [codeRangeAnalysisTasks, _]
+                                auto [codeRangeAnalysisTasks, atoms]
                                     = premiseTree->getCodeRangeAnalysisTasksAndRustFeatureAtoms(lineMap);
+                                rustFeatureAtoms.insert(atoms.begin(), atoms.end());
 
-                                std::string cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
-
+                                cpp2cStr = MakiWrapper::runCpp2cOnCu(commandWithDefineSet, codeRangeAnalysisTasks);
                                 auto [invocations, ranges] = parseCpp2cSummary(cpp2cStr);
 
-                                saveOutput
+                                cpp2cInvocations = std::move(invocations);
+                                cpp2cRanges = std::move(ranges);
+                                auto cpp2cRangesCompletedAll = Hayroll::MakiRangeSummary::complementRangeSummaries
                                 (
-                                    commandWithDefineSet,
-                                    outputDir,
-                                    projDir,
-                                    cuStr,
-                                    std::format(".{}.cu.c", validIndex),
-                                    "Compilation unit file",
-                                    command.file.string(),
-                                    validIndex
+                                    {cpp2cRanges},
+                                    {inverseLineMap}
                                 );
-                                saveOutput
-                                (
-                                    commandWithDefineSet,
-                                    outputDir,
-                                    projDir,
-                                    cpp2cStr,
-                                    std::format(".{}.cpp2c", validIndex),
-                                    "Maki cpp2c output",
-                                    command.file.string(),
-                                    validIndex
-                                );
-
-                                cuStrs.push_back(std::move(cuStr));
-                                lineMaps.push_back(lineMap);
-                                inverseLineMaps.push_back(inverseLineMap);
-                                cpp2cStrs.push_back(std::move(cpp2cStr));
-                                cpp2cInvocations.push_back(std::move(invocations));
-                                cpp2cRanges.push_back(std::move(ranges));
-                                validDefineSets.push_back(candidateDefineSet);
-                                validCommandsWithDefSets.push_back(commandWithDefineSet);
+                                cpp2cRangesCompleted = std::move(cpp2cRangesCompletedAll.front());
                             }
-                            catch (...)
+
                             {
-                                SPDLOG_WARN
+                                failedStage = StageNames::Seeder;
+                                StageTimer::Scope stage(stageTimer, StageNames::Seeder);
+                                auto seederResult = Seeder::run
                                 (
-                                    "Skipping DefineSet {} (index {}) due to Maki failure",
-                                    candidateDefineSet.toString(),
-                                    i
+                                    cpp2cInvocations,
+                                    cpp2cRangesCompleted,
+                                    cuStr,
+                                    lineMap,
+                                    inverseLineMap
                                 );
+                                cuSeededStr = std::move(std::get<0>(seederResult));
+                                seedingReportEntries = std::move(std::get<1>(seederResult));
                             }
-                        };
 
-                        for (std::size_t i = 0; i < candidateCount; ++i)
-                        {
-                            const CompileCommand & commandWithDefineSet = commandsWithDefSets[i];
-                            const DefineSet & candidateDefineSet = defineSets[i];
-                            makiStep(i, commandWithDefineSet, candidateDefineSet);
-                        }
+                            {
+                                failedStage = StageNames::C2Rust;
+                                StageTimer::Scope stage(stageTimer, StageNames::C2Rust);
+                                auto transpileResult = C2RustWrapper::transpile(cuSeededStr, commandWithDefineSet);
+                                c2rustStr = std::move(std::get<0>(transpileResult));
+                                cargoToml = std::move(std::get<1>(transpileResult));
+                            }
 
-                        // If none of the candidate DefineSets are valid, fall back to an empty DefineSet
-                        if (validDefineSets.empty())
-                        {
-                            SPDLOG_WARN
+                            {
+                                failedStage = StageNames::Reaper;
+                                StageTimer::Scope stage(stageTimer, StageNames::Reaper);
+                                reapedStr = RustRefactorWrapper::runReaper(c2rustStr);
+                            }
+
+                            if (enableInline)
+                            {
+                                inlinedStr = RustRefactorWrapper::runInliner(reapedStr);
+                            }
+
+                            const std::size_t splitId = reapedStrs.size();
+
+                            const std::string seedingReportStr = json(seedingReportEntries).dump(4);
+                            saveOutput
                             (
-                                "All candidate DefineSets failed Maki; falling back to empty DefineSet"
+                                commandWithDefineSet,
+                                outputDir,
+                                projDir,
+                                cuStr,
+                                std::format(".{}.cu.c", splitId),
+                                "Compilation unit file",
+                                command.file.string(),
+                                splitId
                             );
-                            const std::size_t i = 0;
-                            DefineSet candidateDefineSet = DefineSet{};
-                            const CompileCommand & commandWithDefineSet = command.withCleanup().withUpdatedDefineSet(candidateDefineSet);
-                            makiStep(i, commandWithDefineSet, candidateDefineSet);
-                        }
-
-                        cpp2cRangesCompleted = Hayroll::MakiRangeSummary::complementRangeSummaries(cpp2cRanges, inverseLineMaps);
-                        for (std::size_t i = 0; i < cpp2cRangesCompleted.size(); ++i)
-                        {
+                            saveOutput
+                            (
+                                commandWithDefineSet,
+                                outputDir,
+                                projDir,
+                                cpp2cStr,
+                                std::format(".{}.cpp2c", splitId),
+                                "Maki cpp2c output",
+                                command.file.string(),
+                                splitId
+                            );
                             saveOutput
                             (
                                 command,
                                 outputDir,
                                 projDir,
-                                json(cpp2cRangesCompleted[i]).dump(4),
-                                std::format(".{}.cpp2c.ranges.json", i),
+                                json(cpp2cRangesCompleted).dump(4),
+                                std::format(".{}.cpp2c.ranges.json", splitId),
                                 "Complemented Maki range summary",
                                 command.file.string(),
-                                i
+                                splitId
                             );
+                            saveOutput
+                            (
+                                command,
+                                outputDir,
+                                projDir,
+                                seedingReportStr,
+                                std::format(".{}.seeder_report.json", splitId),
+                                "Hayroll Seeder report",
+                                command.file.string(),
+                                splitId
+                            );
+                            saveOutput
+                            (
+                                command,
+                                outputDir,
+                                projDir,
+                                cuSeededStr,
+                                std::format(".{}.seeded.cu.c", splitId),
+                                "Hayroll Seeded compilation unit",
+                                command.file.string(),
+                                splitId
+                            );
+                            saveOutput
+                            (
+                                command,
+                                outputDir,
+                                projDir,
+                                c2rustStr,
+                                std::format(".{}.seeded.rs", splitId),
+                                "C2Rust output",
+                                command.file.string(),
+                                splitId
+                            );
+                            saveOutput
+                            (
+                                command,
+                                outputDir,
+                                projDir,
+                                cargoToml,
+                                std::format(".{}.Cargo.toml", splitId),
+                                "C2Rust Cargo.toml",
+                                command.file.string(),
+                                splitId
+                            );
+                            saveOutput
+                            (
+                                command,
+                                outputDir,
+                                projDir,
+                                reapedStr,
+                                std::format(".{}.reaped.rs", splitId),
+                                "Hayroll Reaper output",
+                                command.file.string(),
+                                splitId
+                            );
+
+                            if (enableInline)
+                            {
+                                saveOutput
+                                (
+                                    command,
+                                    outputDir,
+                                    projDir,
+                                    inlinedStr,
+                                    std::format(".{}.inlined.rs", splitId),
+                                    "Hayroll Inliner output",
+                                    command.file.string(),
+                                    splitId
+                                );
+                            }
+
+                            defineSets.push_back(defineSet);
+                            reapedStrs.push_back(reapedStr);
+                            cargoTomls.push_back(cargoToml);
+                            seedingReports.insert
+                            (
+                                seedingReports.end(),
+                                seedingReportEntries.begin(),
+                                seedingReportEntries.end()
+                            );
+
+                            for (const auto & [name, _] : defineSet.defines)
+                            {
+                                rustFeatureAtoms.insert("def" + name);
+                            }
+
+                            if (!cuStr.empty())
+                            {
+                                avgLocCount += static_cast<int>(std::count(cuStr.begin(), cuStr.end(), '\n'));
+                                stageTimer.setLocCount(avgLocCount / static_cast<int>(reapedStrs.size()));
+                            }
+
+                            ++taskSuccessfulSplits;
+                            return true;
+                        }
+                        catch (const std::exception & e)
+                        {
+                            SPDLOG_WARN
+                            (
+                                "Skipping DefineSet {} due to failure at stage {}",
+                                defineSet.toString(),
+                                failedStage
+                            );
+                            feedback = Splitter::Feedback::failStage(failedStage, e.what());
+                            return false;
+                        }
+                        catch (...)
+                        {
+                            SPDLOG_WARN
+                            (
+                                "Skipping DefineSet {} due to unknown failure.",
+                                defineSet.toString()
+                            );
+                            feedback = Splitter::Feedback::failStage("Unknown", "unknown error");
+                            return false;
+                        }
+                    };
+
+                    while (true)
+                    {
+                        std::optional<DefineSet> defineSetOpt;
+                        {
+                            StageTimer::Scope stage(stageTimer, StageNames::Splitter);
+                            defineSetOpt = splitter.next(feedback);
+                        }
+                        if (!defineSetOpt) break;
+
+                        const DefineSet & defineSet = *defineSetOpt;
+                        bool ok = processDefineSet(defineSet);
+                        if (ok)
+                        {
+                            feedback = Splitter::Feedback::success();
                         }
                     }
 
-                    defineSets = std::move(validDefineSets);
-                    commandsWithDefSets = std::move(validCommandsWithDefSets);
-                    const std::size_t defineCount = defineSets.size();
+                    if (reapedStrs.empty())
+                    {
+                        SPDLOG_WARN("No successful DefineSet; falling back to empty DefineSet.");
+                        processDefineSet(DefineSet{});
+                    }
+
+                    if (reapedStrs.empty())
+                    {
+                        throw std::runtime_error("No reaped outputs generated for " + command.file.string());
+                    }
+
                     saveOutput
                     (
                         command,
@@ -597,144 +710,6 @@ public:
                         command.file.string(),
                         std::nullopt
                     );
-
-                    if (!cuStrs.empty())
-                    {
-                        int taskTotalLocCount = 0;
-                        for (const std::string & cuStr : cuStrs)
-                        {
-                            taskTotalLocCount += static_cast<int>(std::count(cuStr.begin(), cuStr.end(), '\n'));
-                        }
-                        avgLocCount = taskTotalLocCount / static_cast<int>(cuStrs.size());
-                        stageTimer.setLocCount(avgLocCount);
-                    }
-
-                    std::vector<std::string> cargoTomls;
-                    cargoTomls.reserve(defineCount);
-                    std::vector<std::string> reapedStrs;
-                    reapedStrs.reserve(defineCount);
-                    std::vector<Seeder::SeedingReport> seedingReports;
-                    seedingReports.reserve(defineCount);
-
-                    for (std::size_t i = 0; i < defineCount; ++i)
-                    {
-                        std::string cuSeededStr;
-                        std::vector<Seeder::SeedingReport> seedingReportEntries;
-                        {
-                            StageTimer::Scope stage(stageTimer, StageNames::Seeder);
-                            auto seederResult = Seeder::run
-                            (
-                                cpp2cInvocations[i],
-                                cpp2cRangesCompleted[i],
-                                cuStrs[i],
-                                lineMaps[i],
-                                inverseLineMaps[i]
-                            );
-                            cuSeededStr = std::move(std::get<0>(seederResult));
-                            seedingReportEntries = std::move(std::get<1>(seederResult));
-                            const std::string seedingReportStr = json(seedingReportEntries).dump(4);
-                            saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                seedingReportStr,
-                                std::format(".{}.seeder_report.json", i),
-                                "Hayroll Seeder report",
-                                command.file.string(),
-                                i
-                            );
-                            saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                cuSeededStr,
-                                std::format(".{}.seeded.cu.c", i),
-                                "Hayroll Seeded compilation unit",
-                                command.file.string(),
-                                i
-                            );
-                        }
-                        seedingReports.insert
-                        (
-                            seedingReports.end(),
-                            seedingReportEntries.begin(),
-                            seedingReportEntries.end()
-                        );
-
-                        std::string c2rustStr;
-                        std::string cargoToml;
-                        {
-                            StageTimer::Scope stage(stageTimer, StageNames::C2Rust);
-                            auto transpileResult = C2RustWrapper::transpile(cuSeededStr, commandsWithDefSets[i]);
-                            c2rustStr = std::move(std::get<0>(transpileResult));
-                            cargoToml = std::move(std::get<1>(transpileResult));
-                            ++taskSuccessfulSplits;
-                            saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                c2rustStr,
-                                std::format(".{}.seeded.rs", i),
-                                "C2Rust output",
-                                command.file.string(),
-                                i
-                            );
-                            saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                cargoToml,
-                                std::format(".{}.Cargo.toml", i),
-                                "C2Rust Cargo.toml",
-                                command.file.string(),
-                                i
-                            );
-                        }
-                        cargoTomls.push_back(cargoToml);
-
-                        std::string reapedStr;
-                        {
-                            StageTimer::Scope stage(stageTimer, StageNames::Reaper);
-                            reapedStr = RustRefactorWrapper::runReaper(c2rustStr);
-                            saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                reapedStr,
-                                std::format(".{}.reaped.rs", i),
-                                "Hayroll Reaper output",
-                                command.file.string(),
-                                i
-                            );
-                        }
-                        reapedStrs.push_back(reapedStr);
-
-                        if (enableInline)
-                        {
-                            std::string inlinedStr = RustRefactorWrapper::runInliner(reapedStr);
-                            saveOutput
-                            (
-                                command,
-                                outputDir,
-                                projDir,
-                                inlinedStr,
-                                std::format(".{}.inlined.rs", i),
-                                "Hayroll Inliner output",
-                                command.file.string(),
-                                i
-                            );
-                        }
-                    }
-
-                    if (reapedStrs.empty())
-                    {
-                        throw std::runtime_error("No reaped outputs generated for " + command.file.string());
-                    }
 
                     std::vector<std::string> mergedRustStrs;
                     mergedRustStrs.reserve(reapedStrs.size());

@@ -1,6 +1,9 @@
 #ifndef HAYROLL_SPLITTER_HPP
 #define HAYROLL_SPLITTER_HPP
 
+#include <format>
+#include <list>
+#include <optional>
 #include <string>
 
 #include <z3++.h>
@@ -11,116 +14,152 @@
 #include "DefineSet.hpp"
 #include "PremiseTree.hpp"
 #include "CompileCommand.hpp"
-#include "C2RustWrapper.hpp"
-#include "MakiWrapper.hpp"
-#include "RewriteIncludesWrapper.hpp"
-#include "TempDir.hpp"
 
 namespace Hayroll
 {
 
-struct Splitter
+class Splitter
 {
 public:
-    static std::vector<DefineSet> run
+    enum FeedbackKind
+    {
+        Initial,
+        Success,
+        Fail
+    };
+
+    struct Feedback
+    {
+        FeedbackKind kind;
+        std::string stage;
+        std::string reason;
+
+        static Feedback initial()
+        {
+            return Feedback{Initial, "", ""};
+        }
+
+        static Feedback success()
+        {
+            return Feedback{Success, "", ""};
+        }
+
+        static Feedback failStage(std::string_view stage, std::string_view reason)
+        {
+            return Feedback{Fail, std::string(stage), std::string(reason)};
+        }
+    };
+
+    Splitter
     (
         const PremiseTree * premiseTree,
         const CompileCommand & compileCommand
     )
+        : premiseTree(premiseTree), compileCommand(compileCommand)
     {
-        std::vector<DefineSet> result;
-        if (!premiseTree) return result;
+        if (!premiseTree) return;
+        worklist = premiseTree->getDescendantsLevelOrder();
+    }
 
-        // Premise tree nodes that are not yet satisfied by any DefineSet.
-        // Do reverse-level-order traversal so that more constrained nodes are processed first.
-        std::list<const PremiseTree *> worklist = premiseTree->getDescendantsLevelOrder();
-        std::list<const PremiseTree *> uncovered;
+    std::optional<DefineSet> next(const Feedback & feedback)
+    {
+        applyFeedback(feedback);
 
-        while (!worklist.empty())
+        if (!premiseTree) return std::nullopt;
+
+        if (!worklist.empty())
         {
             const PremiseTree * node = worklist.back();
             worklist.pop_back();
             z3::expr premise = node->getCompletePremise();
-            SPDLOG_TRACE("Processing premise tree node: {}", node->toString());
-            SPDLOG_TRACE("Complete premise: {}", premise.to_string());
-
-            DefineSet defineSet = node->getDefineSet();
-            
-            // Check that the DefineSet can be transpiled by C2Rust
-            if (!validate(defineSet, compileCommand))
-            {
-                // If not, skip this DefineSet
-                SPDLOG_WARN("DefineSet {} cannot be validated by C2Rust, skipping.",
-                    defineSet.toString());
-                uncovered.push_back(node);
-                continue;
-            }
-
-            SPDLOG_TRACE("Created new DefineSet: {}", defineSet.toString());
-            result.push_back(defineSet);
-
-            // Remove all nodes that are satisfied by the new DefineSet
-            for (auto it = worklist.begin(); it != worklist.end(); )
-            {
-                const PremiseTree * otherNode = *it;
-                z3::expr otherPremise = otherNode->getCompletePremise();
-                if (defineSet.satisfies(otherPremise))
-                {
-                    SPDLOG_TRACE("DefineSet {} satisfies premise tree node {}, removing it from worklist.",
-                                 defineSet.toString(),
-                                 otherNode->toString());
-                    it = worklist.erase(it);
-                }
-                else
-                {
-                    ++it;
-                }
-            }
+            lastNode = node;
+            lastDefineSet = node->getDefineSet();
+            SPDLOG_TRACE
+            (
+                "Splitter generated DefineSet {} for {}",
+                lastDefineSet->toString(),
+                premise.to_string()
+            );
+            return lastDefineSet;
         }
 
-        if (result.empty())
-        {
-            result.push_back(DefineSet{});
-        }
-
-        SPDLOG_DEBUG("Generated {} DefineSet(s).", result.size());
-        if (!uncovered.empty())
-        {
-            SPDLOG_DEBUG("The following premise tree nodes could not be covered by any valid DefineSet:");
-            for (const PremiseTree * node : uncovered)
-            {
-                SPDLOG_DEBUG(" - Node: {}", node->toString());
-                SPDLOG_DEBUG("   Premise: {}", node->getCompletePremise().to_string());
-            }
-        }
-
-        return result;
+        reportUncovered();
+        return std::nullopt;
     }
 
 private:
-    // Check if the DefineSet can be used to successfully run through C2Rust.
-    static bool validate
-    (
-        const DefineSet & defineSet,
-        const CompileCommand & compileCommand
-    )
+    void applyFeedback(const Feedback & feedback)
     {
-        CompileCommand updatedCommand = compileCommand.withUpdatedDefineSet(defineSet);
-        try
+        if (feedback.kind == Initial)
         {
-            std::string cuStr = RewriteIncludesWrapper::runRewriteIncludes(updatedCommand);
-            auto [rsStr, cargoToml] = C2RustWrapper::transpile(cuStr, updatedCommand);
+            return;
         }
-        catch (const std::exception & e)
+        else if (feedback.kind == Success)
         {
-            SPDLOG_WARN("C2Rust transpilation failed during DefineSet validation: {}", defineSet.toString());
-            return false;
+            removeSatisfiedNodes(*lastDefineSet);
+        }
+        else if (feedback.kind == Fail)
+        {
+            std::string stageStr = feedback.stage.empty() ? "" : std::format(" at stage {}", feedback.stage);
+            std::string reasonStr = feedback.reason.empty() ? "" : std::format(" ({})", feedback.reason);
+            SPDLOG_TRACE
+            (
+                "Splitter treating DefineSet {} as failed{}{}.",
+                lastDefineSet->toString(),
+                stageStr,
+                reasonStr
+            );
+            uncovered.push_back(lastNode);
         }
 
-        // Validating against Maki is too time-consuming, so we offload the responsibility to the caller
-
-        return true;
+        lastDefineSet.reset();
+        lastNode = nullptr;
     }
+
+    void removeSatisfiedNodes(const DefineSet & defineSet)
+    {
+        for (auto it = worklist.begin(); it != worklist.end(); )
+        {
+            const PremiseTree * otherNode = *it;
+            z3::expr otherPremise = otherNode->getCompletePremise();
+            if (defineSet.satisfies(otherPremise))
+            {
+                SPDLOG_TRACE
+                (
+                    "DefineSet {} satisfies premise tree node {}, removing it from worklist.",
+                    defineSet.toString(),
+                    otherNode->toString()
+                );
+                it = worklist.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+
+    void reportUncovered() const
+    {
+        if (reportedUncovered || uncovered.empty()) return;
+
+        SPDLOG_DEBUG("Splitter reached end of worklist for {}.", compileCommand.file.string());
+        SPDLOG_DEBUG("The following premise tree nodes could not be covered by any successful DefineSet:");
+        for (const PremiseTree * node : uncovered)
+        {
+            SPDLOG_DEBUG(" - Node: {}", node->toString());
+            SPDLOG_DEBUG("   Premise: {}", node->getCompletePremise().to_string());
+        }
+        reportedUncovered = true;
+    }
+
+    const PremiseTree * premiseTree;
+    CompileCommand compileCommand;
+    std::list<const PremiseTree *> worklist;
+    std::list<const PremiseTree *> uncovered;
+    std::optional<DefineSet> lastDefineSet;
+    const PremiseTree * lastNode{nullptr};
+    mutable bool reportedUncovered{false};
 };
 
 } // namespace Hayroll
