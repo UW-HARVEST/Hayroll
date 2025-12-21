@@ -39,6 +39,7 @@ jobs:
           ctest || ctest --rerun-failed --output-on-failure
       - name: Transpile LibmCS
         run: |
+          set -euo pipefail
           pushd ../libmcs
           make clean
           bear -- make -j"$(nproc)"
@@ -47,6 +48,7 @@ jobs:
           ./hayroll ../libmcs/compile_commands.json ./output/
       - name: Build Transpiled LibmCS
         run: |
+          set -euo pipefail
           pushd ./output
           cargo build
           popd
