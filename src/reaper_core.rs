@@ -15,7 +15,7 @@ use vfs::FileId;
 use crate::hayroll_ds::*;
 use crate::util::*;
 
-pub fn run(workspace_path: &Path) -> Result<()> {
+pub fn run(workspace_path: &Path, keep_src_loc: bool) -> Result<()> {
     // Record the start time
     let cargo_config = CargoConfig::default();
     let load_cargo_config = load_cargo::LoadCargoConfig {
@@ -267,7 +267,7 @@ pub fn run(workspace_path: &Path) -> Result<()> {
             continue; // Skip further processing for this item
         }
 
-        if !item_has_c2rust_src_loc(&item) {
+        if keep_src_loc || !item_has_c2rust_src_loc(&item) {
             continue; // No c2rust::src_loc attribute, skip
         }
 

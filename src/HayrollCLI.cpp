@@ -27,6 +27,7 @@ int main(const int argc, const char* argv[])
     std::filesystem::path projDir;
     std::filesystem::path symbolicMacroWhitelistPath;
     bool enableInline = false;
+    bool keepSrcLoc = false;
     int verbose = 0;
     std::string binaryTargetName;
 
@@ -50,6 +51,9 @@ int main(const int argc, const char* argv[])
             ->default_val(hardwareThreads);
         app.add_flag("-i,--inline", enableInline,
             "Enable inline macro expansion")
+            ->default_val(false);
+        app.add_flag("-s,--keep-src-loc", keepSrcLoc,
+            "Preserve c2rust::src_loc annotations in Rust refactoring stages")
             ->default_val(false);
         app.add_flag("-v,--verbose", verbose,
             "Increase verbosity (-v=debug, -vv=trace)")
@@ -154,6 +158,7 @@ int main(const int argc, const char* argv[])
             projDir,
             symbolicMacroWhitelist,
             enableInline,
+            keepSrcLoc,
             jobs,
             binaryTarget
         );

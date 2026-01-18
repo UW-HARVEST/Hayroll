@@ -13,7 +13,7 @@ use crate::hayroll_ds::{
 };
 use crate::util::{apply_source_change, collect_syntax_roots_from_db, SourceChangeBuilderSet};
 
-pub fn run(workspace_path: &Path) -> Result<()> {
+pub fn run(workspace_path: &Path, _keep_src_loc: bool) -> Result<()> {
     let cargo_config = CargoConfig::default();
     let load_cargo_config = load_cargo::LoadCargoConfig {
         load_out_dirs_from_check: false,

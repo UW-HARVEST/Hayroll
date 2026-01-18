@@ -89,122 +89,130 @@ int main()
 }
 )";
 
-    // Create a temporary project directory and output directory
-    TempDir projTmp;
-    TempDir outTmp;
-    std::filesystem::path projDir = projTmp.getPath();
-    std::filesystem::path outDir = outTmp.getPath();
-
-    // Save the test source file into the project directory
-    std::filesystem::path srcPath = projDir / "test.c";
+    for (bool keepSrcLoc : {false, true})
     {
-        std::ofstream ofs(srcPath);
-        ofs << testSrcString;
-    }
+        SPDLOG_INFO("=== Running test with keepSrcLoc = {} ===", keepSrcLoc);
 
-    std::string compileCommandsStr = R"(
-    [
+        // Create a temporary project directory and output directory
+        TempDir projTmp;
+        TempDir outTmp;
+        std::filesystem::path projDir = projTmp.getPath();
+        std::filesystem::path outDir = outTmp.getPath();
+
+        // Save the test source file into the project directory
+        std::filesystem::path srcPath = projDir / "test.c";
         {
-            "arguments": [
-                "/usr/bin/gcc",
-                "-c",
-                "-std=c99",
-                "-O0",
-                "-DCOND_MACRO_1",
-                "-o",
-                "build/test.o",
-                "test.c"
-            ],
-            "directory": ")" + projDir.string() + R"(",
-            "file": ")" + srcPath.string() + R"(",
-            "output": ")" + (projDir / "build/test.o").string() + R"("
+            std::ofstream ofs(srcPath);
+            ofs << testSrcString;
         }
-    ]
-    )";
 
-    nlohmann::json compileCommandsJson = nlohmann::json::parse(compileCommandsStr);
-
-    std::filesystem::path compileCommandsPath = projDir / "compile_commands.json";
-    {
-        std::ofstream ofs(compileCommandsPath);
-        ofs << compileCommandsJson.dump(2);
-    }
-
-    const std::string binaryName = srcPath.stem().string();
-
-    // Invoke the pipeline
-    int returnCode = Hayroll::Pipeline::run
-    (
-        compileCommandsPath,
-        outDir,
-        projDir,
-        std::nullopt, // symbolicMacroWhitelist
-        true, // enableInline
-        1,
-        std::optional<std::string>(binaryName)
-    );
-
-
-    if (returnCode != 0)
-    {
-        return returnCode;
-    }
-
-    const std::string outDirStr = outDir.string();
-
-    auto runCargoCommand = [&](const std::initializer_list<std::string> & args, int expectedRet)
-    {
-        subprocess::Popen proc
-        (
-            args,
-            subprocess::output{subprocess::PIPE},
-            subprocess::error{subprocess::PIPE},
-            subprocess::cwd{outDirStr.c_str()}
-        );
-        auto [out, err] = proc.communicate();
-        int ret = proc.retcode();
-        if (ret != expectedRet)
-        {
-            std::string commandLine;
-            for (const std::string & arg : args)
+        std::string compileCommandsStr = R"(
+        [
             {
-                if (!commandLine.empty()) commandLine.push_back(' ');
-                commandLine += arg;
+                "arguments": [
+                    "/usr/bin/gcc",
+                    "-c",
+                    "-std=c99",
+                    "-O0",
+                    "-DCOND_MACRO_1",
+                    "-o",
+                    "build/test.o",
+                    "test.c"
+                ],
+                "directory": ")" + projDir.string() + R"(",
+                "file": ")" + srcPath.string() + R"(",
+                "output": ")" + (projDir / "build/test.o").string() + R"("
             }
-            SPDLOG_ERROR("{} failed with exit code {} (expected {}). stdout:\n{}\nstderr:\n{}",
-                commandLine,
-                ret,
-                expectedRet,
-                out.buf.data(),
-                err.buf.data()
-            );
-            throw std::runtime_error("cargo command failed");
+        ]
+        )";
+
+        nlohmann::json compileCommandsJson = nlohmann::json::parse(compileCommandsStr);
+
+        std::filesystem::path compileCommandsPath = projDir / "compile_commands.json";
+        {
+            std::ofstream ofs(compileCommandsPath);
+            ofs << compileCommandsJson.dump(2);
         }
-    };
 
-    runCargoCommand
-    (
-        {
-            "cargo",
-            "build",
-            "--quiet",
-            "--features",
-            "defCOND_MACRO_1",
-        },
-        0
-    );
+        const std::string binaryName = srcPath.stem().string();
 
-    runCargoCommand
-    (
+        // Invoke the pipeline
+        int returnCode = Hayroll::Pipeline::run
+        (
+            compileCommandsPath,
+            outDir,
+            projDir,
+            std::nullopt, // symbolicMacroWhitelist
+            true, // enableInline
+            keepSrcLoc,
+            1,
+            binaryName
+        );
+
+
+        if (returnCode != 0)
         {
-            "cargo",
-            "run",
-            "--quiet",
-            "--features",
-            "defCOND_MACRO_1",
-        },
-        6
-    );
+            return returnCode;
+        }
+
+        const std::string outDirStr = outDir.string();
+
+        auto runCargoCommand = [&](const std::initializer_list<std::string> & args, int expectedRet)
+        {
+            subprocess::Popen proc
+            (
+                args,
+                subprocess::output{subprocess::PIPE},
+                subprocess::error{subprocess::PIPE},
+                subprocess::cwd{outDirStr.c_str()}
+            );
+            auto [out, err] = proc.communicate();
+            int ret = proc.retcode();
+            if (ret != expectedRet)
+            {
+                std::string commandLine;
+                for (const std::string & arg : args)
+                {
+                    if (!commandLine.empty()) commandLine.push_back(' ');
+                    commandLine += arg;
+                }
+                SPDLOG_ERROR("{} failed with exit code {} (expected {}). stdout:\n{}\nstderr:\n{}",
+                    commandLine,
+                    ret,
+                    expectedRet,
+                    out.buf.data(),
+                    err.buf.data()
+                );
+                throw std::runtime_error("cargo command failed");
+            }
+        };
+
+        runCargoCommand
+        (
+            {
+                "cargo",
+                "build",
+                "--quiet",
+                "--features",
+                "defCOND_MACRO_1",
+            },
+            0
+        );
+
+        runCargoCommand
+        (
+            {
+                "cargo",
+                "run",
+                "--quiet",
+                "--features",
+                "defCOND_MACRO_1",
+            },
+            6
+        );
+
+        SPDLOG_INFO("=== Test with keepSrcLoc = {} passed ===", keepSrcLoc);
+    }
 
     return 0;
 }

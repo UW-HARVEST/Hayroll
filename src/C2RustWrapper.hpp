@@ -254,14 +254,9 @@ fn main() {
         return buildRs;
     }
 
-    static std::string genLibRs
-    (
-        const std::filesystem::path & projDir,
-        const std::vector<CompileCommand> & compileCommands
-    )
+    static std::string genLibRsHeader()
     {
-        // Header copied as-is
-        const char * header =
+        const std::string libRsHeader =
 R"(
 #![allow(dead_code)]
 #![allow(mutable_transmutes)]
@@ -275,6 +270,17 @@ R"(
 #![feature(extern_types)]
 #![feature(c_variadic)]
 )";
+        return libRsHeader;
+    }
+
+    static std::string genLibRs
+    (
+        const std::filesystem::path & projDir,
+        const std::vector<CompileCommand> & compileCommands
+    )
+    {
+        // Header copied as-is
+        const std::string header = genLibRsHeader();
 
         // Build a directory tree from relative paths of input files
         struct Node

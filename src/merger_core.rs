@@ -16,7 +16,7 @@ use vfs::FileId;
 use crate::hayroll_ds::*;
 use crate::util::*;
 
-pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path) -> Result<()> {
+pub fn run(base_workspace_path: &Path, patch_workspace_path: &Path, _keep_src_loc: bool) -> Result<()> {
     let cargo_config = CargoConfig::default();
     let load_cargo_config = load_cargo::LoadCargoConfig {
         load_out_dirs_from_check: false,

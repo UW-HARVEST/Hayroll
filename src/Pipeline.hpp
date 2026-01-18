@@ -300,6 +300,7 @@ public:
         const std::filesystem::path & projDir,
         std::optional<std::vector<std::string>> symbolicMacroWhitelist,
         const bool enableInline,
+        const bool keepSrcLoc,
         std::size_t jobs,
         std::optional<std::string> binaryTargetName
     )
@@ -585,7 +586,7 @@ public:
                             {
                                 failedStage = StageNames::Reaper;
                                 StageTimer::Scope stage(stageTimer, StageNames::Reaper);
-                                reapedStr = RustRefactorWrapper::runReaper(c2rustStr);
+                                reapedStr = RustRefactorWrapper::runReaper(c2rustStr, keepSrcLoc);
                             }
 
                             if (enableInline)
@@ -768,7 +769,7 @@ public:
                         StageTimer::Scope stage(stageTimer, StageNames::Merger);
                         for (std::size_t i = 1; i < reapedStrs.size(); ++i)
                         {
-                            std::string merged = RustRefactorWrapper::runMerger(mergedRustStrs[i - 1], reapedStrs[i]);
+                            std::string merged = RustRefactorWrapper::runMerger(mergedRustStrs[i - 1], reapedStrs[i], keepSrcLoc);
                             saveOutput
                             (
                                 command,
@@ -786,7 +787,7 @@ public:
 
                         // Cleaner shares merger's stage timer
 
-                        finalRustStr = RustRefactorWrapper::runCleaner(finalRustStr);
+                        finalRustStr = RustRefactorWrapper::runCleaner(finalRustStr, keepSrcLoc);
                         saveOutput
                         (
                             command,
@@ -912,6 +913,31 @@ public:
         saveBuildFile(cargoTomlWithFeatures, "Cargo.toml");
         saveBuildFile(libRs, "lib.rs");
         saveBuildFile(rustToolchainToml, "rust-toolchain.toml");
+
+        // Prepend lib.rs header info for binary target
+        if (binaryTargetConfig)
+        {
+            try
+            {
+                const std::filesystem::path binRsPath = outputDir / binaryTargetConfig->second;
+                if (std::filesystem::exists(binRsPath))
+                {
+                    const std::string header = C2RustWrapper::genLibRsHeader();
+                    std::string binContent = Hayroll::loadFileToString(binRsPath);
+                    std::string newContent = header + "\n" + binContent;
+                    Hayroll::saveStringToFile(newContent, binRsPath);
+                    SPDLOG_INFO("Prepended lib.rs header to binary target: {}", binRsPath.string());
+                }
+                else
+                {
+                    SPDLOG_WARN("Binary target path does not exist for header prepend: {}", binRsPath.string());
+                }
+            }
+            catch (const std::exception & e)
+            {
+                SPDLOG_WARN("Failed to prepend lib.rs header to binary target: {}", e.what());
+            }
+        }
 
         // Seeding report analysis
         ordered_json statistics = Seeder::seedingReportStatistics(allSeedingReports);

@@ -42,30 +42,34 @@ name = "test"
 path = "src/main.rs"
 )";
 
-    static std::string runReaper(std::string_view seededRustStr)
+    static std::string runReaper(std::string_view seededRustStr, bool keepSrcLoc = false)
     {
         ToolConfig config;
         config.toolName = "Reaper";
         config.executable = HayrollReaperExe;
         config.workingDirIndex = 0;
         config.outputDirIndex = 0;
-        config.buildArgs = [](const std::vector<std::filesystem::path> & paths)
+        config.buildArgs = [keepSrcLoc](const std::vector<std::filesystem::path> & paths)
         {
-            return std::vector<std::string>{paths[0].string()};
+            std::vector<std::string> args{paths[0].string()};
+            if (keepSrcLoc) args.push_back("--keep-src-loc");
+            return args;
         };
         return runTool(config, {seededRustStr});
     }
 
-    static std::string runMerger(std::string_view reapedRustStrBase, std::string_view reapedRustStrPatch)
+    static std::string runMerger(std::string_view reapedRustStrBase, std::string_view reapedRustStrPatch, bool keepSrcLoc = false)
     {
         ToolConfig config;
         config.toolName = "Merger";
         config.executable = HayrollMergerExe;
         config.workingDirIndex = 0;
         config.outputDirIndex = 0;
-        config.buildArgs = [](const std::vector<std::filesystem::path> & paths)
+        config.buildArgs = [keepSrcLoc](const std::vector<std::filesystem::path> & paths)
         {
-            return std::vector<std::string>{paths[0].string(), paths[1].string()};
+            std::vector<std::string> args{paths[0].string(), paths[1].string()};
+            if (keepSrcLoc) args.push_back("--keep-src-loc");
+            return args;
         };
         return runTool(config, {reapedRustStrBase, reapedRustStrPatch});
     }
@@ -84,16 +88,18 @@ path = "src/main.rs"
         return runTool(config, {rustStr});
     }
 
-    static std::string runCleaner(std::string_view rustStr)
+    static std::string runCleaner(std::string_view rustStr, bool keepSrcLoc = false)
     {
         ToolConfig config;
         config.toolName = "Cleaner";
         config.executable = HayrollCleanerExe;
         config.workingDirIndex = 0;
         config.outputDirIndex = 0;
-        config.buildArgs = [](const std::vector<std::filesystem::path> & paths)
+        config.buildArgs = [keepSrcLoc](const std::vector<std::filesystem::path> & paths)
         {
-            return std::vector<std::string>{paths[0].string()};
+            std::vector<std::string> args{paths[0].string()};
+            if (keepSrcLoc) args.push_back("--keep-src-loc");
+            return args;
         };
         return runTool(config, {rustStr});
     }
