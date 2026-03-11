@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-ROOT_DIR=${ROOT_DIR:-"${PWD}"}           # default to current dir if not overridden
+ROOT_DIR=${ROOT_DIR:-"${PWD}"}                     # default to current dir if not overridden
 INSTALL_DIR=$(realpath "${ROOT_DIR}/dependencies") # normalize the path
 
 # --- third-party folders we expect under $INSTALL_DIR ----------------------------------
