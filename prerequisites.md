@@ -6,12 +6,12 @@ of follow the following steps manually.  After that, the directory structure
 should look like this:
 
 ```tree
-installation_folder/
-├── Hayroll/
-├── Maki/
-├── libmcs/
-├── tree-sitter/
-└── tree-sitter-c_preproc/
+Hayroll/
+└── dependencies/
+    ├── Maki/
+    ├── libmcs/
+    ├── tree-sitter/
+    └── tree-sitter-c_preproc/
 ```
 
 ## C2Rust
@@ -36,7 +36,8 @@ Tested version: tag 0.1.6
 uses a modified version.
 
 Please follow the "Local Setup (Required by Hayroll)" section in Maki's
-README. Do not use the docker version.
+README. Do not use the docker version. Clone Maki into `dependencies/Maki`
+inside the Hayroll directory.
 
 ## Z3
 
@@ -57,8 +58,9 @@ Tested version: 0.25.10
 parser generator.
 
 ```sh
-git clone https://github.com/tree-sitter/tree-sitter.git
-make -C tree-sitter
+mkdir -p dependencies
+git clone https://github.com/tree-sitter/tree-sitter.git dependencies/tree-sitter
+make -C dependencies/tree-sitter
 ```
 
 ## Hayroll Tree-sitter-c_preproc
@@ -69,8 +71,8 @@ Tested version: tag 0.1.6
 a parser for C macros.
 
 ```sh
-git clone https://github.com/UW-HARVEST/tree-sitter-c_preproc.git
-make -C tree-sitter-c_preproc
+git clone https://github.com/UW-HARVEST/tree-sitter-c_preproc.git dependencies/tree-sitter-c_preproc
+make -C dependencies/tree-sitter-c_preproc
 ```
 
 ## Libmcs
@@ -86,8 +88,8 @@ functionalities. `./configure` opens an interactive menu that leads you through
 such options.
 
 ```sh
-git clone https://gitlab.com/gtd-gmbh/libmcs.git
-cd libmcs
+git clone https://gitlab.com/gtd-gmbh/libmcs.git dependencies/libmcs
+cd dependencies/libmcs
 ./configure
 make
 ```

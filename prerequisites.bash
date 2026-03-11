@@ -6,7 +6,7 @@
 set -euo pipefail
 
 ROOT_DIR=${ROOT_DIR:-"${PWD}"}           # default to current dir if not overridden
-INSTALL_DIR=$(realpath "${ROOT_DIR}/..") # normalize the path
+INSTALL_DIR=$(realpath "${ROOT_DIR}/dependencies") # normalize the path
 
 # --- third-party folders we expect under $INSTALL_DIR ----------------------------------
 THIRD_PARTY_DIRS=(Maki tree-sitter tree-sitter-c_preproc c2rust z3 libmcs)

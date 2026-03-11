@@ -78,8 +78,8 @@ include_directories(${Boost_INCLUDE_DIRS})
 message(STATUS "Boost stacktrace_backtrace found: ${Boost_STACKTRACE_BACKTRACE_FOUND}")
 
 # tree-sitter
-set(TREE_SITTER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tree-sitter")
-set(TREE_SITTER_C_PREPROC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tree-sitter-c_preproc")
+set(TREE_SITTER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/tree-sitter")
+set(TREE_SITTER_C_PREPROC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/tree-sitter-c_preproc")
 set(TREE_SITTER_INCLUDE_DIR "${TREE_SITTER_DIR}/lib/include")
 set(TREE_SITTER_C_PREPROC_INCLUDE_DIR "${TREE_SITTER_C_PREPROC_DIR}/bindings/c")
 
@@ -87,7 +87,7 @@ message(STATUS "TREE_SITTER_DIR: ${TREE_SITTER_DIR}")
 message(STATUS "TREE_SITTER_C_PREPROC_DIR: ${TREE_SITTER_C_PREPROC_DIR}")
 
 # Maki dir
-set(MAKI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../Maki")
+set(MAKI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/Maki")
 if(NOT EXISTS "${MAKI_DIR}/evaluation/analyze_macro_invocations_in_program.py")
     message(FATAL_ERROR "Maki analysis script not found at ${MAKI_DIR}/evaluation/analyze_macro_invocations_in_program.py")
 endif()
@@ -97,7 +97,7 @@ endif()
 message(STATUS "MAKI_DIR: ${MAKI_DIR}")
 
 # libmcs dir
-set(LIBMCS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../libmcs")
+set(LIBMCS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/libmcs")
 
 add_library(hayroll_exe_config INTERFACE)
 target_compile_definitions(hayroll_exe_config INTERFACE
