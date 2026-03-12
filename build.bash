@@ -42,8 +42,14 @@ fi
 
 cd "${BUILD_DIR}" || exit
 
+if command -v ninja > /dev/null 2>&1; then
+  CMAKE_GENERATOR="-GNinja"
+else
+  CMAKE_GENERATOR=""
+fi
+
 echo "Configuring project with CMake..."
-if ! cmake .. -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"; then
+if ! cmake .. -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" "${CMAKE_GENERATOR}"; then
   echo "CMake configuration failed!"
   exit 1
 fi
