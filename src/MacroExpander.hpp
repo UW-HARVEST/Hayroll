@@ -813,7 +813,7 @@ public:
     }
 
 private:
-    const CPreproc & lang;
+    const CPreproc lang;
     TSParser parser;
 
     z3::context * ctx;

@@ -183,9 +183,9 @@ public:
     // Exapmle:
     // , ifndef_s({ .str = "preproc_ifndef", .tsSymbol = symbolForName("preproc_ifndef", true) , .name_f = { .str = "name", .tsFieldId = fieldIdForName("name") } , .body_f = { .str = "body", .tsFieldId = fieldIdForName("body") } , .alternative_f = { .str = "alternative", .tsFieldId = fieldIdForName("alternative") } })
 
-    #define X(sym) struct type_##sym##_s { std::string str; TSSymbol tsSymbol; operator TSSymbol() const { return tsSymbol; }
-    #define Y(fld) const struct type_##fld##_f { std::string str; TSFieldId tsFieldId; operator TSFieldId() const { return tsFieldId; } } fld##_f;
-    #define Z(op, name) const std::string name##_o = #op;
+    #define X(sym) struct type_##sym##_s { std::string_view str; TSSymbol tsSymbol; operator TSSymbol() const { return tsSymbol; }
+    #define Y(fld) const struct type_##fld##_f { std::string_view str; TSFieldId tsFieldId; operator TSFieldId() const { return tsFieldId; } } fld##_f;
+    #define Z(op, name) std::string_view name##_o = #op;
     #define XX };
     C_PREPROC_GRAMMAR
     #undef XX
@@ -195,7 +195,7 @@ public:
     // Exapmle:
     // struct type_ifndef_s
     // {
-    //     std::string str;
+    //     std::string_view str;
     //     TSSymbol tsSymbol;
     //     operator TSSymbol() const
     //     {
@@ -203,7 +203,7 @@ public:
     //     }
     //     const struct type_name_f
     //     {
-    //         std::string str;
+    //         std::string_view str;
     //         TSFieldId tsFieldId;
     //         operator TSFieldId() const
     //         {
@@ -212,7 +212,7 @@ public:
     //     } name_f;
     //     const struct type_body_f
     //     {
-    //         std::string str;
+    //         std::string_view str;
     //         TSFieldId tsFieldId;
     //         operator TSFieldId() const
     //         {
@@ -221,7 +221,7 @@ public:
     //     } body_f;
     //     const struct type_alternative_f
     //     {
-    //         std::string str;
+    //         std::string_view str;
     //         TSFieldId tsFieldId;
     //         operator TSFieldId() const
     //         {
@@ -229,7 +229,7 @@ public:
     //         }
     //     } alternative_f;
     //     // Only for operators
-    //     const std::string add_o = "+";
+    //     const std::string_view add_o = "+";
     // };
 
     #define X(sym) const type_##sym##_s sym##_s;
