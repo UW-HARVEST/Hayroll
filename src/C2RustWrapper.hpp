@@ -26,8 +26,9 @@ class C2RustWrapper
 {
 public:
     // Call C2Rust to transpile a single seeded CU string
-    // Return the transpiled Rust string and the corresponding Cargo.toml content
-    static std::tuple<std::string, std::string> transpile
+    // Return the transpiled Rust string, the corresponding Cargo.toml content,
+    // and c2rust's generated lib.rs
+    static std::tuple<std::string, std::string, std::string> transpile
     (
         std::string_view seededCuStr,
         const CompileCommand & compileCommand
@@ -111,7 +112,8 @@ public:
 
         std::string rustCode = loadFileToString(rustFilePath);
         std::string cargoToml = loadFileToString(outputDirPath / "Cargo.toml");
-        return {rustCode, cargoToml};
+        std::string c2rustLibRs = loadFileToString(outputDirPath / "lib.rs");
+        return {rustCode, cargoToml, c2rustLibRs};
     }
 
     static std::string mergeCargoTomls(const std::vector<std::string> & cargoTomls)
@@ -254,33 +256,60 @@ fn main() {
         return buildRs;
     }
 
-    static std::string genLibRsHeader()
+    // Extract all #![...] inner attribute lines from a Rust source string.
+    // C2Rust places these in lib.rs when running with --emit-build-files.
+    static std::set<std::string> extractInnerAttributes(const std::string & rustSrc)
     {
-        const std::string libRsHeader =
-R"(
-#![allow(dead_code)]
-#![allow(mutable_transmutes)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-#![allow(non_upper_case_globals)]
-#![allow(unused_assignments)]
-#![allow(unused_mut)]
-#![feature(register_tool)]
-#![register_tool(c2rust)]
-#![feature(extern_types)]
-#![feature(c_variadic)]
-)";
-        return libRsHeader;
+        std::set<std::string> attrs;
+        std::istringstream stream(rustSrc);
+        std::string line;
+        while (std::getline(stream, line))
+        {
+            auto start = line.find_first_not_of(" \t\r");
+            if (start == std::string::npos) continue;
+            std::string trimmed = line.substr(start);
+            if (trimmed.rfind("#![", 0) == 0)
+                attrs.insert(trimmed);
+        }
+        return attrs;
+    }
+
+    // Build the #![...] header block from merged C2Rust inner attributes.
+    // Falls back to a hardcoded set when nothing was collected.
+    static std::string buildInnerAttrHeader(const std::set<std::string> & mergedInnerAttrs)
+    {
+        if (!mergedInnerAttrs.empty())
+        {
+            std::ostringstream oss;
+            for (const auto & attr : mergedInnerAttrs) oss << attr << "\n";
+            return oss.str();
+        }
+
+        // Fallback: the attribute set that C2Rust was known to emit at the time of writing.
+        // This path is taken only when every transpile call failed.
+        static constexpr std::string_view fallback =
+            "#![allow(dead_code)]\n"
+            "#![allow(mutable_transmutes)]\n"
+            "#![allow(non_camel_case_types)]\n"
+            "#![allow(non_snake_case)]\n"
+            "#![allow(non_upper_case_globals)]\n"
+            "#![allow(unused_assignments)]\n"
+            "#![allow(unused_mut)]\n"
+            "#![feature(register_tool)]\n"
+            "#![register_tool(c2rust)]\n"
+            "#![feature(extern_types)]\n"
+            "#![feature(c_variadic)]\n";
+        return std::string(fallback);
     }
 
     static std::string genLibRs
     (
         const std::filesystem::path & projDir,
-        const std::vector<CompileCommand> & compileCommands
+        const std::vector<CompileCommand> & compileCommands,
+        const std::set<std::string> & mergedInnerAttrs = {}
     )
     {
-        // Header copied as-is
-        const std::string header = genLibRsHeader();
+        const std::string header = buildInnerAttrHeader(mergedInnerAttrs);
 
         // Build a directory tree from relative paths of input files
         struct Node

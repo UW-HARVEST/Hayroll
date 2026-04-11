@@ -348,9 +348,10 @@ public:
         std::vector<std::pair<std::filesystem::path, std::string>> failedTasks; // Failed file -> error
         std::mutex failedMutex;
 
-        // Collect Cargo.toml from all subtasks and splits
+        // Collect Cargo.toml and C2Rust lib.rs inner attributes from all subtasks and splits
         std::vector<std::string> allCargoTomls;
         std::set<std::string> allRustFeatureAtoms;
+        std::set<std::string> allC2RustInnerAttrs;
         std::vector<Seeder::SeedingReport> allSeedingReports;
         std::mutex collectionMutex;
         std::unordered_map<std::string, std::chrono::nanoseconds> performanceStageTotals;
@@ -543,6 +544,7 @@ public:
                     std::vector<std::string> reapedStrs;
                     std::vector<Seeder::SeedingReport> seedingReports;
                     std::set<std::string> rustFeatureAtoms;
+                    std::set<std::string> c2RustInnerAttrs;
                     int taskLocCount = 0;
 
                     for (std::size_t i = 0; i < makiCandidates.size(); ++i)
@@ -554,6 +556,7 @@ public:
                         std::string cuSeededStr;
                         std::string c2rustStr;
                         std::string cargoToml;
+                        std::string c2rustLibRs;
                         std::string reapedStr;
                         std::string inlinedStr;
                         std::string failedStage = "Unknown";
@@ -581,6 +584,7 @@ public:
                                 auto transpileResult = C2RustWrapper::transpile(cuSeededStr, candidate.commandWithDefineSet);
                                 c2rustStr = std::move(std::get<0>(transpileResult));
                                 cargoToml = std::move(std::get<1>(transpileResult));
+                                c2rustLibRs = std::move(std::get<2>(transpileResult));
                             }
 
                             {
@@ -718,6 +722,11 @@ public:
                                 rustFeatureAtoms.insert("def" + name);
                             }
 
+                            {
+                                auto innerAttrs = C2RustWrapper::extractInnerAttributes(c2rustLibRs);
+                                c2RustInnerAttrs.insert(innerAttrs.begin(), innerAttrs.end());
+                            }
+
                             if (!candidate.cuStr.empty())
                             {
                                 taskLocCount += static_cast<int>(std::count(candidate.cuStr.begin(), candidate.cuStr.end(), '\n'));
@@ -813,6 +822,7 @@ public:
                         std::lock_guard<std::mutex> lk(collectionMutex);
                         allCargoTomls.insert(allCargoTomls.end(), cargoTomls.begin(), cargoTomls.end());
                         allRustFeatureAtoms.insert(rustFeatureAtoms.begin(), rustFeatureAtoms.end());
+                        allC2RustInnerAttrs.insert(c2RustInnerAttrs.begin(), c2RustInnerAttrs.end());
                         allSeedingReports.insert(allSeedingReports.end(), seedingReports.begin(), seedingReports.end());
                     }
 
@@ -901,7 +911,7 @@ public:
             );
         }
         std::string cargoTomlWithFeatures = C2RustWrapper::addFeaturesToCargoToml(cargoTomlWithBinTarget, allRustFeatureAtoms);
-        std::string libRs = C2RustWrapper::genLibRs(projDir, compileCommands);
+        std::string libRs = C2RustWrapper::genLibRs(projDir, compileCommands, allC2RustInnerAttrs);
         std::string rustToolchainToml = C2RustWrapper::genRustToolchainToml();
         auto saveBuildFile = [&](const std::string & content, const std::string & fileName)
         {
@@ -922,7 +932,7 @@ public:
                 const std::filesystem::path binRsPath = outputDir / binaryTargetConfig->second;
                 if (std::filesystem::exists(binRsPath))
                 {
-                    const std::string header = C2RustWrapper::genLibRsHeader();
+                    const std::string header = C2RustWrapper::buildInnerAttrHeader(allC2RustInnerAttrs);
                     std::string binContent = Hayroll::loadFileToString(binRsPath);
                     std::string newContent = header + "\n" + binContent;
                     Hayroll::saveStringToFile(newContent, binRsPath);
