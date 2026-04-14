@@ -256,6 +256,44 @@ fn main() {
         return buildRs;
     }
 
+    // This is a maximal set of possible outputs from the transpiler is used,
+    // as these should generally be additive.
+    //
+    // Cross-checks are skipped for now, as they aren't purely additive. 
+    //
+    // ```rust
+    // #![cross_check(yes)]
+    // #![feature(plugin)]
+    // #![plugin(c2rust_xcheck_plugin(/* config_file = ... */))]
+    // ```
+    //
+    // `#![no_std]` is also skipped, as it's only valid for actually `no_std` code.
+    //
+    // `#![feature(stdarch_arm_hints)]` is also skipped,
+    // as it's only present in newer edition 2024 code, which isn't the default yet.
+    // `#![feature(stdsimd)]` is its old version, which is emitted.
+    static constexpr std::string_view fallbackLibRsHeader =
+        R"(
+        #![allow(dead_code)]
+        #![allow(non_camel_case_types)]
+        #![allow(non_snake_case)]
+        #![allow(non_upper_case_globals)]
+        #![allow(unused_assignments)]
+        #![allow(unused_mut)]
+        #![allow(unsafe_op_in_unsafe_fn)]
+        #![feature(asm)]
+        #![feature(c_variadic)]
+        #![feature(core_intrinsics)]
+        #![feature(extern_types)]
+        #![feature(label_break_value)]
+        #![feature(linkage)]
+        #![feature(raw_ref_op)]
+        #![feature(register_tool)]
+        #![feature(stdsimd)]
+        #![feature(thread_local)]
+        #![register_tool(c2rust)]
+        )";
+
     // Extract all #![...] inner attribute lines from a Rust source string.
     // C2Rust places these in lib.rs when running with --emit-build-files.
     static std::set<std::string> extractInnerAttributes(const std::string & rustSrc)
@@ -287,19 +325,7 @@ fn main() {
 
         // Fallback: the attribute set that C2Rust was known to emit at the time of writing.
         // This path is taken only when every transpile call failed.
-        static constexpr std::string_view fallback =
-            "#![allow(dead_code)]\n"
-            "#![allow(mutable_transmutes)]\n"
-            "#![allow(non_camel_case_types)]\n"
-            "#![allow(non_snake_case)]\n"
-            "#![allow(non_upper_case_globals)]\n"
-            "#![allow(unused_assignments)]\n"
-            "#![allow(unused_mut)]\n"
-            "#![feature(register_tool)]\n"
-            "#![register_tool(c2rust)]\n"
-            "#![feature(extern_types)]\n"
-            "#![feature(c_variadic)]\n";
-        return std::string(fallback);
+        return std::string(fallbackLibRsHeader);
     }
 
     static std::string genLibRs
