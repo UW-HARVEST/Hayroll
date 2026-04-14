@@ -57,7 +57,7 @@ std::string loadFileToString(const std::filesystem::path & path)
     std::ifstream file(path);
     if (!file.is_open())
     {
-        throw std::runtime_error("Error: Could not open file " + path.string());
+        throw std::runtime_error("Error: Could not open file for reading: " + path.string());
     }
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
@@ -78,7 +78,7 @@ void saveStringToFile(std::string_view content, const std::filesystem::path & pa
     std::ofstream file(path);
     if (!file.is_open())
     {
-        throw std::runtime_error("Error: Could not open file " + path.string());
+        throw std::runtime_error("Error: Could not open file for writing: " + path.string());
     }
     file << content;
     file.close();

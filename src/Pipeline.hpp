@@ -484,9 +484,10 @@ public:
                         {
                             SPDLOG_WARN
                             (
-                                "Skipping DefineSet {} due to failure at stage {}",
+                                "Skipping DefineSet {} due to failure at stage {}: {}",
                                 defineSet.toString(),
-                                failedStage
+                                failedStage,
+                                e.what()
                             );
                             feedback = Splitter::Feedback::failStage(failedStage, e.what());
                             return false;
