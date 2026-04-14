@@ -92,7 +92,10 @@ public:
             subprocess::error{subprocess::PIPE}
         );
 
-        clangProcess.communicate();
+        auto [out, err] = clangProcess.communicate();
+        if (clangProcess.retcode() != 0) {
+            throw std::runtime_error(std::format("Clang subprocess exit nonzero ({}): {}", clangProcess.retcode(), std::string(err.buf.data())));
+        }
 
         std::string cuStr = loadFileToString(outputPath);
         return cuStr;
