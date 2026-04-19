@@ -164,7 +164,7 @@ ensure_uv() {
     exit 1
   fi
   local pip_cmd
-  pip_cmd=$(command -v pip3 2>/dev/null || command -v pip)
+  pip_cmd=$(command -v pip3 2> /dev/null || command -v pip)
   run_quiet uv-install.log "${pip_cmd}" install --user uv
 
   local uv_bin_dir="${HOME}/.local/bin"
