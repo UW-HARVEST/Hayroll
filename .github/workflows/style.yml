@@ -14,6 +14,6 @@ jobs:
       - name: Install shellcheck and shfmt
         run: |
           sudo apt-get update
-          sudo apt install -y shfmt shellcheck
+          sudo apt install -y shfmt shellcheck devscripts
       - name: Check style
         run: make style-check
