@@ -8,6 +8,7 @@ should look like this:
 ```tree
 Hayroll/
 └── dependencies/
+    ├── c2rust/
     ├── Maki/
     ├── libmcs/
     ├── tree-sitter/

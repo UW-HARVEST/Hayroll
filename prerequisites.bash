@@ -107,6 +107,8 @@ git_clone_or_checkout() {
       echo "[*] ${dir} exists – syncing to latest ${target_ref}"
       git -C "${dir}" reset --hard "${target_ref}" --quiet
     fi
+  elif [[ -d "${dir}" ]]; then
+    echo "[*] ${dir} already present (vendored), skipping clone"
   else
     echo "[*] Cloning ${url} into ${dir}"
     git clone --quiet "${url}" "${dir}"
@@ -156,9 +158,14 @@ ensure_uv() {
     return
   fi
 
-  echo "[*] Installing uv (https://astral.sh/uv)"
-  local installer_url="https://astral.sh/uv/install.sh"
-  run_quiet uv-install.log bash -c "curl -LsSf ${installer_url} | sh"
+  echo "[*] Installing uv via pip"
+  if ! command -v pip3 > /dev/null 2>&1 && ! command -v pip > /dev/null 2>&1; then
+    echo "Error: pip not found. Please install python3-pip and re-run."
+    exit 1
+  fi
+  local pip_cmd
+  pip_cmd=$(command -v pip3 2> /dev/null || command -v pip)
+  run_quiet uv-install.log "${pip_cmd}" install --user uv
 
   local uv_bin_dir="${HOME}/.local/bin"
   if [[ ":${PATH}:" != *":${uv_bin_dir}:"* ]]; then
