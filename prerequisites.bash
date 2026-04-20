@@ -158,14 +158,15 @@ ensure_uv() {
     return
   fi
 
-  echo "[*] Installing uv via pip"
-  if ! command -v pip3 > /dev/null 2>&1 && ! command -v pip > /dev/null 2>&1; then
-    echo "Error: pip not found. Please install python3-pip and re-run."
+  echo "[*] Installing uv via standalone installer"
+  if command -v curl > /dev/null 2>&1; then
+    run_quiet uv-install.log bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+  elif command -v wget > /dev/null 2>&1; then
+    run_quiet uv-install.log bash -c 'wget -qO- https://astral.sh/uv/install.sh | sh'
+  else
+    echo "Error: neither curl nor wget was found. Please install one of them and re-run."
     exit 1
   fi
-  local pip_cmd
-  pip_cmd=$(command -v pip3 2> /dev/null || command -v pip)
-  run_quiet uv-install.log "${pip_cmd}" install --user uv
 
   local uv_bin_dir="${HOME}/.local/bin"
   if [[ ":${PATH}:" != *":${uv_bin_dir}:"* ]]; then
