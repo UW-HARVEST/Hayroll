@@ -1,0 +1,5 @@
+build/
+dependencies/
+target/
+.git/
+__pycache__/
