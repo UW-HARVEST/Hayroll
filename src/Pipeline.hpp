@@ -183,6 +183,19 @@ private:
         int locCount{0};
     };
 
+    struct MakiCandidate
+    {
+        DefineSet defineSet;
+        CompileCommand commandWithDefineSet;
+        std::string cuStr;
+        std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> lineMap;
+        std::vector<std::pair<Hayroll::IncludeTreePtr, int>> inverseLineMap;
+        std::string cpp2cStr;
+        std::vector<Hayroll::MakiInvocationSummary> cpp2cInvocations;
+        std::vector<Hayroll::MakiRangeSummary> cpp2cRanges;
+        std::set<std::string> rustFeatureAtoms;
+    };
+
 public:
     static std::filesystem::path saveOutput
     (
@@ -422,20 +435,6 @@ public:
                             std::nullopt
                         );
                     }
-
-                    // Splitter two-phase: gather Maki successes, then run downstream with complemented ranges
-                    struct MakiCandidate
-                    {
-                        DefineSet defineSet;
-                        CompileCommand commandWithDefineSet;
-                        std::string cuStr;
-                        std::unordered_map<Hayroll::IncludeTreePtr, std::vector<int>> lineMap;
-                        std::vector<std::pair<Hayroll::IncludeTreePtr, int>> inverseLineMap;
-                        std::string cpp2cStr;
-                        std::vector<Hayroll::MakiInvocationSummary> cpp2cInvocations;
-                        std::vector<Hayroll::MakiRangeSummary> cpp2cRanges;
-                        std::set<std::string> rustFeatureAtoms;
-                    };
 
                     std::vector<MakiCandidate> makiCandidates;
                     Splitter splitter(premiseTree, command);
