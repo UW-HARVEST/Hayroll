@@ -691,6 +691,7 @@ public:
         queryPath = queryPath.lexically_normal();
 
         std::vector<const CompileCommand*> matches;
+        std::unordered_set<std::string> seenFiles;
         for (const CompileCommand & command : compileCommands)
         {
             std::filesystem::path commandStem = command.file;
@@ -698,6 +699,10 @@ public:
             commandStem = commandStem.lexically_normal();
             if (commandStem == queryPath)
             {
+                if (!seenFiles.insert(command.file.string()).second)
+                {
+                    continue;
+                }
                 matches.push_back(&command);
             }
         }
