@@ -6,6 +6,7 @@
 #define HAYROLL_TEXTEDITOR_HPP
 
 #include <format>
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <vector>

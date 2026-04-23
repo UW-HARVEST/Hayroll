@@ -229,14 +229,14 @@ public:
         {
             queryPath = projDir / queryPath;
         }
-        queryPath = queryPath.lexically_normal();
+        queryPath = std::filesystem::weakly_canonical(queryPath);
 
         std::vector<const CompileCommand*> matches;
         for (const CompileCommand & command : compileCommands)
         {
             std::filesystem::path commandStem = command.file;
             commandStem.replace_extension("");
-            commandStem = commandStem.lexically_normal();
+            commandStem = std::filesystem::weakly_canonical(commandStem);
             if (commandStem == queryPath)
             {
                 matches.push_back(&command);

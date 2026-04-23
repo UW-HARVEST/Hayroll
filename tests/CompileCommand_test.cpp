@@ -63,11 +63,11 @@ int main(int argc, char **argv)
         .withUpdatedFilePathPrefix("/tmp/hayroll", LibmcsDir)
         .withUpdatedFileExtension(".cu.c");
     assert(updatedCommandCu.directory == LibmcsDir); // Directory is unchanged.
-    assert(updatedCommandCu.file == "/tmp/hayroll/libm/mathf/sinhf.cu.c");
+    assert(updatedCommandCu.file == std::filesystem::weakly_canonical("/tmp/hayroll/libm/mathf/sinhf.cu.c"));
 
     CompileCommand updatedCommandSeedCu = updatedCommandCu.withUpdatedFileExtension(".seed.cu.c");
     assert(updatedCommandSeedCu.directory == LibmcsDir); // Directory is unchanged.
-    assert(updatedCommandSeedCu.file == "/tmp/hayroll/libm/mathf/sinhf.seed.cu.c");
+    assert(updatedCommandSeedCu.file == std::filesystem::weakly_canonical("/tmp/hayroll/libm/mathf/sinhf.seed.cu.c"));
 
     return 0;
 }

@@ -50,7 +50,7 @@ int main(int argc, char **argv)
             #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E
         #endif
         #include <math.h>
-        #if __WORDSIZE >= 32
+        #if !defined(__WORDSIZE) || __WORDSIZE >= 32
             #check !defined INCLUDE_IMPOSSIBLE && !defined USER_E
         #endif
 

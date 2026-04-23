@@ -87,6 +87,7 @@ private:
         TempDir tempDir;
         // This is fake, just so that Maki reads compile_commands.json from the current directory.
         std::filesystem::path tempDirPath = tempDir.getPath();
+        std::filesystem::path projDirCanonical = std::filesystem::weakly_canonical(projDir);
         std::filesystem::path compileCommandsPath = tempDirPath / "compile_commands.json";
         std::filesystem::path codeRangesPath = tempDirPath / "code_ranges.json";
         // Write compile_commands.json to projDir
@@ -100,7 +101,16 @@ private:
                      CompileCommand::compileCommandsToJson({compileCommand}).dump(4));
 
         // Write code ranges to a file if provided
-        if (!codeRanges.empty())
+        bool useCodeRangeAnalysis = !codeRanges.empty();
+#if defined(__APPLE__)
+        if (useCodeRangeAnalysis)
+        {
+            SPDLOG_WARN("Disabling Maki code range analysis on macOS due known clang-plugin instability.");
+            useCodeRangeAnalysis = false;
+        }
+#endif
+
+        if (useCodeRangeAnalysis)
         {
             nlohmann::json codeRangesJson = nlohmann::json(codeRanges);
             saveStringToFile(codeRangesJson.dump(4), codeRangesPath);
@@ -113,15 +123,16 @@ private:
 
         std::vector<std::string> args =
         {
+            "python3",
             MakiAnalysisScriptPath.string(),
             MakiLibcpp2cPath.string(),
             compileCommandsPath.string(),
-            projDir.string(),
+            projDirCanonical.string(),
             outputDir.getPath().string(),
             std::to_string(numThreads)
         };
 
-        if (!codeRanges.empty())
+        if (useCodeRangeAnalysis)
         {
             args.push_back(codeRangesPath.string());
         }
@@ -169,7 +180,13 @@ private:
 
         if (cpp2cStr.empty())
         {
-            throw std::runtime_error("Maki cpp2c produced an empty output file.");
+            std::ostringstream oss;
+            oss << "Maki cpp2c produced an empty output file."
+                << "\nOutput:\n" << out.buf.data()
+                << "\nError:\n" << err.buf.data()
+                << "\nProgram directory: " << projDirCanonical.string()
+                << "\ncompile_commands.json: " << compileCommandsPath.string();
+            throw std::runtime_error(oss.str());
         }
 
         return cpp2cStr;

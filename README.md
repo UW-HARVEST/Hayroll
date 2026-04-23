@@ -105,11 +105,10 @@ cd Hayroll
 cd ./build && ctest
 ```
 
-The `prerequisites.bash` script has been tested on Ubuntu.
-For installation on other operating systems, follow the instructions in
+The `prerequisites.bash` script supports Ubuntu and macOS.
+For other operating systems, follow the instructions in
 [prerequisites.md](prerequisites.md), and please contribute back your
-instructions or a pull request to make `prerequisites.bash` work on more
-operating systems.  Thanks!
+instructions or a pull request to expand support further. Thanks!
 
 ## Usage
 
