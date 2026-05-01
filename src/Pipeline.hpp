@@ -196,10 +196,59 @@ private:
         std::set<std::string> rustFeatureAtoms;
     };
 
+    struct FileTask
+    {
+        std::filesystem::path file;
+        std::vector<CompileCommand> variants;
+    };
+
+    static std::string compileCommandFingerprint(const CompileCommand & command)
+    {
+        ordered_json fingerprint = ordered_json::object();
+        fingerprint["directory"] = command.directory.string();
+        fingerprint["file"] = command.file.string();
+        fingerprint["arguments"] = command.arguments;
+        return fingerprint.dump();
+    }
+
+    static std::vector<FileTask> buildFileTasks(const std::vector<CompileCommand> & compileCommands)
+    {
+        std::unordered_map<std::string, std::size_t> fileToTaskIndex;
+        std::vector<FileTask> tasks;
+        std::vector<std::unordered_set<std::string>> seenFingerprints;
+
+        for (const CompileCommand & command : compileCommands)
+        {
+            const std::string fileKey = command.file.string();
+            auto it = fileToTaskIndex.find(fileKey);
+            if (it == fileToTaskIndex.end())
+            {
+                const std::size_t newIndex = tasks.size();
+                fileToTaskIndex.emplace(fileKey, newIndex);
+                tasks.push_back(FileTask{command.file, {}});
+                seenFingerprints.emplace_back();
+                it = fileToTaskIndex.find(fileKey);
+            }
+
+            const std::size_t taskIndex = it->second;
+            const std::string fingerprint = compileCommandFingerprint(command);
+            if (!seenFingerprints[taskIndex].insert(fingerprint).second)
+            {
+                SPDLOG_INFO("Skipping duplicate compile command for {}", command.file.string());
+                continue;
+            }
+
+            tasks[taskIndex].variants.push_back(command);
+        }
+
+        return tasks;
+    }
+
     struct CommandResult
     {
         std::vector<DefineSet> successfulDefineSets;
         std::vector<std::string> cargoTomls;
+        std::vector<std::string> reapedStrs;
         std::vector<Seeder::SeedingReport> seedingReports;
         std::set<std::string> rustFeatureAtoms;
         std::set<std::string> c2RustInnerAttrs;
@@ -215,25 +264,12 @@ private:
         const std::optional<std::vector<std::string>> & symbolicMacroWhitelist,
         const bool enableInline,
         const bool keepSrcLoc,
-        StageTimer & stageTimer
+        StageTimer & stageTimer,
+        const std::optional<std::string> & artifactSuffix
     )
     {
         const std::filesystem::path & srcPath = command.file;
         CommandResult result;
-
-        std::string srcStr = loadFileToString(srcPath);
-        saveOutput
-        (
-            command,
-            outputDir,
-            projDir,
-            srcStr,
-            std::nullopt,
-            "Source file",
-            srcPath.string(),
-            std::nullopt
-        );
-
         SymbolicExecutor executor(srcPath, projDir, command.getIncludePaths(), symbolicMacroWhitelist, false);
         PremiseTree * premiseTree = nullptr;
         {
@@ -249,7 +285,8 @@ private:
                 ".premise_tree.raw.txt",
                 "Raw premise tree",
                 command.file.string(),
-                std::nullopt
+                std::nullopt,
+                artifactSuffix
             );
             premiseTree->refine();
             saveOutput
@@ -261,7 +298,8 @@ private:
                 ".premise_tree.txt",
                 "Premise tree",
                 command.file.string(),
-                std::nullopt
+                std::nullopt,
+                artifactSuffix
             );
         }
 
@@ -370,7 +408,7 @@ private:
 
         std::vector<std::string> reapedStrs;
         reapedStrs.reserve(makiCandidates.size());
-
+        std::vector<DefineSet> successfulDefineSetsForVariant;
         for (std::size_t i = 0; i < makiCandidates.size(); ++i)
         {
             const MakiCandidate & candidate = makiCandidates[i];
@@ -434,7 +472,8 @@ private:
                     std::format(".{}.cu.c", splitId),
                     "Compilation unit file",
                     command.file.string(),
-                    splitId
+                    splitId,
+                    artifactSuffix
                 );
                 saveOutput
                 (
@@ -445,7 +484,8 @@ private:
                     std::format(".{}.cpp2c", splitId),
                     "Maki cpp2c output",
                     command.file.string(),
-                    splitId
+                    splitId,
+                    artifactSuffix
                 );
                 saveOutput
                 (
@@ -456,7 +496,8 @@ private:
                     std::format(".{}.cpp2c.ranges.json", splitId),
                     "Complemented Maki range summary",
                     command.file.string(),
-                    splitId
+                    splitId,
+                    artifactSuffix
                 );
                 saveOutput
                 (
@@ -467,7 +508,8 @@ private:
                     std::format(".{}.seeder_report.json", splitId),
                     "Hayroll Seeder report",
                     command.file.string(),
-                    splitId
+                    splitId,
+                    artifactSuffix
                 );
                 saveOutput
                 (
@@ -478,7 +520,8 @@ private:
                     std::format(".{}.seeded.cu.c", splitId),
                     "Hayroll Seeded compilation unit",
                     command.file.string(),
-                    splitId
+                    splitId,
+                    artifactSuffix
                 );
                 saveOutput
                 (
@@ -489,7 +532,8 @@ private:
                     std::format(".{}.seeded.rs", splitId),
                     "C2Rust output",
                     command.file.string(),
-                    splitId
+                    splitId,
+                    artifactSuffix
                 );
                 saveOutput
                 (
@@ -500,7 +544,8 @@ private:
                     std::format(".{}.Cargo.toml", splitId),
                     "C2Rust Cargo.toml",
                     command.file.string(),
-                    splitId
+                    splitId,
+                    artifactSuffix
                 );
                 saveOutput
                 (
@@ -511,7 +556,8 @@ private:
                     std::format(".{}.reaped.rs", splitId),
                     "Hayroll Reaper output",
                     command.file.string(),
-                    splitId
+                    splitId,
+                    artifactSuffix
                 );
 
                 if (enableInline)
@@ -525,12 +571,14 @@ private:
                         std::format(".{}.inlined.rs", splitId),
                         "Hayroll Inliner output",
                         command.file.string(),
-                        splitId
+                        splitId,
+                        artifactSuffix
                     );
                 }
 
                 result.successfulDefineSets.push_back(candidate.defineSet);
-                reapedStrs.push_back(reapedStr);
+                successfulDefineSetsForVariant.push_back(candidate.defineSet);
+                result.reapedStrs.push_back(reapedStr);
                 result.cargoTomls.push_back(cargoToml);
                 result.seedingReports.insert
                 (
@@ -553,7 +601,7 @@ private:
                 if (!candidate.cuStr.empty())
                 {
                     result.taskLocCount += static_cast<int>(std::count(candidate.cuStr.begin(), candidate.cuStr.end(), '\n'));
-                    stageTimer.setLocCount(result.taskLocCount / static_cast<int>(reapedStrs.size()));
+                    stageTimer.setLocCount(result.taskLocCount / static_cast<int>(result.reapedStrs.size()));
                 }
 
                 ++result.taskSuccessfulSplits;
@@ -577,68 +625,18 @@ private:
                 );
             }
         }
-
-        if (reapedStrs.empty())
-        {
-            throw std::runtime_error("No reaped outputs generated for " + command.file.string());
-        }
-
         saveOutput
         (
             command,
             outputDir,
             projDir,
-            DefineSet::defineSetsToString(result.successfulDefineSets),
+            DefineSet::defineSetsToString(successfulDefineSetsForVariant),
             ".defset.txt",
             "Valid DefineSets summary",
             command.file.string(),
-            std::nullopt
+            std::nullopt,
+            artifactSuffix
         );
-        std::vector<std::string> mergedRustStrs;
-        mergedRustStrs.reserve(reapedStrs.size());
-        mergedRustStrs.push_back(reapedStrs[0]);
-        {
-            StageTimer::Scope stage(stageTimer, StageNames::Merger);
-            for (std::size_t i = 1; i < reapedStrs.size(); ++i)
-            {
-                std::string merged = RustRefactorWrapper::runMerger(mergedRustStrs[i - 1], reapedStrs[i], keepSrcLoc);
-                saveOutput
-                (
-                    command,
-                    outputDir,
-                    projDir,
-                    merged,
-                    std::format(".{}.merged.rs", i),
-                    "Hayroll Merger output",
-                    command.file.string(),
-                    i
-                );
-                mergedRustStrs.push_back(std::move(merged));
-            }
-            std::string finalRustStr = mergedRustStrs.back();
-
-            finalRustStr = RustRefactorWrapper::runCleaner(finalRustStr, keepSrcLoc);
-            saveOutput
-            (
-                command,
-                outputDir,
-                projDir,
-                finalRustStr,
-                ".rs",
-                "Hayroll final output",
-                command.file.string(),
-                std::nullopt
-            );
-        }
-
-        for (const DefineSet & defSet : result.successfulDefineSets)
-        {
-            for (auto [name, val] : defSet.defines)
-            {
-                result.rustFeatureAtoms.insert("def" + name);
-            }
-        }
-
         return result;
     }
 
@@ -652,14 +650,20 @@ public:
         const std::optional<std::string> & newExt,
         const std::string & step,
         const std::string & fileName,
-        const std::optional<std::size_t> defineSetIndex = std::nullopt
+        const std::optional<std::size_t> defineSetIndex = std::nullopt,
+        const std::optional<std::string> & artifactSuffix = std::nullopt
     )
     {
         Hayroll::CompileCommand outCmd = base.withSanitizedPaths(projDir)
             .withUpdatedFilePathPrefix(outputDir / "src", projDir);
-        if (newExt)
+        const std::string originalExtension = outCmd.file.extension().string();
+        const std::string finalExtension =
+            artifactSuffix
+                ? *artifactSuffix + (newExt ? *newExt : originalExtension)
+                : (newExt ? *newExt : originalExtension);
+        if (!finalExtension.empty())
         {
-            outCmd = outCmd.withUpdatedFileExtension(*newExt);
+            outCmd = outCmd.withUpdatedFileExtension(finalExtension);
         }
         const std::filesystem::path outPath = outCmd.file;
         const std::string fileNameRelative = std::filesystem::relative(base.file, projDir).string();
@@ -699,6 +703,8 @@ public:
             commandStem = commandStem.lexically_normal();
             if (commandStem == queryPath)
             {
+                // Multiple compile commands for the same source file should not make
+                // the binary target lookup appear ambiguous.
                 if (!seenFiles.insert(command.file.string()).second)
                 {
                     continue;
@@ -773,12 +779,13 @@ public:
         const std::string compileCommandsJsonStr = loadFileToString(compileCommandsJsonPath);
         json compileCommandsJson = json::parse(compileCommandsJsonStr);
         std::vector<CompileCommand> compileCommands = CompileCommand::fromCompileCommandsJson(compileCommandsJson);
-        const std::size_t numTasks = compileCommands.size();
+        std::vector<FileTask> fileTasks = buildFileTasks(compileCommands);
+        const std::size_t numTasks = fileTasks.size();
 
-        SPDLOG_INFO("Number of tasks: {}", numTasks);
-        for (const CompileCommand & command : compileCommands)
+        SPDLOG_INFO("Number of files to process: {}", numTasks);
+        for (const FileTask & task : fileTasks)
         {
-            SPDLOG_INFO(command.file.string());
+            SPDLOG_INFO("{} ({} compile command variant(s))", task.file.string(), task.variants.size());
         }
 
         // Warn (not fail) if compile command entries point to multiple directories.
@@ -832,50 +839,142 @@ public:
             {
                 std::size_t taskIdx = nextIdx.fetch_add(1, std::memory_order_relaxed);
                 if (taskIdx >= numTasks) break;
-                const CompileCommand & command = compileCommands[taskIdx];
-                std::filesystem::path srcPath = command.file;
+                const FileTask & task = fileTasks[taskIdx];
+                const CompileCommand & primaryCommand = task.variants.front();
+                const std::filesystem::path & srcPath = task.file;
                 StageTimer stageTimer;
                 std::size_t taskSuccessfulSplits = 0;
 
                 try
                 {
-                    CommandResult result = runForCommand(
-                        command,
+                    std::string srcStr = loadFileToString(srcPath);
+                    saveOutput
+                    (
+                        primaryCommand,
                         outputDir,
                         projDir,
-                        symbolicMacroWhitelist,
-                        enableInline,
-                        keepSrcLoc,
-                        stageTimer
+                        srcStr,
+                        std::nullopt,
+                        "Source file",
+                        srcPath.string(),
+                        std::nullopt,
+                        std::nullopt
                     );
+
+                    std::vector<DefineSet> successfulDefineSets;
+                    std::vector<std::string> cargoTomls;
+                    std::vector<std::string> reapedStrs;
+                    std::vector<Seeder::SeedingReport> seedingReports;
+                    std::set<std::string> rustFeatureAtoms;
+                    std::set<std::string> c2RustInnerAttrs;
+                    int taskLocCount = 0;
+
+                    for (std::size_t variantIdx = 0; variantIdx < task.variants.size(); ++variantIdx)
+                    {
+                        const CompileCommand & command = task.variants[variantIdx];
+                        const std::optional<std::string> artifactSuffix =
+                            task.variants.size() > 1 ? std::make_optional(std::format(".variant{}", variantIdx)) : std::nullopt;
+                        CommandResult result = runForCommand(
+                            command,
+                            outputDir,
+                            projDir,
+                            symbolicMacroWhitelist,
+                            enableInline,
+                            keepSrcLoc,
+                            stageTimer,
+                            artifactSuffix
+                        );
+
+                        successfulDefineSets.insert(successfulDefineSets.end(), result.successfulDefineSets.begin(), result.successfulDefineSets.end());
+                        cargoTomls.insert(cargoTomls.end(), result.cargoTomls.begin(), result.cargoTomls.end());
+                        reapedStrs.insert(reapedStrs.end(), result.reapedStrs.begin(), result.reapedStrs.end());
+                        seedingReports.insert(seedingReports.end(), result.seedingReports.begin(), result.seedingReports.end());
+                        rustFeatureAtoms.insert(result.rustFeatureAtoms.begin(), result.rustFeatureAtoms.end());
+                        c2RustInnerAttrs.insert(result.c2RustInnerAttrs.begin(), result.c2RustInnerAttrs.end());
+                        taskLocCount += result.taskLocCount;
+                        taskSuccessfulSplits += result.taskSuccessfulSplits;
+                    }
+
+                    if (reapedStrs.empty())
+                    {
+                        throw std::runtime_error("No reaped outputs generated for " + srcPath.string());
+                    }
+
+                    std::vector<std::string> mergedRustStrs;
+                    mergedRustStrs.reserve(reapedStrs.size());
+                    mergedRustStrs.push_back(reapedStrs[0]);
+                    {
+                        StageTimer::Scope stage(stageTimer, StageNames::Merger);
+                        for (std::size_t i = 1; i < reapedStrs.size(); ++i)
+                        {
+                            std::string merged = RustRefactorWrapper::runMerger(mergedRustStrs[i - 1], reapedStrs[i], keepSrcLoc);
+                            saveOutput
+                            (
+                                primaryCommand,
+                                outputDir,
+                                projDir,
+                                merged,
+                                std::format(".{}.merged.rs", i),
+                                task.variants.size() > 1 ? "Hayroll Merger output (cross-variant/split)" : "Hayroll Merger output",
+                                srcPath.string(),
+                                i,
+                                std::nullopt
+                            );
+                            mergedRustStrs.push_back(std::move(merged));
+                        }
+                        std::string finalRustStr = mergedRustStrs.back();
+
+                        // Cleaner shares merger's stage timer
+
+                        finalRustStr = RustRefactorWrapper::runCleaner(finalRustStr, keepSrcLoc);
+                        saveOutput
+                        (
+                            primaryCommand,
+                            outputDir,
+                            projDir,
+                            finalRustStr,
+                            ".rs",
+                            "Hayroll final output",
+                            srcPath.string(),
+                            std::nullopt,
+                            std::nullopt
+                        );
+                    }
+
+                    for (const DefineSet & defSet : successfulDefineSets)
+                    {
+                        for (auto [name, val] : defSet.defines)
+                        {
+                            rustFeatureAtoms.insert("def" + name);
+                        }
+                    }
 
                     {
                         std::lock_guard<std::mutex> lk(collectionMutex);
-                        allCargoTomls.insert(allCargoTomls.end(), result.cargoTomls.begin(), result.cargoTomls.end());
-                        allRustFeatureAtoms.insert(result.rustFeatureAtoms.begin(), result.rustFeatureAtoms.end());
-                        allC2RustInnerAttrs.insert(result.c2RustInnerAttrs.begin(), result.c2RustInnerAttrs.end());
-                        allSeedingReports.insert(allSeedingReports.end(), result.seedingReports.begin(), result.seedingReports.end());
+                        allCargoTomls.insert(allCargoTomls.end(), cargoTomls.begin(), cargoTomls.end());
+                        allRustFeatureAtoms.insert(rustFeatureAtoms.begin(), rustFeatureAtoms.end());
+                        allC2RustInnerAttrs.insert(c2RustInnerAttrs.begin(), c2RustInnerAttrs.end());
+                        allSeedingReports.insert(allSeedingReports.end(), seedingReports.begin(), seedingReports.end());
                     }
 
-                    taskSuccessfulSplits += result.taskSuccessfulSplits;
                     totalSuccessfulSplits += taskSuccessfulSplits;
                     completedTasks++;
-                    int avgLocCount = result.successfulDefineSets.empty() ? 0 : result.taskLocCount / static_cast<int>(result.successfulDefineSets.size());
+                    int avgLocCount = successfulDefineSets.empty() ? 0 : taskLocCount / static_cast<int>(successfulDefineSets.size());
                     totalLocCount += avgLocCount;
 
-                    SPDLOG_INFO("Task {}/{} {} completed", taskIdx + 1, numTasks, command.file.string());
+                    SPDLOG_INFO("Task {}/{} {} completed", taskIdx + 1, numTasks, srcPath.string());
                 }
                 catch (const std::exception & e)
                 {
                     std::lock_guard<std::mutex> lock(failedMutex);
-                    failedTasks.emplace_back(command.file, e.what());
-                    SPDLOG_ERROR("Task {}/{} {} failed: {}", taskIdx + 1, numTasks, command.file.string(), e.what());
+                    failedTasks.emplace_back(srcPath, e.what());
+                    SPDLOG_ERROR("Task {}/{} {} failed: {}", taskIdx + 1, numTasks, srcPath.string(), e.what());
                 }
                 catch (...)
                 {
                     std::lock_guard<std::mutex> lock(failedMutex);
-                    failedTasks.emplace_back(command.file, "unknown error");
-                    SPDLOG_ERROR("Task {}/{} {} failed: unknown error", taskIdx + 1, numTasks, command.file.string());
+                    failedTasks.emplace_back(srcPath, "unknown error");
+                    SPDLOG_ERROR("Task {}/{} {} failed: unknown error", taskIdx + 1, numTasks, srcPath.string());
                 }
 
                 {
@@ -895,23 +994,24 @@ public:
                     const std::string perfContent = perfJson.dump(4);
                     saveOutput
                     (
-                        command,
+                        primaryCommand,
                         outputDir,
                         projDir,
                         perfContent,
                         ".perf.json",
                         "Hayroll performance profile",
-                        command.file.string(),
+                        srcPath.string(),
+                        std::nullopt,
                         std::nullopt
                     );
                 }
                 catch (const std::exception & e)
                 {
-                    SPDLOG_ERROR("Failed to save performance profile for {}: {}", command.file.string(), e.what());
+                    SPDLOG_ERROR("Failed to save performance profile for {}: {}", srcPath.string(), e.what());
                 }
                 catch (...)
                 {
-                    SPDLOG_ERROR("Failed to save performance profile for {}: unknown error", command.file.string());
+                    SPDLOG_ERROR("Failed to save performance profile for {}: unknown error", srcPath.string());
                 }
             }
         };

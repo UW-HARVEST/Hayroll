@@ -296,6 +296,19 @@ add_test(
     COMMAND Pipeline_test
 )
 
+add_executable(DuplicateCompileCommands_test tests/DuplicateCompileCommands_test.cpp)
+target_link_libraries(DuplicateCompileCommands_test PRIVATE
+    hayroll_exe_config
+    external_exe_config
+    z3_config
+    testing_config
+    tree_sitter_config
+)
+add_test(
+    NAME DuplicateCompileCommands_test
+    COMMAND DuplicateCompileCommands_test
+)
+
 add_executable(TextEditor_test tests/TextEditor_test.cpp)
 target_link_libraries(TextEditor_test PRIVATE
     hayroll_exe_config

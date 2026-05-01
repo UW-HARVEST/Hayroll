@@ -122,6 +122,21 @@ int main()
                 "directory": ")" + projDir.string() + R"(",
                 "file": ")" + srcPath.string() + R"(",
                 "output": ")" + (projDir / "build/test.o").string() + R"("
+            },
+            {
+                "arguments": [
+                    "/usr/bin/gcc",
+                    "-c",
+                    "-std=c99",
+                    "-O0",
+                    "-DCOND_MACRO_2",
+                    "-o",
+                    "build/test-alt.o",
+                    "test.c"
+                ],
+                "directory": ")" + projDir.string() + R"(",
+                "file": ")" + srcPath.string() + R"(",
+                "output": ")" + (projDir / "build/test-alt.o").string() + R"("
             }
         ]
         )";
@@ -156,6 +171,8 @@ int main()
         }
 
         const std::string outDirStr = outDir.string();
+        assert(std::filesystem::exists(outDir / "src/test.variant0.premise_tree.txt"));
+        assert(std::filesystem::exists(outDir / "src/test.variant1.premise_tree.txt"));
 
         auto runCargoCommand = [&](const std::initializer_list<std::string> & args, int expectedRet)
         {
@@ -207,6 +224,30 @@ int main()
                 "--quiet",
                 "--features",
                 "defCOND_MACRO_1",
+            },
+            6
+        );
+
+        runCargoCommand
+        (
+            {
+                "cargo",
+                "build",
+                "--quiet",
+                "--features",
+                "defCOND_MACRO_2",
+            },
+            0
+        );
+
+        runCargoCommand
+        (
+            {
+                "cargo",
+                "run",
+                "--quiet",
+                "--features",
+                "defCOND_MACRO_2",
             },
             6
         );
