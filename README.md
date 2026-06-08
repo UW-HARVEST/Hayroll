@@ -263,7 +263,7 @@ diff hayroll-output/xxx.{split}.seeded.rs hayroll-output/xxx.rs
 
 ## Publication
 
-Hayroll is published in PLDI 2026. You can find a preprint at [Hayroll#20260417f.pdf](./Hayroll%2320260417f.pdf).
+Hayroll is published at PLDI 2026. You can find the paper at [here](https://doi.org/10.1145/3808276).
 
 ### Bibliography
 
