@@ -2,11 +2,11 @@
 #define HAYROLL_COMPILECOMMAND_HPP
 
 #include <algorithm>
-#include <cctype>
 #include <string>
 #include <vector>
 #include <filesystem>
 #include <functional>
+#include <wordexp.h>
 
 #include <spdlog/spdlog.h>
 #include "subprocess.hpp"
@@ -251,6 +251,16 @@ struct CompileCommand
         return updatedCommand;
     }
 
+    static std::vector<std::string> splitShellCommand(const std::string & cmd)
+    {
+        wordexp_t p;
+        if (wordexp(cmd.c_str(), &p, WRDE_NOCMD) != 0)
+            throw std::runtime_error("Failed to parse shell command: " + cmd);
+        std::vector<std::string> result(p.we_wordv, p.we_wordv + p.we_wordc);
+        wordfree(&p);
+        return result;
+    }
+
     static std::vector<CompileCommand> fromCompileCommandsJson(const nlohmann::json & json)
     {
         if (!json.is_array())
@@ -264,7 +274,12 @@ struct CompileCommand
         for (const auto & item : json)
         {
             CompileCommand command;
-            command.arguments = item["arguments"].get<std::vector<std::string>>();
+            if (item.contains("arguments"))
+                command.arguments = item["arguments"].get<std::vector<std::string>>();
+            else if (item.contains("command"))
+                command.arguments = splitShellCommand(item["command"].get<std::string>());
+            else
+                throw std::runtime_error("compile_commands.json entry has neither 'arguments' nor 'command' field");
             // Directory: require absolute, then weakly_canonical.
             command.directory = item["directory"].get<std::filesystem::path>();
             assert(command.directory.is_absolute());
