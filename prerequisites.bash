@@ -305,7 +305,12 @@ fi
 pushd Maki > /dev/null
 echo "[*] Building Maki"
 mkdir -p build && cd build
-run_quiet maki-cmake.log cmake ..
+MAKI_CMAKE_ARGS=()
+if [[ -n "${LLVM_VERSION}" ]]; then
+  LLVM_CMAKE_DIR=$("${LLVM_CONFIG_EXE}" --cmakedir)
+  MAKI_CMAKE_ARGS=(-DLLVM_DIR="${LLVM_CMAKE_DIR}" -DClang_DIR="${LLVM_CMAKE_DIR%/llvm}/clang")
+fi
+run_quiet maki-cmake.log cmake .. "${MAKI_CMAKE_ARGS[@]}"
 run_quiet maki-make.log make -j"$(nproc)"
 popd > /dev/null
 
