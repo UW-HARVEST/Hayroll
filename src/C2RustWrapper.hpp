@@ -70,6 +70,7 @@ public:
             "transpile",
             "--reorganize-definitions",
             "--emit-build-files",
+            "--emit-c-decl-map",
             compileCommandsPath.string(),
             "--output-dir", outputDirPath.string()
         };
