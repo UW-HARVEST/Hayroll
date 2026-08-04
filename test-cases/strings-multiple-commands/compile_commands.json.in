@@ -1,0 +1,14 @@
+[
+{
+  "directory": "$TEST_CASE_DIR/build",
+  "command": "/usr/bin/clang -I$TEST_CASE_DIR/include  -O3 -DDEFINED_STRING=foo -std=gnu99 -fPIC -o main_foo.c.o -c $TEST_CASE_DIR/main.c",
+  "file": "$TEST_CASE_DIR/main.c",
+  "output": "$TEST_CASE_DIR/main_foo.c.o"
+},
+{
+  "directory": "$TEST_CASE_DIR/build",
+  "command": "/usr/bin/clang -I$TEST_CASE_DIR/include  -O3 -DDEFINED_STRING=bar -std=gnu99 -fPIC -o main_bar.c.o -c $TEST_CASE_DIR/main.c",
+  "file": "$TEST_CASE_DIR/main.c",
+  "output": "$TEST_CASE_DIR/main_bar.c.o"
+}
+]

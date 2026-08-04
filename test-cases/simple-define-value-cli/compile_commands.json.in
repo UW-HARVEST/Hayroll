@@ -1,0 +1,8 @@
+[
+{
+  "directory": "$TEST_CASE_DIR/build",
+  "command": "/usr/bin/clang -I$TEST_CASE_DIR/include  -O3 -std=gnu99 -DA=300 -fPIC -o main.c.o -c $TEST_CASE_DIR/main.c",
+  "file": "$TEST_CASE_DIR/main.c",
+  "output": "$TEST_CASE_DIR/main.c.o"
+}
+]

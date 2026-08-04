@@ -1,0 +1,8 @@
+[
+{
+  "directory": "$TEST_CASE_DIR/build",
+  "command": "/usr/bin/clang -Dharaka_EXPORTS -I$TEST_CASE_DIR/include  -O3 -DPARAMS=sphincs-haraka-128s -std=gnu99 -fPIC -o hash_haraka.c.o -c $TEST_CASE_DIR/hash_haraka.c",
+  "file": "$TEST_CASE_DIR/hash_haraka.c",
+  "output": "$TEST_CASE_DIR/build/hash_haraka.c.o"
+}
+]
