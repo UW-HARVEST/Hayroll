@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <format>
 #include <functional>
 #include <wordexp.h>
 
@@ -67,6 +68,56 @@ struct CompileCommand
             paths.push_back(absolutePath);
         }
         return paths;
+    }
+
+    // Translate the -D and -U flags into #define and #undef lines, in command-line order.
+    // The compiler applies these flags in the same order, after its built-in macros.
+    // "-DNAME" defines NAME to 1, as GCC and Clang do.
+    std::string getMacroDirectives() const
+    {
+        std::string directives;
+        for (std::size_t i = 0; i < arguments.size(); ++i)
+        {
+            const std::string & arg = arguments[i];
+            if (!arg.starts_with("-D") && !arg.starts_with("-U")) continue;
+            const bool isDefine = arg.starts_with("-D");
+
+            std::string macro;
+            if (arg.size() > 2)
+            {
+                // Handle "-DFOO" / "-UFOO" style flags
+                macro = arg.substr(2);
+            }
+            else if (i + 1 < arguments.size())
+            {
+                // Handle "-D" "FOO" split across two arguments
+                macro = arguments[i + 1];
+                ++i; // Skip the consumed macro argument
+            }
+            else
+            {
+                // Dangling "-D" or "-U" with no following macro; skip gracefully
+                SPDLOG_WARN("Ignoring dangling '{}' flag in compile command for {}", arg, file.string());
+                continue;
+            }
+
+            if (!isDefine)
+            {
+                directives += std::format("#undef {}\n", macro);
+                continue;
+            }
+            // The first '=' separates the name (with optional parameters) from the body.
+            std::size_t eqPos = macro.find('=');
+            if (eqPos == std::string::npos)
+            {
+                directives += std::format("#define {} 1\n", macro);
+            }
+            else
+            {
+                directives += std::format("#define {} {}\n", macro.substr(0, eqPos), macro.substr(eqPos + 1));
+            }
+        }
+        return directives;
     }
 
     CompileCommand withUpdatedFilePathPrefix

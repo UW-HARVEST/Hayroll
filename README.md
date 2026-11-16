@@ -136,6 +136,37 @@ structure.
  <path_to_Hayroll>/hayroll <path_to_compile_commands.json> <output_directory>
 ```
 
+#### Avoiding timeouts caused by symbolic execution
+
+By default, Hayroll symbolically executes the preprocessor directives to find
+all configurations that `#if` directives allow. On a codebase with many
+conditional compilation directives, this step can take hours. You have two
+options to avoid this:
+
+**Whitelist mode** (`-w`, `--whitelist`) keeps the symbolic execution, but only
+for the macros that you list. Write the macro names in a JSON array:
+
+```json
+["LIBMCS_FPU_DAZ", "LIBMCS_WANT_COMPLEX"]
+```
+
+```sh
+ <path_to_Hayroll>/hayroll --whitelist <path_to_whitelist.json> <path_to_compile_commands.json> <output_directory>
+```
+
+Hayroll treats each macro that is not in the list as undefined, even when a
+`-D` flag in `compile_commands.json` defines it. The output keeps
+`#[cfg(feature = ...)]` attributes for the listed macros only.
+
+**Concrete mode** (`--concrete`) skips the exploration. Hayroll translates
+only the configuration that the `-D` and `-U` flags in `compile_commands.json`
+select. Macros are still translated. The output contains no
+`#[cfg(feature = ...)]` attributes, and each C file has one split.
+
+```sh
+ <path_to_Hayroll>/hayroll --concrete <path_to_compile_commands.json> <output_directory>
+```
+
 ### Output
 
 `./hayroll` overwrites the output directory. Files are grouped per original C
@@ -279,3 +310,11 @@ Hayroll is published at PLDI 2026. You can find the paper at [here](https://doi.
 }
 ```
 
+### Note for future researchers evaluating Hayroll
+
+Symbolic execution of conditional compilation can easily cause timeouts on
+large codebases, but you can avoid it if you only want to test Hayroll's macro
+translation capabilities. When you are comparing Hayroll with other tools that
+do not handle conditional compilation, please use the `--concrete` option to
+turn off symbolic execution. This will both save your time and make the
+comparison fairer.

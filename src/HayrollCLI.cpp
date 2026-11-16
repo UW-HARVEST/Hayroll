@@ -26,6 +26,7 @@ int main(const int argc, const char* argv[])
     std::size_t jobs = 0;
     std::filesystem::path projDir;
     std::filesystem::path symbolicMacroWhitelistPath;
+    bool concreteMode = false;
     bool enableInline = false;
     bool keepSrcLoc = false;
     int verbose = 0;
@@ -44,9 +45,13 @@ int main(const int argc, const char* argv[])
         app.add_option("-p,--project-dir", projDir,
             "Project directory (defaults to folder containing compile_commands.json)")
             ->default_str("");
-        app.add_option("-w,--whitelist", symbolicMacroWhitelistPath,
+        CLI::Option * whitelistOpt = app.add_option("-w,--whitelist", symbolicMacroWhitelistPath,
             "Path to symbolic macro whitelist json file, which defines which macros are allowed to be symbolically executed")
             ->default_str("");
+        app.add_flag("--concrete", concreteMode,
+            "Skip the symbolic exploration of configurations. Translate only the configurations in compile_commands.json")
+            ->default_val(false)
+            ->excludes(whitelistOpt);
         app.add_option("-j,--jobs", jobs, "Worker threads")
             ->default_val(hardwareThreads);
         app.add_flag("-i,--inline", enableInline,
@@ -157,6 +162,7 @@ int main(const int argc, const char* argv[])
             outputDir,
             projDir,
             symbolicMacroWhitelist,
+            concreteMode,
             enableInline,
             keepSrcLoc,
             jobs,

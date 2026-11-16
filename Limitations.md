@@ -20,7 +20,7 @@ This document summarizes the macro patterns and program structures that the curr
 
 ## Pioneer scaling
 
-Pioneer's symbolic execution does not scale to exhaustively explore the full configuration space of larger codebases. For zlib, whitelist mode (explicitly selected configurations) works; exhaustive exploration triggers state explosion. Codebases with a comparably large `#ifdef` fan-out should expect to use whitelist mode rather than full enumeration.
+Pioneer's symbolic execution does not scale to exhaustively explore the full configuration space of larger codebases. For zlib, whitelist mode (explicitly selected configurations) works; exhaustive exploration triggers state explosion. Codebases with a comparably large `#ifdef` fan-out should expect to use whitelist mode rather than full enumeration. If one configuration is sufficient, concrete mode (`--concrete`, see the README) skips the exploration.
 
 ## Scope of the current prototype
 

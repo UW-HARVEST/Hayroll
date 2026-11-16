@@ -100,9 +100,40 @@ int main(int argc, char **argv)
     )";
     saveSource(incSrcString, "inc.h");
 
+    // Concrete mode: the command-line macros are the only macro inputs, and no macro is symbolic.
+    std::string concreteSrcString =
+    R"(
+        #ifdef USER_DEFINED
+            #check 1
+        #else
+            #check 0
+        #endif
+
+        #if USER_VALUE == 3
+            #check 1
+        #else
+            #check 0
+        #endif
+
+        #ifdef USER_UNDEFINED
+            #check 0
+        #endif
+
+        #ifdef USER_NOT_GIVEN
+            #check 0
+        #endif
+    )";
+    std::filesystem::path concreteEntryPath = saveSource(concreteSrcString, "concrete.c");
+    std::string concreteCommandLineMacros =
+        "#define USER_DEFINED 1\n"
+        "#define USER_VALUE 3\n"
+        "#define USER_UNDEFINED 1\n"
+        "#undef USER_UNDEFINED\n";
+
     std::vector<SymbolicExecutor> executors;
 
     executors.push_back(std::move(SymbolicExecutor(entryPath, tmpPath)));
+    executors.push_back(std::move(SymbolicExecutor(concreteEntryPath, tmpPath, {}, std::vector<std::string>{}, false, concreteCommandLineMacros)));
 
     executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/mathf/sinhf.c", LibmcsDir, {LibmcsDir / "libm/include/"})));
     executors.push_back(std::move(SymbolicExecutor(LibmcsDir / "libm/mathd/roundd.c", LibmcsDir, {LibmcsDir / "libm/include/"})));

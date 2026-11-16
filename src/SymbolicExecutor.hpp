@@ -127,6 +127,8 @@ public:
     SymbolTablePtr symbolTableRoot;
     PremiseTreeScribe scribe;
     std::optional<std::vector<std::string>> macroWhitelist;
+    // #define and #undef lines from the command line (-D and -U), executed after the built-in macros.
+    std::string commandLineMacros;
 
     bool analyzeInvocations;
 
@@ -136,14 +138,16 @@ public:
         std::filesystem::path projPath,
         const std::vector<std::filesystem::path> & includePaths = {},
         std::optional<std::vector<std::string>> macroWhitelist = std::nullopt,
-        bool analyzeInvocations = false
+        bool analyzeInvocations = false,
+        std::string commandLineMacros = ""
     )
         : lang(CPreproc()), ctx(std::make_unique<z3::context>()), srcPath(std::filesystem::canonical(srcPath)),
           projPath(std::filesystem::canonical(projPath)), includeResolver(ClangExe, includePaths),
           astBank(lang), macroExpander(lang, ctx.get()),
           includeTree(IncludeTree::make(TSNode{}, std::filesystem::canonical(srcPath))),
           symbolTableRoot(SymbolTable::make(SymbolSegment::make(), nullptr, macroWhitelist)),
-          scribe(), analyzeInvocations(analyzeInvocations), macroWhitelist(macroWhitelist)
+          scribe(), macroWhitelist(macroWhitelist), commandLineMacros(std::move(commandLineMacros)),
+          analyzeInvocations(analyzeInvocations)
     {
         astBank.addFileOrFind(srcPath);
     }
@@ -167,10 +171,23 @@ public:
         SymbolTablePtr builtinMacroSymbolTable = predefinedMacroWarp.states[0].symbolTable;
         assert(builtinMacroSymbolTable != nullptr);
 
+        SymbolTablePtr startSymbolTable = builtinMacroSymbolTable;
+        // Apply the -D and -U flags on top of the built-in macros, as the compiler does.
+        if (!commandLineMacros.empty())
+        {
+            const TSTree & commandLineMacroTree = astBank.addAnonymousSource(std::string(commandLineMacros));
+            State commandLineMacroState{builtinMacroSymbolTable, ctx->bool_val(true)};
+            ProgramPoint commandLineMacroProgramPoint{IncludeTree::make(TSNode{}, "<command-line>"), commandLineMacroTree.rootNode()};
+            Warp commandLineMacroWarp{std::move(commandLineMacroProgramPoint), {std::move(commandLineMacroState)}};
+            commandLineMacroWarp = executeTranslationUnit(std::move(commandLineMacroWarp));
+            assert(commandLineMacroWarp.states.size() == 1);
+            startSymbolTable = commandLineMacroWarp.states[0].symbolTable;
+        }
+
         const TSTree & tree = astBank.find(srcPath);
         TSNode root = tree.rootNode();
         // The initial state is the root node of the tree.
-        State startState{builtinMacroSymbolTable, ctx->bool_val(true)};
+        State startState{startSymbolTable, ctx->bool_val(true)};
         Warp startWarp{ProgramPoint{includeTree, root}, {std::move(startState)}};
         // Start the premise tree with a true premise.
         // When a state reaches an #error, it does not stop, instead, it conjuncts the negation

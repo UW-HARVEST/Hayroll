@@ -299,6 +299,7 @@ public:
         const std::filesystem::path & outputDir,
         const std::filesystem::path & projDir,
         std::optional<std::vector<std::string>> symbolicMacroWhitelist,
+        const bool concreteMode,
         const bool enableInline,
         const bool keepSrcLoc,
         std::size_t jobs,
@@ -340,6 +341,10 @@ public:
                 return 1;
             }
         }
+
+        // Concrete mode: no macro is symbolic. Pioneer executes the -D and -U flags of each command,
+        // so it follows one path and the Splitter yields one empty DefineSet.
+        if (concreteMode) symbolicMacroWhitelist = std::vector<std::string>{};
 
         if (jobs > numTasks) jobs = numTasks;
         SPDLOG_INFO("Using {} worker thread(s)", jobs);
@@ -392,7 +397,15 @@ public:
 
                     // Hayroll Pioneer symbolic execution
                     // compileCommands + cpp2cStr --SymbolicExecutor-> includeTree + premiseTree
-                    SymbolicExecutor executor(srcPath, projDir, command.getIncludePaths(), symbolicMacroWhitelist, false);
+                    SymbolicExecutor executor
+                    (
+                        srcPath,
+                        projDir,
+                        command.getIncludePaths(),
+                        symbolicMacroWhitelist,
+                        false,
+                        concreteMode ? command.getMacroDirectives() : ""
+                    );
                     PremiseTree * premiseTree = nullptr;
                     {
                         StageTimer::Scope stage(stageTimer, StageNames::Pioneer);
@@ -443,7 +456,9 @@ public:
 
                     auto runMaki = [&](const DefineSet & defineSet) -> bool
                     {
-                        CompileCommand commandWithDefineSet = command.withCleanup().withUpdatedDefineSet(defineSet);
+                        CompileCommand commandWithDefineSet = concreteMode
+                            ? command.withCleanup()
+                            : command.withCleanup().withUpdatedDefineSet(defineSet);
                         std::string failedStage(StageNames::Maki);
 
                         try

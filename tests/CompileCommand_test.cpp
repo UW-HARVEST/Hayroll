@@ -59,6 +59,37 @@ int main(int argc, char **argv)
     assert(includePaths[3] == LibmcsDir / "libm/mathd/internal");
     assert(includePaths[4] == LibmcsDir / "libm/mathf/internal");
 
+    assert(command.getMacroDirectives() == "#define LIBMCS_FPU_DAZ 1\n#define LIBMCS_WANT_COMPLEX 1\n");
+
+    // All -D and -U forms, in command-line order.
+    CompileCommand macroCommand = command;
+    macroCommand.arguments =
+    {
+        "/usr/bin/gcc",
+        "-c",
+        "-DVALUE=3",
+        "-D",
+        "SPLIT=4",
+        "-DEMPTY=",
+        "-DFUNC(x)=((x)+1)",
+        "-DSTR=\"a=b\"",
+        "-UVALUE",
+        "-U",
+        "SPLIT",
+        "sinhf.c"
+    };
+    assert
+    (
+        macroCommand.getMacroDirectives() ==
+        "#define VALUE 3\n"
+        "#define SPLIT 4\n"
+        "#define EMPTY \n"
+        "#define FUNC(x) ((x)+1)\n"
+        "#define STR \"a=b\"\n"
+        "#undef VALUE\n"
+        "#undef SPLIT\n"
+    );
+
     CompileCommand updatedCommandCu = command
         .withUpdatedFilePathPrefix("/tmp/hayroll", LibmcsDir)
         .withUpdatedFileExtension(".cu.c");

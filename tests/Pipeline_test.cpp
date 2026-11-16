@@ -89,9 +89,15 @@ int main()
 }
 )";
 
-    for (bool keepSrcLoc : {false, true})
+    struct TestConfig
     {
-        SPDLOG_INFO("=== Running test with keepSrcLoc = {} ===", keepSrcLoc);
+        bool keepSrcLoc;
+        bool concreteMode;
+    };
+
+    for (const auto & [keepSrcLoc, concreteMode] : {TestConfig{false, false}, TestConfig{true, false}, TestConfig{false, true}})
+    {
+        SPDLOG_INFO("=== Running test with keepSrcLoc = {}, concreteMode = {} ===", keepSrcLoc, concreteMode);
 
         // Create a temporary project directory and output directory
         TempDir projTmp;
@@ -143,6 +149,7 @@ int main()
             outDir,
             projDir,
             std::nullopt, // symbolicMacroWhitelist
+            concreteMode,
             true, // enableInline
             keepSrcLoc,
             1,
@@ -155,10 +162,27 @@ int main()
             return returnCode;
         }
 
+        // Concrete mode follows one path, so there is exactly one DefineSet and it is empty.
+        if (concreteMode)
+        {
+            const std::string defineSetsStr = loadFileToString(outDir / "src" / "test.defset.txt");
+            if (defineSetsStr != "// DefineSet 0\n\n")
+            {
+                SPDLOG_ERROR("Concrete mode expected one empty DefineSet, got:\n{}", defineSetsStr);
+                return 1;
+            }
+        }
+
         const std::string outDirStr = outDir.string();
 
-        auto runCargoCommand = [&](const std::initializer_list<std::string> & args, int expectedRet)
+        // Concrete mode builds the C code with -DCOND_MACRO_1 as given, so the Rust code has no Cargo feature for it.
+        std::vector<std::string> featureArgs;
+        if (!concreteMode) featureArgs = {"--features", "defCOND_MACRO_1"};
+
+        auto runCargoCommand = [&](const std::string & cargoSubcommand, int expectedRet)
         {
+            std::vector<std::string> args = {"cargo", cargoSubcommand, "--quiet"};
+            args.insert(args.end(), featureArgs.begin(), featureArgs.end());
             subprocess::Popen proc
             (
                 args,
@@ -187,31 +211,10 @@ int main()
             }
         };
 
-        runCargoCommand
-        (
-            {
-                "cargo",
-                "build",
-                "--quiet",
-                "--features",
-                "defCOND_MACRO_1",
-            },
-            0
-        );
+        runCargoCommand("build", 0);
+        runCargoCommand("run", 6);
 
-        runCargoCommand
-        (
-            {
-                "cargo",
-                "run",
-                "--quiet",
-                "--features",
-                "defCOND_MACRO_1",
-            },
-            6
-        );
-
-        SPDLOG_INFO("=== Test with keepSrcLoc = {} passed ===", keepSrcLoc);
+        SPDLOG_INFO("=== Test with keepSrcLoc = {}, concreteMode = {} passed ===", keepSrcLoc, concreteMode);
     }
 
     return 0;
