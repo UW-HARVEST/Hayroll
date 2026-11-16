@@ -252,6 +252,8 @@ fi
 if ! command -v c2rust > /dev/null 2>&1; then
   echo "[*] Installing c2rust ${C2RUST_TAG}"
   export LLVM_CONFIG_PATH="${LLVM_CONFIG_EXE}"
+  # c2rust-ast-exporter's CMakeLists.txt requires CMake 3.4.3, which CMake 4.x rejects.
+  export CMAKE_POLICY_VERSION_MINIMUM=3.5
   run_quiet c2rust-install.log cargo install --git "${C2RUST_GIT}" --tag "${C2RUST_TAG}" --locked c2rust
 else
   echo "[*] c2rust already installed, version: $(c2rust --version)"
